@@ -1,0 +1,32 @@
+workflows:
+  android-release:
+    name: Aika Android APK
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      android_signing:
+        - keystore_reference
+      vars:
+        GEMINI_API_KEY: $GEMINI_API_KEY
+        OPENAI_API_KEY: $OPENAI_API_KEY
+    scripts:
+      - name: Inject API keys
+        script: |
+          sed -i "s|GEMINI_API_KEY_HERE|$GEMINI_API_KEY|g" lib/services/ai_service.dart
+          sed -i "s|OPENAI_API_KEY_HERE|$OPENAI_API_KEY|g" lib/services/ai_service.dart
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --dart-define=GEMINI_KEY=$GEMINI_API_KEY \
+            --dart-define=OPENAI_KEY=$OPENAI_API_KEY
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+    publishing:
+      email:
+        recipients:
+          - your@email.com
+        notify:
+          success: true
+          failure: true
