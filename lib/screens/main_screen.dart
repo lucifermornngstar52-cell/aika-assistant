@@ -59,7 +59,8 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadHistory() async {
     final history = await _memoryService.loadHistory();
     if (mounted && history.isNotEmpty) {
-      setState(() => _messages.insertAll(0, history.takeLast(20)));
+      final recent = history.length > 20 ? history.sublist(history.length - 20) : history;
+      setState(() => _messages.insertAll(0, recent));
     }
   }
 
