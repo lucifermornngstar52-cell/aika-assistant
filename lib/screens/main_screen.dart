@@ -11,6 +11,7 @@ import '../services/speech_service.dart';
 import '../services/device_service.dart';
 import '../services/memory_service.dart';
 import '../models/chat_message.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 import 'dart:math';
 
@@ -48,12 +49,14 @@ class _MainScreenState extends State<MainScreen> {
     _loadHistory();
     _loadBattery();
 
-    // Welcome message
+    // Welcome message with user name
     await Future.delayed(const Duration(milliseconds: 500));
-    _addMessage(
-      'Привет! Я — Айка ✨ Твой личный AI-ассистент. Скажи "Айка" или нажми на микрофон, чтобы начать!',
-      MessageRole.aika,
-    );
+    final prefs = await SharedPreferences.getInstance();
+    final userName = prefs.getString('user_name') ?? '';
+    final greeting = userName.isNotEmpty
+        ? 'Привет, $userName! Я — Айка ✨ Рада тебя видеть! Скажи что-нибудь или нажми на микрофон 🎤'
+        : 'Привет! Я — Айка ✨ Твой личный AI-ассистент. Скажи что-нибудь или нажми на микрофон!';
+    _addMessage(greeting, MessageRole.aika);
   }
 
   Future<void> _loadHistory() async {
