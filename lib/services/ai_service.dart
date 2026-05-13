@@ -6,8 +6,8 @@ import '../models/chat_message.dart';
 enum AIProvider { gemini, openai }
 
 class AIService {
-  static const String _geminiKey = 'GEMINI_API_KEY_HERE'; // replaced at build
-  static const String _openaiKey = 'OPENAI_API_KEY_HERE'; // replaced at build
+  static const String _geminiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: 'GEMINI_API_KEY_HERE');
+  static const String _openaiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: 'OPENAI_API_KEY_HERE');
 
   AIProvider _provider = AIProvider.gemini;
   final List<Map<String, String>> _history = [];
@@ -76,7 +76,6 @@ class AIService {
   }
 
   Future<String> _sendToGemini(String message) async {
-    // Build conversation for Gemini
     final contents = <Map<String, dynamic>>[];
 
     for (final msg in _history) {
@@ -153,3 +152,4 @@ class AIService {
 
   List<Map<String, String>> get history => List.unmodifiable(_history);
 }
+
