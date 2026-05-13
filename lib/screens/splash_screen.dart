@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import 'main_screen.dart';
+import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -10,23 +12,41 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const MainScreen(),
-            transitionsBuilder: (_, animation, __, child) =>
-                FadeTransition(opacity: animation, child: child),
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
-      }
-    });
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..forward();
+
+    Future.delayed(const Duration(milliseconds: 2500), _navigate);
+  }
+
+  Future<void> _navigate() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString('user_name');
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) =>
+            name == null ? const OnboardingScreen() : const MainScreen(),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 600),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -37,51 +57,50 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Glowing orb
+            // Avatar glow
             Container(
-              width: 120,
-              height: 120,
+              width: 160,
+              height: 160,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AikaTheme.neonBlue.withOpacity(0.8),
-                    AikaTheme.neonPurple.withOpacity(0.4),
-                    Colors.transparent,
-                  ],
-                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AikaTheme.neonBlue.withOpacity(0.6),
+                    color: AikaTheme.neonBlue.withOpacity(0.5),
                     blurRadius: 60,
                     spreadRadius: 20,
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: Colors.white,
-                size: 60,
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/aika_avatar.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
+                      ),
+                    ),
+                    child: const Icon(Icons.star, color: Colors.white, size: 80),
+                  ),
+                ),
               ),
             )
-                .animate(onPlay: (ctrl) => ctrl.repeat(reverse: true))
-                .scale(
-                  begin: const Offset(0.9, 0.9),
-                  end: const Offset(1.1, 1.1),
-                  duration: 1500.ms,
-                ),
+                .animate()
+                .scale(duration: 800.ms, curve: Curves.elasticOut)
+                .fadeIn(duration: 600.ms),
 
             const SizedBox(height: 32),
 
-            // Name
             ShaderMask(
               shaderCallback: (bounds) => const LinearGradient(
                 colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
               ).createShader(bounds),
               child: const Text(
-                'АЙКА',
+                'А И К А',
                 style: TextStyle(
-                  fontSize: 48,
+                  fontSize: 36,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                   letterSpacing: 12,
@@ -89,45 +108,34 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             )
                 .animate()
-                .fadeIn(delay: 500.ms, duration: 800.ms)
+                .fadeIn(delay: 400.ms, duration: 600.ms)
                 .slideY(begin: 0.3, end: 0),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
 
-            Text(
-              'AI · Ассистент',
+            const Text(
+              'Твой AI-ассистент',
               style: TextStyle(
                 color: AikaTheme.textSecondary,
                 fontSize: 14,
-                letterSpacing: 4,
+                letterSpacing: 2,
               ),
             )
                 .animate()
-                .fadeIn(delay: 800.ms, duration: 600.ms),
+                .fadeIn(delay: 700.ms, duration: 600.ms),
 
             const SizedBox(height: 60),
 
-            // Loading dots
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                3,
-                (i) => Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AikaTheme.neonBlue,
-                  ),
-                )
-                    .animate(delay: Duration(milliseconds: 1000 + i * 200))
-                    .fadeIn(duration: 400.ms)
-                    .then()
-                    .animate(onPlay: (ctrl) => ctrl.repeat(reverse: true))
-                    .scaleXY(begin: 0.5, end: 1.5, duration: 600.ms),
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AikaTheme.neonBlue.withOpacity(0.6),
               ),
-            ),
+            )
+                .animate()
+                .fadeIn(delay: 1000.ms, duration: 400.ms),
           ],
         ),
       ),
