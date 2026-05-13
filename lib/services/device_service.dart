@@ -138,11 +138,11 @@ class DeviceService {
   Future<String> _changeVolume(double delta, {bool absolute = false}) async {
     try {
       if (absolute) {
-        await VolumeController().setVolume(delta);
+        VolumeController().setVolume(delta);
       } else {
-        final current = await VolumeController().getVolume();
+        final current = (await VolumeController().getVolume()) ?? 0.5;
         final newVol = (current + delta).clamp(0.0, 1.0);
-        await VolumeController().setVolume(newVol);
+        VolumeController().setVolume(newVol);
       }
       return 'Громкость изменена';
     } catch (e) {
