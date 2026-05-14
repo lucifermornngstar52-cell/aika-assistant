@@ -4,18 +4,15 @@ import 'package:torch_light/torch_light.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/services.dart';
 
 class DeviceService {
   final Battery _battery = Battery();
   bool _flashlightOn = false;
 
-  // Parse and execute [ACTION:...] from AI response
   Future<String?> parseAndExecute(String aiResponse) async {
     final regex = RegExp(r'\[ACTION:([^\]]+)\]');
     final match = regex.firstMatch(aiResponse);
     if (match == null) return null;
-
     final action = match.group(1)?.toLowerCase() ?? '';
     return await executeAction(action);
   }
@@ -23,20 +20,15 @@ class DeviceService {
   Future<String?> executeAction(String action) async {
     switch (action) {
       case 'open_youtube':
-        return await _openApp('com.google.android.youtube',
-            fallback: 'https://youtube.com');
+        return await _openApp('com.google.android.youtube', fallback: 'https://youtube.com');
       case 'open_telegram':
-        return await _openApp('org.telegram.messenger',
-            fallback: 'https://t.me');
+        return await _openApp('org.telegram.messenger', fallback: 'https://t.me');
       case 'open_tiktok':
-        return await _openApp('com.zhiliaoapp.musically',
-            fallback: 'https://tiktok.com');
+        return await _openApp('com.zhiliaoapp.musically', fallback: 'https://tiktok.com');
       case 'open_chrome':
-        return await _openApp('com.android.chrome',
-            fallback: 'https://google.com');
+        return await _openApp('com.android.chrome', fallback: 'https://google.com');
       case 'open_spotify':
-        return await _openApp('com.spotify.music',
-            fallback: 'https://spotify.com');
+        return await _openApp('com.spotify.music', fallback: 'https://spotify.com');
       case 'open_settings':
         return await _openSettings();
       case 'flashlight_on':
@@ -86,7 +78,7 @@ class DeviceService {
       return 'Открываю приложение...';
     } catch (e) {
       if (fallback != null) {
-        await launchUrl(Uri.parse(fallback));
+        await launchUrl(Uri.parse(fallback), mode: LaunchMode.externalApplication);
         return 'Открываю в браузере...';
       }
       return 'Не могу открыть приложение';
@@ -124,7 +116,7 @@ class DeviceService {
       if (on) {
         await TorchLight.enableTorch();
         _flashlightOn = true;
-        return 'Фонарик включён';
+        return 'Фонарик включён 🔦';
       } else {
         await TorchLight.disableTorch();
         _flashlightOn = false;
@@ -137,12 +129,16 @@ class DeviceService {
 
   Future<String> _changeVolume(double delta, {bool absolute = false}) async {
     try {
+      final vc = VolumeController();
+      vc.showSystemUI = false;
       if (absolute) {
-        VolumeController().setVolume(delta);
+        vc.setVolume(delta);
       } else {
-        final current = (await VolumeController().getVolume()) ?? 0.5;
+        double current = 0.5;
+        vc.getVolume(listener: (v) => current = v);
+        await Future.delayed(const Duration(milliseconds: 100));
         final newVol = (current + delta).clamp(0.0, 1.0);
-        VolumeController().setVolume(newVol);
+        vc.setVolume(newVol);
       }
       return 'Громкость изменена';
     } catch (e) {
@@ -151,7 +147,7 @@ class DeviceService {
   }
 
   Future<String> _searchWeb(String query) async {
-    final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(query)}');
+    final url = Uri.parse('https://www.google.com/search?q=\${Uri.encodeComponent(query)}');
     await launchUrl(url, mode: LaunchMode.externalApplication);
     return 'Ищу: $query';
   }
