@@ -8,6 +8,13 @@ import 'package:url_launcher/url_launcher.dart';
 class DeviceService {
   final Battery _battery = Battery();
   bool _flashlightOn = false;
+  double _currentVolume = 0.5;
+
+  DeviceService() {
+    // Listen to volume changes to track current level
+    VolumeController().listener((v) => _currentVolume = v);
+    VolumeController().getVolume().then((v) => _currentVolume = v ?? 0.5);
+  }
 
   Future<String?> parseAndExecute(String aiResponse) async {
     final regex = RegExp(r'\[ACTION:([^\]]+)\]');
@@ -42,9 +49,9 @@ class DeviceService {
       case 'volume_down':
         return await _changeVolume(-0.1);
       case 'volume_max':
-        return await _changeVolume(1.0, absolute: true);
+        return await _setVolume(1.0);
       case 'volume_mute':
-        return await _changeVolume(0.0, absolute: true);
+        return await _setVolume(0.0);
       case 'battery':
         return await _getBattery();
       case 'open_camera':
@@ -58,9 +65,7 @@ class DeviceService {
     }
   }
 
-  Future<int> getBatteryLevel() async {
-    return await _battery.batteryLevel;
-  }
+  Future<int> getBatteryLevel() async => await _battery.batteryLevel;
 
   Future<String> _getBattery() async {
     final level = await _battery.batteryLevel;
@@ -127,28 +132,34 @@ class DeviceService {
     }
   }
 
-  Future<String> _changeVolume(double delta, {bool absolute = false}) async {
+  Future<String> _changeVolume(double delta) async {
     try {
-      final vc = VolumeController();
-      vc.showSystemUI = false;
-      if (absolute) {
-        vc.setVolume(delta);
-      } else {
-        double current = 0.5;
-        vc.getVolume(listener: (v) => current = v);
-        await Future.delayed(const Duration(milliseconds: 100));
-        final newVol = (current + delta).clamp(0.0, 1.0);
-        vc.setVolume(newVol);
-      }
+      final newVol = (_currentVolume + delta).clamp(0.0, 1.0);
+      VolumeController().setVolume(newVol);
+      _currentVolume = newVol;
       return 'Громкость изменена';
     } catch (e) {
       return 'Не могу изменить громкость';
     }
   }
 
+  Future<String> _setVolume(double level) async {
+    try {
+      VolumeController().setVolume(level);
+      _currentVolume = level;
+      return level == 0 ? 'Звук выключен 🔇' : 'Громкость максимальная 🔊';
+    } catch (e) {
+      return 'Не могу изменить громкость';
+    }
+  }
+
   Future<String> _searchWeb(String query) async {
-    final url = Uri.parse('https://www.google.com/search?q=\${Uri.encodeComponent(query)}');
+    final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(query)}');
     await launchUrl(url, mode: LaunchMode.externalApplication);
     return 'Ищу: $query';
+  }
+
+  void dispose() {
+    VolumeController().removeListener();
   }
 }
