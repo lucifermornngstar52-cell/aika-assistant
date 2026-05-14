@@ -11,9 +11,10 @@ class DeviceService {
   double _currentVolume = 0.5;
 
   DeviceService() {
-    // Listen to volume changes to track current level
-    VolumeController().listener((v) => _currentVolume = v);
-    VolumeController().getVolume().then((v) => _currentVolume = v ?? 0.5);
+    VolumeController().listener((v) {
+      _currentVolume = v;
+    });
+    VolumeController().getVolume(listener: null);
   }
 
   Future<String?> parseAndExecute(String aiResponse) async {
@@ -45,9 +46,9 @@ class DeviceService {
       case 'flashlight_toggle':
         return await _toggleFlashlight(!_flashlightOn);
       case 'volume_up':
-        return await _changeVolume(0.1);
+        return await _changeVolume(0.15);
       case 'volume_down':
-        return await _changeVolume(-0.1);
+        return await _changeVolume(-0.15);
       case 'volume_max':
         return await _setVolume(1.0);
       case 'volume_mute':
@@ -136,7 +137,6 @@ class DeviceService {
     try {
       final newVol = (_currentVolume + delta).clamp(0.0, 1.0);
       VolumeController().setVolume(newVol);
-      _currentVolume = newVol;
       return 'Громкость изменена';
     } catch (e) {
       return 'Не могу изменить громкость';
@@ -146,7 +146,6 @@ class DeviceService {
   Future<String> _setVolume(double level) async {
     try {
       VolumeController().setVolume(level);
-      _currentVolume = level;
       return level == 0 ? 'Звук выключен 🔇' : 'Громкость максимальная 🔊';
     } catch (e) {
       return 'Не могу изменить громкость';
