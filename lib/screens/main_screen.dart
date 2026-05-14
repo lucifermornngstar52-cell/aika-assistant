@@ -13,7 +13,6 @@ import '../services/memory_service.dart';
 import '../models/chat_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
-import 'dart:math';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
