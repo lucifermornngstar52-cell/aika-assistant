@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AikaTheme {
-  // Colors
   static const Color background = Color(0xFF080B14);
   static const Color surface = Color(0xFF0D1120);
   static const Color card = Color(0xFF111827);
@@ -21,7 +20,6 @@ class AikaTheme {
           primary: neonBlue,
           secondary: neonPurple,
           surface: surface,
-          background: background,
         ),
         fontFamily: 'Roboto',
         textTheme: const TextTheme(
@@ -31,7 +29,6 @@ class AikaTheme {
         ),
       );
 
-  // Neon glow decoration
   static BoxDecoration glassCard({
     Color borderColor = neonBlue,
     double borderWidth = 1.0,
