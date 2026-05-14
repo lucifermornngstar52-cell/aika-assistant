@@ -23,6 +23,11 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
 
+      - name: Create local.properties
+        run: |
+          echo "flutter.sdk=$(which flutter | sed 's|/bin/flutter||')" > android/local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> android/local.properties
+
       - name: Get dependencies
         run: flutter pub get
 
