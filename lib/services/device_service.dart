@@ -14,7 +14,10 @@ class DeviceService {
     VolumeController().listener((v) {
       _currentVolume = v;
     });
-    VolumeController().getVolume(listener: null);
+  }
+
+  void dispose() {
+    VolumeController().removeListener();
   }
 
   Future<String?> parseAndExecute(String aiResponse) async {
@@ -28,137 +31,80 @@ class DeviceService {
   Future<String?> executeAction(String action) async {
     switch (action) {
       case 'open_youtube':
-        return await _openApp('com.google.android.youtube', fallback: 'https://youtube.com');
+        await _launchUrl('https://youtube.com');
+        return 'YouTube открыт';
       case 'open_telegram':
-        return await _openApp('org.telegram.messenger', fallback: 'https://t.me');
+        await _launchUrl('https://telegram.org');
+        return 'Telegram открыт';
       case 'open_tiktok':
-        return await _openApp('com.zhiliaoapp.musically', fallback: 'https://tiktok.com');
+        await _launchUrl('https://tiktok.com');
+        return 'TikTok открыт';
       case 'open_chrome':
-        return await _openApp('com.android.chrome', fallback: 'https://google.com');
+        await _launchUrl('https://google.com');
+        return 'Chrome открыт';
       case 'open_spotify':
-        return await _openApp('com.spotify.music', fallback: 'https://spotify.com');
+        await _launchUrl('https://open.spotify.com');
+        return 'Spotify открыт';
       case 'open_settings':
-        return await _openSettings();
-      case 'flashlight_on':
-        return await _toggleFlashlight(true);
-      case 'flashlight_off':
-        return await _toggleFlashlight(false);
-      case 'flashlight_toggle':
-        return await _toggleFlashlight(!_flashlightOn);
-      case 'volume_up':
-        return await _changeVolume(0.15);
-      case 'volume_down':
-        return await _changeVolume(-0.15);
-      case 'volume_max':
-        return await _setVolume(1.0);
-      case 'volume_mute':
-        return await _setVolume(0.0);
-      case 'battery':
-        return await _getBattery();
+        final intent = AndroidIntent(action: 'android.settings.SETTINGS');
+        await intent.launch();
+        return 'Настройки открыты';
       case 'open_camera':
-        return await _openCamera();
+        final intent = AndroidIntent(
+          action: 'android.media.action.STILL_IMAGE_CAMERA',
+          flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
+        );
+        await intent.launch();
+        return 'Камера открыта';
+      case 'flashlight_on':
+        try {
+          await TorchLight.enableTorch();
+          _flashlightOn = true;
+          return 'Фонарик включён';
+        } catch (e) {
+          return 'Не удалось включить фонарик';
+        }
+      case 'flashlight_off':
+        try {
+          await TorchLight.disableTorch();
+          _flashlightOn = false;
+          return 'Фонарик выключен';
+        } catch (e) {
+          return 'Не удалось выключить фонарик';
+        }
+      case 'flashlight_toggle':
+        return _flashlightOn
+            ? await executeAction('flashlight_off')
+            : await executeAction('flashlight_on');
+      case 'volume_up':
+        VolumeController().setVolume(_currentVolume + 0.1 > 1 ? 1 : _currentVolume + 0.1);
+        return 'Громкость увеличена';
+      case 'volume_down':
+        VolumeController().setVolume(_currentVolume - 0.1 < 0 ? 0 : _currentVolume - 0.1);
+        return 'Громкость уменьшена';
+      case 'volume_max':
+        VolumeController().setVolume(1.0);
+        return 'Максимальная громкость';
+      case 'volume_mute':
+        VolumeController().setVolume(0.0);
+        return 'Звук выключен';
+      case 'battery':
+        final level = await _battery.batteryLevel;
+        return 'Заряд батареи: $level%';
       default:
         if (action.startsWith('search_')) {
-          final query = action.replaceFirst('search_', '').replaceAll('_', ' ');
-          return await _searchWeb(query);
+          final query = action.substring(7);
+          await _launchUrl('https://google.com/search?q=$query');
+          return 'Поиск: $query';
         }
         return null;
     }
   }
 
-  Future<int> getBatteryLevel() async => await _battery.batteryLevel;
-
-  Future<String> _getBattery() async {
-    final level = await _battery.batteryLevel;
-    return 'Заряд батареи: $level%';
-  }
-
-  Future<String> _openApp(String packageName, {String? fallback}) async {
-    try {
-      final intent = AndroidIntent(
-        action: 'android.intent.action.MAIN',
-        package: packageName,
-        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-      );
-      await intent.launch();
-      return 'Открываю приложение...';
-    } catch (e) {
-      if (fallback != null) {
-        await launchUrl(Uri.parse(fallback), mode: LaunchMode.externalApplication);
-        return 'Открываю в браузере...';
-      }
-      return 'Не могу открыть приложение';
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
-  }
-
-  Future<String> _openSettings() async {
-    try {
-      const intent = AndroidIntent(
-        action: 'android.settings.SETTINGS',
-        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-      );
-      await intent.launch();
-      return 'Открываю настройки';
-    } catch (e) {
-      return 'Не могу открыть настройки';
-    }
-  }
-
-  Future<String> _openCamera() async {
-    try {
-      const intent = AndroidIntent(
-        action: 'android.media.action.IMAGE_CAPTURE',
-        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-      );
-      await intent.launch();
-      return 'Открываю камеру';
-    } catch (e) {
-      return 'Камера недоступна';
-    }
-  }
-
-  Future<String> _toggleFlashlight(bool on) async {
-    try {
-      if (on) {
-        await TorchLight.enableTorch();
-        _flashlightOn = true;
-        return 'Фонарик включён 🔦';
-      } else {
-        await TorchLight.disableTorch();
-        _flashlightOn = false;
-        return 'Фонарик выключен';
-      }
-    } catch (e) {
-      return 'Не могу управлять фонариком';
-    }
-  }
-
-  Future<String> _changeVolume(double delta) async {
-    try {
-      final newVol = (_currentVolume + delta).clamp(0.0, 1.0);
-      VolumeController().setVolume(newVol);
-      return 'Громкость изменена';
-    } catch (e) {
-      return 'Не могу изменить громкость';
-    }
-  }
-
-  Future<String> _setVolume(double level) async {
-    try {
-      VolumeController().setVolume(level);
-      return level == 0 ? 'Звук выключен 🔇' : 'Громкость максимальная 🔊';
-    } catch (e) {
-      return 'Не могу изменить громкость';
-    }
-  }
-
-  Future<String> _searchWeb(String query) async {
-    final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(query)}');
-    await launchUrl(url, mode: LaunchMode.externalApplication);
-    return 'Ищу: $query';
-  }
-
-  void dispose() {
-    VolumeController().removeListener();
   }
 }
