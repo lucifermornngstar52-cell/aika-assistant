@@ -1,59 +1,57 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/chat_message.dart';
 
 class MemoryService {
-  static const String _historyKey = 'chat_history';
-  static const String _notesKey = 'user_notes';
-  static const String _userNameKey = 'user_name';
-  static const int _maxHistory = 100;
+  static const String _keyUserName = 'user_name';
+  static const String _keyAssistantName = 'assistant_name';
+  static const String _keyConversation = 'conversation_history';
+  static const int _maxHistory = 20;
 
-  Future<void> saveMessage(ChatMessage message) async {
+  Future<String> getUserName() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String> history = prefs.getStringList(_historyKey) ?? [];
-    history.add(jsonEncode(message.toJson()));
-    if (history.length > _maxHistory) {
-      history.removeAt(0);
-    }
-    await prefs.setStringList(_historyKey, history);
-  }
-
-  Future<List<ChatMessage>> loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> history = prefs.getStringList(_historyKey) ?? [];
-    return history
-        .map((h) => ChatMessage.fromJson(jsonDecode(h)))
-        .toList();
-  }
-
-  Future<void> clearHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_historyKey);
-  }
-
-  Future<void> saveNote(String note) async {
-    final prefs = await SharedPreferences.getInstance();
-    final notes = prefs.getStringList(_notesKey) ?? [];
-    notes.add(jsonEncode({
-      'text': note,
-      'date': DateTime.now().toIso8601String(),
-    }));
-    await prefs.setStringList(_notesKey, notes);
-  }
-
-  Future<List<Map<String, dynamic>>> getNotes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final notes = prefs.getStringList(_notesKey) ?? [];
-    return notes.map((n) => jsonDecode(n) as Map<String, dynamic>).toList();
+    return prefs.getString(_keyUserName) ?? '';
   }
 
   Future<void> setUserName(String name) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userNameKey, name);
+    await prefs.setString(_keyUserName, name);
   }
 
-  Future<String?> getUserName() async {
+  Future<String> getAssistantName() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_userNameKey);
+    return prefs.getString(_keyAssistantName) ?? 'Aika';
+  }
+
+  Future<void> setAssistantName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAssistantName, name.isEmpty ? 'Aika' : name);
+  }
+
+  Future<List<String>> getHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_keyConversation) ?? [];
+  }
+
+  Future<void> addMessage(String role, String content) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_keyConversation) ?? [];
+    history.add('$role: $content');
+    if (history.length > _maxHistory) {
+      history.removeRange(0, history.length - _maxHistory);
+    }
+    await prefs.setStringList(_keyConversation, history);
+  }
+
+  Future<void> clearHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyConversation);
+  }
+
+  Future<Map<String, String>> getUserContext() async {
+    final userName = await getUserName();
+    final assistantName = await getAssistantName();
+    return {
+      'userName': userName,
+      'assistantName': assistantName,
+    };
   }
 }
