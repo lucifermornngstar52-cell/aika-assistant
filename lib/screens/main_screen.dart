@@ -1,94 +1,96 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:battery_plus/battery_plus.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import '../models/chat_message.dart';
+import '../services/ai_service.dart';
+import '../services/device_service.dart';
+import '../services/memory_service.dart';
+import '../services/speech_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/aika_avatar.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
-import '../services/ai_service.dart';
-import '../services/speech_service.dart';
-import '../services/device_service.dart';
-import '../services/memory_service.dart';
-import '../models/chat_message.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  const MainScreen({Key? key}) : super(key: key);
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  final AIService _aiService = AIService();
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
+  final AiService _aiService = AiService();
   final DeviceService _deviceService = DeviceService();
   final MemoryService _memoryService = MemoryService();
-  final TextEditingController _textController = TextEditingController();
+  final SpeechService _speechService = SpeechService();
+  final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _textController = TextEditingController();
 
-  late SpeechService _speechService;
+  List<ChatMessage> _messages = [];
+  bool _isListening = false;
+  bool _isThinking = false;
+  bool _showAvatar = true;
+  String _assistantName = 'Aika';
+  String _userName = '';
 
-  final List<ChatMessage> _messages = [];
-  bool _isTyping = false;
-  AikaEmotion _emotion = AikaEmotion.idle;
-  int _batteryLevel = 100;
-  bool _showChat = true;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    _speechService = SpeechService();
-    _init();
-  }
-
-  Future<void> _init() async {
-    await _speechService.initialize();
-    _loadHistory();
-    _loadBattery();
-
-    // Welcome message with user name
-    await Future.delayed(const Duration(milliseconds: 500));
-    final prefs = await SharedPreferences.getInstance();
-    final userName = prefs.getString('user_name') ?? '';
-    final greeting = userName.isNotEmpty
-        ? 'Привет, $userName! Я — Айка ✨ Рада тебя видеть! Скажи что-нибудь или нажми на микрофон 🎤'
-        : 'Привет! Я — Айка ✨ Твой личный AI-ассистент. Скажи что-нибудь или нажми на микрофон!';
-    _addMessage(greeting, MessageRole.aika);
-  }
-
-  Future<void> _loadHistory() async {
-    final history = await _memoryService.loadHistory();
-    if (mounted && history.isNotEmpty) {
-      final recent = history.length > 20 ? history.sublist(history.length - 20) : history;
-      setState(() => _messages.insertAll(0, recent));
-    }
-  }
-
-  Future<void> _loadBattery() async {
-    try {
-      final level = await _deviceService.getBatteryLevel();
-      if (mounted) setState(() => _batteryLevel = level);
-    } catch (_) {}
-  }
-
-  void _addMessage(String content, MessageRole role, {bool isVoice = false}) {
-    final msg = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: content,
-      role: role,
-      timestamp: DateTime.now(),
-      isVoice: isVoice,
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    setState(() => _messages.add(msg));
-    if (role != MessageRole.system) {
-      _memoryService.saveMessage(msg);
-    }
-    _scrollToBottom();
+    _initServices();
   }
 
-  void _scrollToBottom() {
+  Future<void> _initServices() async {
+    await _speechService.initialize();
+    await _applyTtsSettings();
+    await _loadPrefs();
+    _sendGreeting();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _assistantName = prefs.getString('assistant_name') ?? 'Aika';
+      _userName = prefs.getString('user_name') ?? '';
+      _showAvatar = prefs.getBool('show_avatar') ?? true;
+    });
+  }
+
+  Future<void> _applyTtsSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rate = prefs.getDouble('tts_rate') ?? 0.5;
+    final pitch = prefs.getDouble('tts_pitch') ?? 1.0;
+    final volume = prefs.getDouble('tts_volume') ?? 1.0;
+    final voice = prefs.getString('tts_voice');
+    await _tts.setSpeechRate(rate);
+    await _tts.setPitch(pitch);
+    await _tts.setVolume(volume);
+    if (voice != null) {
+      await _tts.setVoice({'name': voice, 'locale': 'ru-RU'});
+    }
+  }
+
+  void _sendGreeting() {
+    final greeting = _userName.isNotEmpty
+        ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
+        : 'Привет! Я $_assistantName. Чем могу помочь?';
+    _addMessage(ChatMessage(role: 'assistant', content: greeting));
+    _speak(greeting);
+  }
+
+  void _addMessage(ChatMessage msg) {
+    setState(() => _messages.add(msg));
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -100,367 +102,204 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  Future<void> _sendMessage(String text, {bool isVoice = false}) async {
+  Future<void> _speak(String text) async {
+    final clean = text.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '');
+    await _tts.speak(clean);
+  }
+
+  Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _textController.clear();
-
-    _addMessage(text, MessageRole.user, isVoice: isVoice);
-    setState(() {
-      _isTyping = true;
-      _emotion = AikaEmotion.thinking;
-    });
+    _addMessage(ChatMessage(role: 'user', content: text));
+    setState(() => _isThinking = true);
+    await _memoryService.addMessage('user', text);
 
     try {
-      final response = await _aiService.sendMessage(text);
-
-      // Check for device action
+      final context = await _memoryService.getUserContext();
+      final history = await _memoryService.getHistory();
+      final response = await _aiService.sendMessage(
+        text,
+        userName: context['userName'] ?? '',
+        assistantName: context['assistantName'] ?? _assistantName,
+        history: history,
+      );
       final actionResult = await _deviceService.parseAndExecute(response);
-
-      setState(() {
-        _isTyping = false;
-        _emotion = AikaEmotion.talking;
-      });
-
-      _addMessage(response, MessageRole.aika);
-
-      // Speak the response
-      await _speechService.speak(response);
-
-      setState(() => _emotion = AikaEmotion.idle);
-
-      // If action was executed, optionally show result
-      if (actionResult != null && actionResult.isNotEmpty) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        _addMessage('✅ $actionResult', MessageRole.aika);
-      }
+      final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
+      final finalMsg = actionResult != null ? '$display
+$actionResult' : display;
+      await _memoryService.addMessage('assistant', display);
+      _addMessage(ChatMessage(role: 'assistant', content: finalMsg));
+      await _speak(finalMsg);
     } catch (e) {
-      setState(() {
-        _isTyping = false;
-        _emotion = AikaEmotion.idle;
-      });
-      _addMessage('Упс, что-то пошло не так... Попробуй ещё раз?', MessageRole.aika);
+      _addMessage(ChatMessage(role: 'assistant', content: 'Ошибка: $e'));
+    } finally {
+      setState(() => _isThinking = false);
     }
   }
 
-  void _toggleListening() {
-    if (_speechService.isListening) {
-      _speechService.stopListening();
-      setState(() => _emotion = AikaEmotion.idle);
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _speechService.stopListening();
+      setState(() => _isListening = false);
     } else {
-      setState(() => _emotion = AikaEmotion.listening);
-      _speechService.startListening(
-        onResult: (text) {
-          if (text.isNotEmpty) {
-            _sendMessage(text, isVoice: true);
-          }
-        },
-        onDone: () => setState(() => _emotion = AikaEmotion.idle),
-      );
+      setState(() => _isListening = true);
+      await _speechService.startListening((text) {
+        setState(() => _isListening = false);
+        if (text.isNotEmpty) _sendMessage(text);
+      });
     }
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+    await _loadPrefs();
+    await _applyTtsSettings();
   }
 
   @override
   void dispose() {
-    _textController.dispose();
+    _pulseController.dispose();
     _scrollController.dispose();
+    _textController.dispose();
+    _tts.stop();
+    _deviceService.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _speechService,
-      child: Scaffold(
-        backgroundColor: AikaTheme.background,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _buildTopBar(),
-              _buildAvatarSection(),
-              if (_speechService.isListening) _buildListeningText(),
-              _buildToggleBar(),
-              Expanded(child: _buildChatSection()),
-              _buildInputSection(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          // Status indicator
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: AikaTheme.glassCard(opacity: 0.05),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AikaTheme.neonBlue,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AikaTheme.neonBlue.withOpacity(0.8),
-                        blurRadius: 4,
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _assistantName.toUpperCase(),
+                        style: TextStyle(
+                          color: AppTheme.neonBlue,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 4,
+                        ),
+                      ),
+                      Text(
+                        _userName.isNotEmpty ? 'Привет, $_userName' : 'AI Assistant',
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Онлайн',
-                  style: TextStyle(
-                    color: AikaTheme.neonBlue,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          _showAvatar ? Icons.face : Icons.face_outlined,
+                          color: _showAvatar ? AppTheme.neonBlue : Colors.white38,
+                        ),
+                        onPressed: () async {
+                          final prefs = await SharedPreferences.getInstance();
+                          setState(() => _showAvatar = !_showAvatar);
+                          await prefs.setBool('show_avatar', _showAvatar);
+                        },
+                        tooltip: 'Аватар',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.settings_outlined, color: Colors.white54),
+                        onPressed: _openSettings,
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          const Spacer(),
-
-          // Time & Battery
-          Text(
-            '${TimeOfDay.now().format(context)} · $_batteryLevel%',
-            style: const TextStyle(
-              color: AikaTheme.textSecondary,
-              fontSize: 12,
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // Settings
-          GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => SettingsScreen(aiService: _aiService)),
-            ),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: AikaTheme.glassCard(opacity: 0.05),
-              child: const Icon(
-                Icons.tune,
-                color: AikaTheme.textSecondary,
-                size: 18,
+                ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildAvatarSection() {
-    return Consumer<SpeechService>(
-      builder: (_, speech, __) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          children: [
-            AikaAvatar(
-              emotion: _emotion,
-              isListening: speech.isListening,
-              isSpeaking: speech.isSpeaking,
-              soundLevel: speech.soundLevel,
-            ),
-            const SizedBox(height: 8),
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
-              ).createShader(bounds),
-              child: const Text(
-                'А И К А',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 8,
-                ),
+            // Avatar
+            if (_showAvatar)
+              ScaleTransition(
+                scale: _pulseAnimation,
+                child: AikaAvatar(isThinking: _isThinking, isListening: _isListening),
+              ),
+
+            // Chat
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                itemCount: _messages.length + (_isThinking ? 1 : 0),
+                itemBuilder: (ctx, i) {
+                  if (_isThinking && i == _messages.length) {
+                    return ChatBubble(
+                      message: ChatMessage(role: 'assistant', content: '...'),
+                      isTyping: true,
+                    );
+                  }
+                  return ChatBubble(message: _messages[i]);
+                },
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              _getStatusText(),
-              style: const TextStyle(
-                color: AikaTheme.textSecondary,
-                fontSize: 12,
+
+            // Input
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceColor,
+                border: Border(top: BorderSide(color: AppTheme.neonBlue.withOpacity(0.15))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Напишите или говорите...',
+                        hintStyle: const TextStyle(color: Colors.white30),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.05),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                      onSubmitted: _sendMessage,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  VoiceButton(
+                    isListening: _isListening,
+                    onPressed: _toggleListening,
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _sendMessage(_textController.text),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.neonBlue.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppTheme.neonBlue.withOpacity(0.5)),
+                      ),
+                      child: Icon(Icons.send, color: AppTheme.neonBlue, size: 20),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  String _getStatusText() {
-    if (_speechService.isListening) return 'Слушаю...';
-    if (_speechService.isSpeaking) return 'Говорю...';
-    if (_isTyping) return 'Думаю...';
-    switch (_emotion) {
-      case AikaEmotion.thinking:
-        return 'Обдумываю...';
-      case AikaEmotion.happy:
-        return 'Рада тебя видеть!';
-      default:
-        return 'Готова помочь';
-    }
-  }
-
-  Widget _buildListeningText() {
-    return Consumer<SpeechService>(
-      builder: (_, speech, __) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: AikaTheme.glassCard(borderColor: AikaTheme.neonPink),
-          child: Text(
-            speech.lastWords.isEmpty ? 'Говори...' : speech.lastWords,
-            style: TextStyle(
-              color: speech.lastWords.isEmpty
-                  ? AikaTheme.textSecondary
-                  : AikaTheme.textPrimary,
-              fontSize: 14,
-              fontStyle: speech.lastWords.isEmpty ? FontStyle.italic : FontStyle.normal,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildToggleBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          _buildToggleChip('Чат', Icons.chat_bubble_outline, true),
-          const SizedBox(width: 8),
-          _buildQuickActionChip('🔦', () => _deviceService.executeAction('flashlight_toggle')),
-          _buildQuickActionChip('📱', () => _sendMessage('Что умеешь делать?')),
-          _buildQuickActionChip('🎵', () => _deviceService.executeAction('open_spotify')),
-          _buildQuickActionChip('🔍', () => _sendMessage('Открой поиск в интернете')),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToggleChip(String label, IconData icon, bool active) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: AikaTheme.glassCard(
-        borderColor: active ? AikaTheme.neonBlue : Colors.white24,
-        opacity: active ? 0.1 : 0.04,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: active ? AikaTheme.neonBlue : AikaTheme.textSecondary),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: active ? AikaTheme.neonBlue : AikaTheme.textSecondary,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActionChip(String emoji, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        margin: const EdgeInsets.only(left: 8),
-        decoration: AikaTheme.glassCard(opacity: 0.04),
-        child: Center(child: Text(emoji, style: const TextStyle(fontSize: 16))),
-      ),
-    );
-  }
-
-  Widget _buildChatSection() {
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
-      itemCount: _messages.length + (_isTyping ? 1 : 0),
-      itemBuilder: (_, i) {
-        if (i == _messages.length) {
-          return const TypingIndicator();
-        }
-        return ChatBubble(message: _messages[i]);
-      },
-    );
-  }
-
-  Widget _buildInputSection() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      decoration: BoxDecoration(
-        color: AikaTheme.surface,
-        border: Border(
-          top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.2), width: 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Text field
-          Expanded(
-            child: Container(
-              decoration: AikaTheme.glassCard(opacity: 0.05),
-              child: TextField(
-                controller: _textController,
-                style: const TextStyle(color: AikaTheme.textPrimary, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Напиши Айке...',
-                  hintStyle: const TextStyle(color: AikaTheme.textSecondary, fontSize: 14),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.send_rounded, color: AikaTheme.neonBlue, size: 20),
-                    onPressed: () => _sendMessage(_textController.text),
-                  ),
-                ),
-                onSubmitted: _sendMessage,
-                maxLines: null,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // Voice button
-          Consumer<SpeechService>(
-            builder: (_, speech, __) => VoiceButton(
-              isListening: speech.isListening,
-              isSpeaking: speech.isSpeaking,
-              soundLevel: speech.soundLevel,
-              onTap: _toggleListening,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-extension IterableExtension<T> on List<T> {
-  List<T> takeLast(int n) {
-    if (n >= length) return this;
-    return sublist(length - n);
   }
 }
