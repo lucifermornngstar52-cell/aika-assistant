@@ -12,6 +12,7 @@ dependencies:
   
   # Speech & Voice
   speech_to_text: ^6.6.2
+  model_viewer_plus: ^4.0.3
   flutter_tts: ^4.0.2
   
   # Animations
@@ -50,4 +51,5 @@ flutter:
   assets:
     - assets/images/
     - assets/animations/
+    - assets/models/
 
