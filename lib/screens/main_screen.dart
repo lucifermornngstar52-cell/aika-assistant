@@ -85,7 +85,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     final greeting = _userName.isNotEmpty
         ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
         : 'Привет! Я $_assistantName. Чем могу помочь?';
-    _addMessage(ChatMessage(role: 'assistant', content: greeting));
+    _addMessage(ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      role: MessageRole.aika,
+      content: greeting,
+      timestamp: DateTime.now(),
+    ));
     _speak(greeting);
   }
 
@@ -110,7 +115,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _textController.clear();
-    _addMessage(ChatMessage(role: 'user', content: text));
+    _addMessage(ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      role: MessageRole.user,
+      content: text,
+      timestamp: DateTime.now(),
+    ));
     setState(() => _isThinking = true);
     await _memoryService.addMessage('user', text);
 
@@ -125,13 +135,22 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       );
       final actionResult = await _deviceService.parseAndExecute(response);
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
-      final finalMsg = actionResult != null ? '$display
-$actionResult' : display;
+      final finalMsg = actionResult != null ? '$display\n$actionResult' : display;
       await _memoryService.addMessage('assistant', display);
-      _addMessage(ChatMessage(role: 'assistant', content: finalMsg));
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: finalMsg,
+        timestamp: DateTime.now(),
+      ));
       await _speak(finalMsg);
     } catch (e) {
-      _addMessage(ChatMessage(role: 'assistant', content: 'Ошибка: $e'));
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: 'Ошибка: $e',
+        timestamp: DateTime.now(),
+      ));
     } finally {
       setState(() => _isThinking = false);
     }
@@ -172,7 +191,7 @@ $actionResult' : display;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: AikaTheme.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -188,7 +207,7 @@ $actionResult' : display;
                       Text(
                         _assistantName.toUpperCase(),
                         style: TextStyle(
-                          color: AppTheme.neonBlue,
+                          color: AikaTheme.neonBlue,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 4,
@@ -205,7 +224,7 @@ $actionResult' : display;
                       IconButton(
                         icon: Icon(
                           _showAvatar ? Icons.face : Icons.face_outlined,
-                          color: _showAvatar ? AppTheme.neonBlue : Colors.white38,
+                          color: _showAvatar ? AikaTheme.neonBlue : Colors.white38,
                         ),
                         onPressed: () async {
                           final prefs = await SharedPreferences.getInstance();
@@ -215,7 +234,7 @@ $actionResult' : display;
                         tooltip: 'Аватар',
                       ),
                       IconButton(
-                        icon: Icon(Icons.settings_outlined, color: Colors.white54),
+                        icon: const Icon(Icons.settings_outlined, color: Colors.white54),
                         onPressed: _openSettings,
                       ),
                     ],
@@ -233,28 +252,22 @@ $actionResult' : display;
 
             // Chat
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                itemCount: _messages.length + (_isThinking ? 1 : 0),
-                itemBuilder: (ctx, i) {
-                  if (_isThinking && i == _messages.length) {
-                    return ChatBubble(
-                      message: ChatMessage(role: 'assistant', content: '...'),
-                      isTyping: true,
-                    );
-                  }
-                  return ChatBubble(message: _messages[i]);
-                },
-              ),
+              child: _isThinking && _messages.isEmpty
+                  ? Center(child: CircularProgressIndicator(color: AikaTheme.neonBlue))
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      itemCount: _messages.length,
+                      itemBuilder: (ctx, i) => ChatBubble(message: _messages[i]),
+                    ),
             ),
 
             // Input
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
-                border: Border(top: BorderSide(color: AppTheme.neonBlue.withOpacity(0.15))),
+                color: AikaTheme.surface,
+                border: Border(top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15))),
               ),
               child: Row(
                 children: [
@@ -279,7 +292,8 @@ $actionResult' : display;
                   const SizedBox(width: 8),
                   VoiceButton(
                     isListening: _isListening,
-                    onPressed: _toggleListening,
+                    isSpeaking: false,
+                    onTap: _toggleListening,
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
@@ -287,11 +301,11 @@ $actionResult' : display;
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppTheme.neonBlue.withOpacity(0.2),
+                        color: AikaTheme.neonBlue.withOpacity(0.2),
                         shape: BoxShape.circle,
-                        border: Border.all(color: AppTheme.neonBlue.withOpacity(0.5)),
+                        border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.5)),
                       ),
-                      child: Icon(Icons.send, color: AppTheme.neonBlue, size: 20),
+                      child: Icon(Icons.send, color: AikaTheme.neonBlue, size: 20),
                     ),
                   ),
                 ],
