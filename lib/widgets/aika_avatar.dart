@@ -26,7 +26,6 @@ class AikaAvatar extends StatelessWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Glow ring
         AnimatedContainer(
           duration: const Duration(milliseconds: 500),
           width: 190,
@@ -36,17 +35,16 @@ class AikaAvatar extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: isListening
-                    ? AppTheme.neonPurple.withOpacity(0.5)
+                    ? AikaTheme.neonPurple.withOpacity(0.5)
                     : isThinking
-                        ? AppTheme.neonBlue.withOpacity(0.3)
-                        : AppTheme.neonBlue.withOpacity(0.15),
+                        ? AikaTheme.neonBlue.withOpacity(0.3)
+                        : AikaTheme.neonBlue.withOpacity(0.15),
                 blurRadius: isListening ? 40 : 25,
                 spreadRadius: isListening ? 10 : 4,
               ),
             ],
           ),
         ),
-        // 3D Model
         ClipOval(
           child: SizedBox(
             width: 180,
@@ -61,7 +59,6 @@ class AikaAvatar extends StatelessWidget {
             ),
           ),
         ),
-        // Status indicator
         Positioned(
           bottom: 16,
           child: AnimatedOpacity(
@@ -70,18 +67,18 @@ class AikaAvatar extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceColor.withOpacity(0.9),
+                color: AikaTheme.surface.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isListening
-                      ? AppTheme.neonPurple.withOpacity(0.7)
-                      : AppTheme.neonBlue.withOpacity(0.7),
+                      ? AikaTheme.neonPurple.withOpacity(0.7)
+                      : AikaTheme.neonBlue.withOpacity(0.7),
                 ),
               ),
               child: Text(
                 isListening ? '● Слушаю...' : '● Думаю...',
                 style: TextStyle(
-                  color: isListening ? AppTheme.neonPurple : AppTheme.neonBlue,
+                  color: isListening ? AikaTheme.neonPurple : AikaTheme.neonBlue,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
@@ -106,20 +103,20 @@ class AikaAvatar extends StatelessWidget {
             gradient: RadialGradient(
               colors: [
                 isListening
-                    ? AppTheme.neonPurple.withOpacity(0.3)
-                    : AppTheme.neonBlue.withOpacity(0.2),
+                    ? AikaTheme.neonPurple.withOpacity(0.3)
+                    : AikaTheme.neonBlue.withOpacity(0.2),
                 Colors.transparent,
               ],
             ),
             border: Border.all(
-              color: isListening ? AppTheme.neonPurple : AppTheme.neonBlue,
+              color: isListening ? AikaTheme.neonPurple : AikaTheme.neonBlue,
               width: 2,
             ),
           ),
           child: Icon(
             isListening ? Icons.mic : isThinking ? Icons.psychology : Icons.face,
             size: 60,
-            color: isListening ? AppTheme.neonBlue : AppTheme.neonBlue,
+            color: AikaTheme.neonBlue,
           ),
         ),
       ],
