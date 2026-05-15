@@ -1,308 +1,320 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_theme.dart';
-import '../services/ai_service.dart';
-import '../services/memory_service.dart';
-import '../services/speech_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  final AIService aiService;
-
-  const SettingsScreen({super.key, required this.aiService});
+  const SettingsScreen({Key? key}) : super(key: key);
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final MemoryService _memoryService = MemoryService();
-  final SpeechService _speechService = SpeechService();
+  final FlutterTts _tts = FlutterTts();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _assistantNameController = TextEditingController();
 
-  AIProvider _selectedProvider = AIProvider.gemini;
-  double _speechRate = 0.85;
-  double _speechPitch = 1.1;
-  String? _userName;
+  List<dynamic> _voices = [];
+  String? _selectedVoice;
+  double _speechRate = 0.5;
+  double _pitch = 1.0;
+  double _volume = 1.0;
+  bool _showAvatar = true;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _selectedProvider = widget.aiService.currentProvider;
     _loadSettings();
+    _loadVoices();
   }
 
   Future<void> _loadSettings() async {
-    final name = await _memoryService.getUserName();
-    setState(() => _userName = name);
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _nameController.text = prefs.getString('user_name') ?? '';
+      _assistantNameController.text = prefs.getString('assistant_name') ?? 'Aika';
+      _speechRate = prefs.getDouble('tts_rate') ?? 0.5;
+      _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
+      _volume = prefs.getDouble('tts_volume') ?? 1.0;
+      _selectedVoice = prefs.getString('tts_voice');
+      _showAvatar = prefs.getBool('show_avatar') ?? true;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _loadVoices() async {
+    final voices = await _tts.getVoices;
+    if (voices != null) {
+      setState(() {
+        _voices = (voices as List).where((v) {
+          final locale = v['locale']?.toString() ?? '';
+          return locale.startsWith('ru') || locale.startsWith('en');
+        }).toList();
+      });
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_name', _nameController.text.trim());
+    await prefs.setString('assistant_name', _assistantNameController.text.trim().isEmpty
+        ? 'Aika' : _assistantNameController.text.trim());
+    await prefs.setDouble('tts_rate', _speechRate);
+    await prefs.setDouble('tts_pitch', _pitch);
+    await prefs.setDouble('tts_volume', _volume);
+    await prefs.setBool('show_avatar', _showAvatar);
+    if (_selectedVoice != null) {
+      await prefs.setString('tts_voice', _selectedVoice!);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Настройки сохранены ✓'),
+          backgroundColor: AppTheme.neonBlue.withOpacity(0.8),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _testVoice() async {
+    final name = _assistantNameController.text.trim().isEmpty
+        ? 'Aika' : _assistantNameController.text.trim();
+    await _tts.setVolume(_volume);
+    await _tts.setSpeechRate(_speechRate);
+    await _tts.setPitch(_pitch);
+    if (_selectedVoice != null) {
+      await _tts.setVoice({'name': _selectedVoice!, 'locale': 'ru-RU'});
+    }
+    await _tts.speak('Привет! Я $name, ваш личный ассистент.');
+  }
+
+  @override
+  void dispose() {
+    _tts.stop();
+    _nameController.dispose();
+    _assistantNameController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: AppTheme.neonBlue,
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.neonBlue.withOpacity(0.15)),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController ctrl, String label, String hint) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: TextField(
+        controller: ctrl,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          labelStyle: TextStyle(color: AppTheme.neonBlue.withOpacity(0.8)),
+          hintStyle: TextStyle(color: Colors.white30),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppTheme.neonBlue.withOpacity(0.3)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppTheme.neonBlue),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlider(String label, double value, double min, double max,
+      int divisions, Function(double) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderThemeData(
+                activeTrackColor: AppTheme.neonBlue,
+                inactiveTrackColor: AppTheme.neonBlue.withOpacity(0.2),
+                thumbColor: AppTheme.neonBlue,
+                overlayColor: AppTheme.neonBlue.withOpacity(0.2),
+              ),
+              child: Slider(
+                value: value,
+                min: min,
+                max: max,
+                divisions: divisions,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            child: Text(
+              value.toStringAsFixed(1),
+              style: TextStyle(color: AppTheme.neonBlue, fontSize: 12),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        body: Center(child: CircularProgressIndicator(color: AppTheme.neonBlue)),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: AikaTheme.background,
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        backgroundColor: AikaTheme.surface,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AikaTheme.neonBlue),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: ShaderMask(
-          shaderCallback: (b) => const LinearGradient(
-            colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
-          ).createShader(b),
-          child: const Text(
-            'Настройки',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-            ),
+        title: Text(
+          'НАСТРОЙКИ',
+          style: TextStyle(
+            color: AppTheme.neonBlue,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 3,
           ),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildSection('🤖 AI Модель', [
-            _buildProviderTile(
-              'Gemini 2.0 Flash',
-              'Google · Быстрый и умный',
-              AIProvider.gemini,
-              Icons.auto_awesome,
-              AikaTheme.neonBlue,
-            ),
-            _buildProviderTile(
-              'GPT-4o',
-              'OpenAI · Мощный и точный',
-              AIProvider.openai,
-              Icons.psychology,
-              AikaTheme.neonPurple,
-            ),
-          ]),
-
-          const SizedBox(height: 16),
-
-          _buildSection('🎤 Голос', [
-            _buildSliderTile(
-              'Скорость речи',
-              _speechRate,
-              0.5,
-              1.5,
-              Icons.speed,
-              (v) {
-                setState(() => _speechRate = v);
-                _speechService.setVoiceSettings(rate: v);
-              },
-            ),
-            _buildSliderTile(
-              'Высота голоса',
-              _speechPitch,
-              0.5,
-              2.0,
-              Icons.graphic_eq,
-              (v) {
-                setState(() => _speechPitch = v);
-                _speechService.setVoiceSettings(pitch: v);
-              },
-            ),
-          ]),
-
-          const SizedBox(height: 16),
-
-          _buildSection('👤 Профиль', [
-            _buildNameTile(),
-          ]),
-
-          const SizedBox(height: 16),
-
-          _buildSection('🗂 Данные', [
-            _buildActionTile(
-              'Очистить историю чата',
-              Icons.delete_outline,
-              AikaTheme.neonPink,
-              () async {
-                await _memoryService.clearHistory();
-                widget.aiService.clearHistory();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('История очищена'),
-                      backgroundColor: AikaTheme.surface,
-                    ),
-                  );
-                }
-              },
-            ),
-          ]),
-
-          const SizedBox(height: 32),
-
-          // Version info
-          Center(
-            child: Text(
-              'Айка v1.0.0 · Made with ❤️',
-              style: const TextStyle(
-                color: AikaTheme.textSecondary,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSection(String title, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: AikaTheme.textSecondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1,
-            ),
-          ),
-        ),
-        Container(
-          decoration: AikaTheme.glassCard(opacity: 0.05),
-          child: Column(children: children),
-        ),
-      ],
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0);
-  }
-
-  Widget _buildProviderTile(
-    String name,
-    String subtitle,
-    AIProvider provider,
-    IconData icon,
-    Color color,
-  ) {
-    final selected = _selectedProvider == provider;
-    return ListTile(
-      onTap: () async {
-        setState(() => _selectedProvider = provider);
-        await widget.aiService.setProvider(provider);
-      },
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color.withOpacity(0.15),
-        ),
-        child: Icon(icon, color: color, size: 18),
-      ),
-      title: Text(name, style: const TextStyle(color: AikaTheme.textPrimary, fontSize: 14)),
-      subtitle: Text(subtitle, style: const TextStyle(color: AikaTheme.textSecondary, fontSize: 12)),
-      trailing: selected
-          ? Icon(Icons.check_circle, color: color, size: 20)
-          : Icon(Icons.radio_button_unchecked, color: AikaTheme.textSecondary, size: 20),
-    );
-  }
-
-  Widget _buildSliderTile(
-    String label,
-    double value,
-    double min,
-    double max,
-    IconData icon,
-    Function(double) onChanged,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AikaTheme.neonBlue, size: 16),
-              const SizedBox(width: 8),
-              Text(label, style: const TextStyle(color: AikaTheme.textPrimary, fontSize: 14)),
-              const Spacer(),
-              Text(
-                value.toStringAsFixed(1),
-                style: const TextStyle(color: AikaTheme.neonBlue, fontSize: 12),
-              ),
-            ],
-          ),
-          SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: AikaTheme.neonBlue,
-              inactiveTrackColor: AikaTheme.neonBlue.withOpacity(0.2),
-              thumbColor: AikaTheme.neonBlue,
-              overlayColor: AikaTheme.neonBlue.withOpacity(0.2),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-            ),
-            child: Slider(value: value, min: min, max: max, onChanged: onChanged),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNameTile() {
-    return ListTile(
-      leading: const Icon(Icons.person_outline, color: AikaTheme.neonPurple, size: 20),
-      title: const Text('Твоё имя', style: TextStyle(color: AikaTheme.textPrimary, fontSize: 14)),
-      subtitle: Text(
-        _userName ?? 'Не указано',
-        style: const TextStyle(color: AikaTheme.textSecondary, fontSize: 12),
-      ),
-      trailing: const Icon(Icons.edit, color: AikaTheme.textSecondary, size: 16),
-      onTap: () => _showNameDialog(),
-    );
-  }
-
-  Widget _buildActionTile(String label, IconData icon, Color color, VoidCallback onTap) {
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: color, size: 20),
-      title: Text(label, style: TextStyle(color: color, fontSize: 14)),
-    );
-  }
-
-  void _showNameDialog() {
-    final ctrl = TextEditingController(text: _userName);
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AikaTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Как тебя зовут?', style: TextStyle(color: AikaTheme.textPrimary)),
-        content: TextField(
-          controller: ctrl,
-          style: const TextStyle(color: AikaTheme.textPrimary),
-          decoration: InputDecoration(
-            hintText: 'Введи своё имя',
-            hintStyle: const TextStyle(color: AikaTheme.textSecondary),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.5)),
-            ),
-            focusedBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: AikaTheme.neonBlue),
-            ),
-          ),
-        ),
+        centerTitle: true,
+        iconTheme: IconThemeData(color: AppTheme.neonBlue),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена', style: TextStyle(color: AikaTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () async {
-              await _memoryService.setUserName(ctrl.text);
-              setState(() => _userName = ctrl.text);
-              if (mounted) Navigator.pop(context);
-            },
-            child: const Text('Сохранить', style: TextStyle(color: AikaTheme.neonBlue)),
+            onPressed: _saveSettings,
+            child: Text('СОХРАНИТЬ',
+                style: TextStyle(color: AppTheme.neonBlue, fontSize: 12, letterSpacing: 1)),
           ),
         ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- ПРОФИЛЬ ---
+            _buildSectionTitle('ПРОФИЛЬ'),
+            _buildCard([
+              _buildTextField(_nameController, 'Ваше имя', 'Как вас зовут?'),
+            ]),
+
+            // --- АССИСТЕНТ ---
+            _buildSectionTitle('АССИСТЕНТ'),
+            _buildCard([
+              _buildTextField(_assistantNameController, 'Имя ассистента', 'Aika'),
+              const Divider(color: Colors.white10, height: 1),
+              SwitchListTile(
+                title: const Text('Показывать аватар', style: TextStyle(color: Colors.white)),
+                subtitle: Text('3D аватар на главном экране',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                value: _showAvatar,
+                activeColor: AppTheme.neonBlue,
+                onChanged: (v) => setState(() => _showAvatar = v),
+              ),
+            ]),
+
+            // --- ГОЛОС ---
+            _buildSectionTitle('ГОЛОС АССИСТЕНТА'),
+            _buildCard([
+              if (_voices.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedVoice,
+                    dropdownColor: AppTheme.surfaceColor,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'Голос',
+                      labelStyle: TextStyle(color: AppTheme.neonBlue.withOpacity(0.8)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppTheme.neonBlue.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppTheme.neonBlue),
+                      ),
+                    ),
+                    hint: const Text('Выберите голос', style: TextStyle(color: Colors.white38)),
+                    items: _voices.map<DropdownMenuItem<String>>((v) {
+                      final name = v['name']?.toString() ?? '';
+                      final locale = v['locale']?.toString() ?? '';
+                      return DropdownMenuItem(
+                        value: name,
+                        child: Text('$name ($locale)',
+                            style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setState(() => _selectedVoice = v),
+                  ),
+                ),
+                const Divider(color: Colors.white10, height: 1),
+              ],
+              const SizedBox(height: 8),
+              _buildSlider('Скорость', _speechRate, 0.1, 1.0, 9,
+                  (v) => setState(() => _speechRate = v)),
+              _buildSlider('Высота', _pitch, 0.5, 2.0, 15,
+                  (v) => setState(() => _pitch = v)),
+              _buildSlider('Громкость', _volume, 0.0, 1.0, 10,
+                  (v) => setState(() => _volume = v)),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _testVoice,
+                    icon: Icon(Icons.play_arrow, color: AppTheme.neonBlue),
+                    label: Text('Тест голоса',
+                        style: TextStyle(color: AppTheme.neonBlue)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.neonBlue.withOpacity(0.5)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }
