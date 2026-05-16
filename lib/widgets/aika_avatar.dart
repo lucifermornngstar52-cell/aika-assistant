@@ -50,7 +50,7 @@ class AikaAvatar extends StatelessWidget {
             width: 180,
             height: 180,
             child: ModelViewer(
-              src: 'asset://assets/models/aika_model.glb',
+              src: '#assets/models/aika_model.glb',
               alt: 'Aika 3D Model',
               autoRotate: true,
               cameraControls: true,
