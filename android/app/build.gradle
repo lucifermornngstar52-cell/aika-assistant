@@ -12,15 +12,12 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
-if (flutterVersionCode == null) {
-    flutterVersionCode = "1"
-}
+def flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
+def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
 
-def flutterVersionName = localProperties.getProperty("flutter.versionName")
-if (flutterVersionName == null) {
-    flutterVersionName = "1.0"
-}
+// Release signing — reads from environment variables set in GitHub Actions
+def keystoreFile = System.getenv("KEYSTORE_PATH") ? file(System.getenv("KEYSTORE_PATH")) : null
+def useReleaseKey = keystoreFile != null && keystoreFile.exists()
 
 android {
     namespace "com.aika.assistant"
@@ -48,9 +45,25 @@ android {
         versionName flutterVersionName
     }
 
+    signingConfigs {
+        if (useReleaseKey) {
+            release {
+                storeFile keystoreFile
+                storePassword System.getenv("KEY_STORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            if (useReleaseKey) {
+                signingConfig signingConfigs.release
+            } else {
+                // Fallback to debug signing for local builds
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled false
             shrinkResources false
         }
@@ -64,4 +77,3 @@ flutter {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0"
 }
-
