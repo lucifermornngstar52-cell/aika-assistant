@@ -82,12 +82,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
         ),
-        title: Text('Разрешение на оверлей',
-            style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
+        title: Text(
+          'Разрешение на оверлей',
+          style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold),
+        ),
         content: const Text(
-          'Разрешить Айке показывать окно поверх других приложений?
-
-Это нужно для работы в фоне и wake-word.',
+          'Разрешить Айке показывать окно поверх других приложений? Это нужно для работы в фоне и wake-word.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -129,13 +129,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _onWakeWordDetected() async {
-    await OverlayService.showOverlay(message: '● Слушаю...');
+    await OverlayService.showOverlay(message: 'Слушаю...');
     await _speak('Да?');
     setState(() => _isListening = true);
     await _speechService.startListening(
       onResult: (text) async {
         setState(() => _isListening = false);
-        await OverlayService.updateOverlay(message: '● Думаю...');
+        await OverlayService.updateOverlay(message: 'Думаю...');
         if (text.isNotEmpty) await _sendMessage(text);
         await OverlayService.hideOverlay();
       },
@@ -372,7 +372,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           setState(() => _showAvatar = !_showAvatar);
                           await prefs.setBool('show_avatar', _showAvatar);
                         },
-                        tooltip: 'Аватар',
                       ),
                       IconButton(
                         icon: const Icon(Icons.settings_outlined, color: Colors.white54),
@@ -420,7 +419,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
             // Chat
             Expanded(
-              child: _isThinking && _messages.isEmpty
+              child: _messages.isEmpty && _isThinking
                   ? Center(child: CircularProgressIndicator(color: AikaTheme.neonBlue))
                   : ListView.builder(
                       controller: _scrollController,
@@ -430,12 +429,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                     ),
             ),
 
-            // Input
+            // Input bar
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AikaTheme.surface,
-                border: Border(top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15))),
+                border: Border(
+                  top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15)),
+                ),
               ),
               child: Row(
                 children: [
@@ -452,7 +453,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                       ),
                       onSubmitted: _sendMessage,
                     ),
