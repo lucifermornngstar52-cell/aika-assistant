@@ -6,6 +6,8 @@ import '../services/ai_service.dart';
 import '../services/device_service.dart';
 import '../services/memory_service.dart';
 import '../services/speech_service.dart';
+import '../services/wake_word_service.dart';
+import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/aika_avatar.dart';
 import '../widgets/chat_bubble.dart';
@@ -24,6 +26,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final DeviceService _deviceService = DeviceService();
   final MemoryService _memoryService = MemoryService();
   final SpeechService _speechService = SpeechService();
+  final WakeWordService _wakeWordService = WakeWordService();
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
@@ -32,6 +35,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   bool _isListening = false;
   bool _isThinking = false;
   bool _showAvatar = true;
+  bool _wakeWordEnabled = false;
   String _assistantName = 'Aika';
   String _userName = '';
 
@@ -53,9 +57,93 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Future<void> _initServices() async {
     await _speechService.initialize();
+    await _wakeWordService.initialize();
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
+    _checkOverlayPermission();
+  }
+
+  Future<void> _checkOverlayPermission() async {
+    final hasPermission = await OverlayService.hasPermission();
+    if (!hasPermission && mounted) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _showOverlayPermissionDialog();
+      });
+    }
+  }
+
+  void _showOverlayPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AikaTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
+        ),
+        title: Text('Разрешение на оверлей',
+            style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Разрешить Айке показывать окно поверх других приложений?
+
+Это нужно для работы в фоне и wake-word.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Не сейчас', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AikaTheme.neonBlue.withOpacity(0.2),
+              side: BorderSide(color: AikaTheme.neonBlue),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              OverlayService.requestPermission();
+            },
+            child: const Text('Разрешить', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleWakeWord() async {
+    if (_wakeWordEnabled) {
+      await _wakeWordService.stop();
+      setState(() => _wakeWordEnabled = false);
+      _showSnack('Wake word выключен');
+    } else {
+      await _wakeWordService.startListening(() {
+        if (!_isListening && !_isThinking) {
+          _onWakeWordDetected();
+        }
+      });
+      setState(() => _wakeWordEnabled = true);
+      _showSnack('Скажи "Айка" чтобы активировать');
+    }
+  }
+
+  Future<void> _onWakeWordDetected() async {
+    await OverlayService.showOverlay(message: '● Слушаю...');
+    await _speak('Да?');
+    setState(() => _isListening = true);
+    await _speechService.startListening(
+      onResult: (text) async {
+        setState(() => _isListening = false);
+        await OverlayService.updateOverlay(message: '● Думаю...');
+        if (text.isNotEmpty) await _sendMessage(text);
+        await OverlayService.hideOverlay();
+      },
+      onDone: () {
+        setState(() => _isListening = false);
+        OverlayService.hideOverlay();
+      },
+    );
   }
 
   Future<void> _loadPrefs() async {
@@ -110,6 +198,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Future<void> _speak(String text) async {
     final clean = text.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '');
     await _tts.speak(clean);
+  }
+
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: AikaTheme.neonBlue.withOpacity(0.8),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+    ));
   }
 
   Future<void> _sendMessage(String text) async {
@@ -189,6 +286,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _textController.dispose();
     _tts.stop();
     _deviceService.dispose();
+    _wakeWordService.stop();
     super.dispose();
   }
 
@@ -225,6 +323,45 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   ),
                   Row(
                     children: [
+                      // Wake word toggle
+                      GestureDetector(
+                        onTap: _toggleWakeWord,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: _wakeWordEnabled
+                                ? AikaTheme.neonBlue.withOpacity(0.15)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: _wakeWordEnabled
+                                  ? AikaTheme.neonBlue.withOpacity(0.6)
+                                  : Colors.white24,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.hearing,
+                                size: 14,
+                                color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _wakeWordEnabled ? 'ON' : 'OFF',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       IconButton(
                         icon: Icon(
                           _showAvatar ? Icons.face : Icons.face_outlined,
@@ -252,6 +389,33 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ScaleTransition(
                 scale: _pulseAnimation,
                 child: AikaAvatar(isThinking: _isThinking, isListening: _isListening),
+              ),
+
+            // Wake word status banner
+            if (_wakeWordEnabled)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AikaTheme.neonBlue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.hearing, size: 12, color: AikaTheme.neonBlue.withOpacity(0.7)),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Жду: "Айка"',
+                      style: TextStyle(
+                        color: AikaTheme.neonBlue.withOpacity(0.7),
+                        fontSize: 11,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
             // Chat
