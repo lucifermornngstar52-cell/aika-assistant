@@ -162,10 +162,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       setState(() => _isListening = false);
     } else {
       setState(() => _isListening = true);
-      await _speechService.startListening((text) {
-        setState(() => _isListening = false);
-        if (text.isNotEmpty) _sendMessage(text);
-      });
+      await _speechService.startListening(
+        onResult: (text) {
+          if (text.isNotEmpty) _sendMessage(text);
+        },
+        onDone: () {
+          setState(() => _isListening = false);
+        },
+      );
     }
   }
 
