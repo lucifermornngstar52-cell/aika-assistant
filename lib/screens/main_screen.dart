@@ -490,10 +490,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       ),
     ),
-{
-            // tap mascot — could trigger greeting or idle reaction
-          },
-        ),
             AikaAvatar(
         draggable: true,
         isThinking: _isThinking,
