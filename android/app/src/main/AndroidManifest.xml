@@ -3,44 +3,19 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.aika.assistant">
 
-    <!-- Core -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-    <!-- Flashlight & Camera -->
     <uses-permission android:name="android.permission.FLASHLIGHT" />
     <uses-permission android:name="android.permission.CAMERA" />
-
-    <!-- Foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Network -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-
-    <!-- Storage: Android 13+ uses scoped media permissions -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
-        android:minSdkVersion="33" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"
-        android:minSdkVersion="33" />
-    <!-- Legacy storage for Android 12 and below -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
-
-    <!-- For launching apps — only request if absolutely needed, remove for Play Store -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
 
     <application
         android:label="Айка"
@@ -79,11 +54,5 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-
-        <service
-            android:name=".AikaOverlayService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback"
-            android:stopWithTask="false" />
     </application>
 </manifest>
