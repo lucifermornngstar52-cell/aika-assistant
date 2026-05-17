@@ -6,14 +6,12 @@ enum AikaState { idle, greeting, listening, thinking }
 class AikaAvatar extends StatefulWidget {
   final bool isThinking;
   final bool isListening;
-  final bool use3DModel;
   final bool draggable;
 
   const AikaAvatar({
     Key? key,
     this.isThinking = false,
     this.isListening = false,
-    this.use3DModel = true,
     this.draggable = false,
   }) : super(key: key);
 
@@ -38,16 +36,19 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
-    _floatCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+    _floatCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2400))
       ..repeat(reverse: true);
     _floatAnim = Tween<double>(begin: -7, end: 7).animate(
         CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
 
-    _scaleCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _scaleCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
     _scaleAnim = Tween<double>(begin: 1.0, end: 1.15).animate(
         CurvedAnimation(parent: _scaleCtrl, curve: Curves.elasticOut));
 
-    _waveCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _waveCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
 
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) _playGreeting();
@@ -71,7 +72,8 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
       _switchState(AikaState.listening);
     } else if (widget.isThinking && !oldWidget.isThinking) {
       _switchState(AikaState.thinking);
-    } else if (!widget.isListening && !widget.isThinking &&
+    } else if (!widget.isListening &&
+        !widget.isThinking &&
         (oldWidget.isListening || oldWidget.isThinking)) {
       _switchState(AikaState.idle);
     }
@@ -93,10 +95,14 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
 
   String get _currentImage {
     switch (_currentState) {
-      case AikaState.greeting: return 'assets/images/aika_wave.png';
-      case AikaState.listening: return 'assets/images/aika_listen.png';
-      case AikaState.thinking:  return 'assets/images/aika_think.png';
-      default:                  return 'assets/images/aika_idle.png';
+      case AikaState.greeting:
+        return 'assets/images/aika_wave.png';
+      case AikaState.listening:
+        return 'assets/images/aika_listen.png';
+      case AikaState.thinking:
+        return 'assets/images/aika_think.png';
+      default:
+        return 'assets/images/aika_idle.png';
     }
   }
 
@@ -122,8 +128,10 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                   color: _currentState == AikaState.listening
                       ? AikaTheme.neonPurple.withOpacity(0.55)
                       : AikaTheme.neonBlue.withOpacity(0.25),
-                  blurRadius: _currentState == AikaState.listening ? 50 : 28,
-                  spreadRadius: _currentState == AikaState.listening ? 12 : 4,
+                  blurRadius:
+                      _currentState == AikaState.listening ? 50 : 28,
+                  spreadRadius:
+                      _currentState == AikaState.listening ? 12 : 4,
                 ),
               ],
             ),
@@ -151,7 +159,8 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                       _currentState == AikaState.thinking)
                   ? Container(
                       key: ValueKey(_currentState),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
                       decoration: BoxDecoration(
                         color: AikaTheme.surface.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(20),
@@ -172,7 +181,9 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            _currentState == AikaState.listening ? 'Слушаю...' : 'Думаю...',
+                            _currentState == AikaState.listening
+                                ? 'Слушаю...'
+                                : 'Думаю...',
                             style: TextStyle(
                               color: _currentState == AikaState.listening
                                   ? AikaTheme.neonPurple
@@ -195,7 +206,6 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     if (!widget.draggable) {
-      // Non-draggable mode — used inline in screens
       return SizedBox(height: 240, child: _buildSprite());
     }
 
@@ -227,22 +237,32 @@ class _PulsingDot extends StatefulWidget {
   State<_PulsingDot> createState() => _PulsingDotState();
 }
 
-class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderStateMixin {
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700))
       ..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 1.0).animate(_ctrl);
   }
+
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => FadeTransition(
-    opacity: _anim,
-    child: Container(width: 6, height: 6,
-      decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
-  );
+        opacity: _anim,
+        child: Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+                color: widget.color, shape: BoxShape.circle)),
+      );
 }
