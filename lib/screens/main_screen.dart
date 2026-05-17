@@ -490,11 +490,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       ),
     ),
-            AikaAvatar(
-        draggable: true,
-        isThinking: _isThinking,
-        isListening: _isListening,
-      ),
+        AikaAvatar(
+          draggable: true,
+          isThinking: _isThinking,
+          isListening: _isListening,
+        ),
       ],
     );
   }
