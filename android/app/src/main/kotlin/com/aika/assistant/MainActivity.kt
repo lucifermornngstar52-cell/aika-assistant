@@ -3,6 +3,7 @@ package com.aika.assistant
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,34 +18,53 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "hasPermission"  -> result.success(hasOverlayPermission())
-                    "requestPermission" -> { requestOverlayPermission(); result.success(null) }
-                    // Flutter управляет аватаром сам — нативный сервис не нужен
-                    "showOverlay"    -> result.success(null)
-                    "updateOverlay"  -> result.success(null)
-                    "hideOverlay"    -> result.success(null)
-                    else             -> result.notImplemented()
+                    "hasPermission" -> result.success(hasOverlayPermission())
+
+                    "requestPermission" -> {
+                        requestOverlayPermission()
+                        result.success(null)
+                    }
+
+                    "showOverlay" -> {
+                        val state = call.argument<String>("state") ?: "idle"
+                        startOverlayService(AikaOverlayService.ACTION_SHOW, state)
+                        result.success(null)
+                    }
+
+                    "updateOverlay" -> {
+                        val state = call.argument<String>("state") ?: "idle"
+                        startOverlayService(AikaOverlayService.ACTION_UPDATE, state)
+                        result.success(null)
+                    }
+
+                    "hideOverlay" -> {
+                        // Не скрываем — просто переключаем на idle, чиби остаётся
+                        startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
+                        result.success(null)
+                    }
+
+                    else -> result.notImplemented()
                 }
             }
     }
 
-    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Принудительно останавливаем нативный overlay сервис если он был запущен ранее
-        stopNativeOverlayService()
+        // Запускаем оверлей сразу если разрешение уже есть
+        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
+            startOverlayService(AikaOverlayService.ACTION_SHOW, "greeting")
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // НЕ запускаем нативный сервис — Flutter AikaAvatar управляет аватаром
-    }
-
-    private fun stopNativeOverlayService() {
-        try {
-            val intent = Intent(this, AikaOverlayService::class.java)
-            stopService(intent)
-        } catch (e: Exception) {
-            // Сервис не был запущен — OK
+        // Если разрешение есть, но сервис упал — перезапускаем
+        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
+            startOverlayService(AikaOverlayService.ACTION_SHOW, "idle")
+        }
+        // Если сервис уже работает — обновляем до idle (убираем listening/thinking)
+        else if (hasOverlayPermission() && AikaOverlayService.isRunning) {
+            startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
         }
     }
 
@@ -59,6 +79,19 @@ class MainActivity : FlutterActivity() {
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
             ))
+        }
+    }
+
+    private fun startOverlayService(action: String, state: String) {
+        if (!hasOverlayPermission()) return
+        val intent = Intent(this, AikaOverlayService::class.java).apply {
+            this.action = action
+            putExtra(AikaOverlayService.EXTRA_STATE, state)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 }
