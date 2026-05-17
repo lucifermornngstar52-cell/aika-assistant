@@ -58,6 +58,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Future<void> _initServices() async {
     await _speechService.initialize();
     await _wakeWordService.initialize();
+    _wakeWordService.initWithSharedStt(_speechService.sharedStt);
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
