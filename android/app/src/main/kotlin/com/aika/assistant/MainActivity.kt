@@ -25,22 +25,11 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
-                    "showOverlay" -> {
-                        val state = call.argument<String>("state") ?: "idle"
-                        startOverlayService(AikaOverlayService.ACTION_SHOW, state)
-                        result.success(null)
-                    }
-
-                    "updateOverlay" -> {
-                        val state = call.argument<String>("state") ?: "idle"
-                        startOverlayService(AikaOverlayService.ACTION_UPDATE, state)
-                        result.success(null)
-                    }
-
-                    "hideOverlay" -> {
-                        startOverlayService(AikaOverlayService.ACTION_HIDE, "idle")
-                        result.success(null)
-                    }
+                    // Эти вызовы теперь НЕ запускают нативный сервис —
+                    // Flutter сам управляет аватаром через AikaAvatar виджет
+                    "showOverlay"   -> result.success(null)
+                    "updateOverlay" -> result.success(null)
+                    "hideOverlay"   -> result.success(null)
 
                     else -> result.notImplemented()
                 }
@@ -61,24 +50,11 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun startOverlayService(action: String, state: String) {
-        if (!hasOverlayPermission()) return
-        val intent = Intent(this, AikaOverlayService::class.java).apply {
-            this.action = action
-            putExtra(AikaOverlayService.EXTRA_STATE, state)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
-
+    // onResume — НЕ запускаем нативный оверлей сервис автоматически.
+    // Аватар управляется только Flutter виджетом AikaAvatar(draggable: true).
     override fun onResume() {
         super.onResume()
-        // Auto-start overlay when app opens (if permission granted)
-        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
-            startOverlayService(AikaOverlayService.ACTION_SHOW, "idle")
-        }
+        // Намеренно пусто — нативный AikaOverlayService больше не используется
+        // для показа аватара внутри приложения
     }
 }
