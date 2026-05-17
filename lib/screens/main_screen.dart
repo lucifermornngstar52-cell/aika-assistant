@@ -130,13 +130,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _onWakeWordDetected() async {
-    await OverlayService.showOverlay(message: 'Слушаю...');
+    await OverlayService.showOverlay(state: 'listening');
     await _speak('Да?');
     setState(() => _isListening = true);
     await _speechService.startListening(
       onResult: (text) async {
         setState(() => _isListening = false);
-        await OverlayService.updateOverlay(message: 'Думаю...');
+        await OverlayService.updateState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
         await OverlayService.hideOverlay();
       },
