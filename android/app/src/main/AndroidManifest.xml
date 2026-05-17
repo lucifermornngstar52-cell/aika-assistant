@@ -79,5 +79,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+
+        <service
+            android:name=".AikaOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="false" />
     </application>
 </manifest>
