@@ -34,24 +34,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   List<ChatMessage> _messages = [];
   bool _isListening = false;
   bool _isThinking = false;
-  bool _showAvatar = true;
   bool _wakeWordEnabled = false;
+  bool _hasOverlayPermission = false; // только показываем аватар если есть разрешение
   String _assistantName = 'Aika';
   String _userName = '';
-
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
     _initServices();
   }
 
@@ -62,11 +52,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
-    _checkOverlayPermission();
+    await _checkOverlayPermission();
   }
 
   Future<void> _checkOverlayPermission() async {
     final hasPermission = await OverlayService.hasPermission();
+    setState(() => _hasOverlayPermission = hasPermission);
+
     if (!hasPermission && mounted) {
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) _showOverlayPermissionDialog();
@@ -88,7 +80,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold),
         ),
         content: const Text(
-          'Разрешить Айке показывать окно поверх других приложений? Это нужно для работы в фоне и wake-word.',
+          'Разрешить Айке появляться поверх других приложений? После выдачи разрешения она появится на экране!',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -102,15 +94,33 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               side: BorderSide(color: AikaTheme.neonBlue),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              OverlayService.requestPermission();
+              await OverlayService.requestPermission();
+              // После возврата проверяем разрешение снова
+              await Future.delayed(const Duration(seconds: 1));
+              final granted = await OverlayService.hasPermission();
+              if (mounted) setState(() => _hasOverlayPermission = granted);
             },
             child: const Text('Разрешить', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Проверяем разрешение при каждом возврате на экран
+    _recheckOverlayPermission();
+  }
+
+  Future<void> _recheckOverlayPermission() async {
+    final has = await OverlayService.hasPermission();
+    if (has != _hasOverlayPermission && mounted) {
+      setState(() => _hasOverlayPermission = has);
+    }
   }
 
   Future<void> _toggleWakeWord() async {
@@ -120,9 +130,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _showSnack('Wake word выключен');
     } else {
       await _wakeWordService.startListening(() {
-        if (!_isListening && !_isThinking) {
-          _onWakeWordDetected();
-        }
+        if (!_isListening && !_isThinking) _onWakeWordDetected();
       });
       setState(() => _wakeWordEnabled = true);
       _showSnack('Скажи "Айка" чтобы активировать');
@@ -152,7 +160,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     setState(() {
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
-      _showAvatar = prefs.getBool('show_avatar') ?? true;
     });
   }
 
@@ -264,9 +271,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         onResult: (text) {
           if (text.isNotEmpty) _sendMessage(text);
         },
-        onDone: () {
-          setState(() => _isListening = false);
-        },
+        onDone: () => setState(() => _isListening = false),
       );
     }
   }
@@ -278,11 +283,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
     await _loadPrefs();
     await _applyTtsSettings();
+    await _recheckOverlayPermission();
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _scrollController.dispose();
     _textController.dispose();
     _tts.stop();
@@ -296,205 +301,241 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return Stack(
       children: [
         Scaffold(
-      backgroundColor: AikaTheme.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          backgroundColor: AikaTheme.background,
+          body: SafeArea(
+            child: Column(
+              children: [
+                // ── Header ──────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        _assistantName.toUpperCase(),
-                        style: TextStyle(
-                          color: AikaTheme.neonBlue,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 4,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _assistantName.toUpperCase(),
+                            style: TextStyle(
+                              color: AikaTheme.neonBlue,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 4,
+                            ),
+                          ),
+                          Text(
+                            _userName.isNotEmpty ? 'Привет, $_userName' : 'AI Assistant',
+                            style: const TextStyle(color: Colors.white38, fontSize: 12),
+                          ),
+                        ],
                       ),
-                      Text(
-                        _userName.isNotEmpty ? 'Привет, $_userName' : 'AI Assistant',
-                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      Row(
+                        children: [
+                          // Wake word toggle
+                          GestureDetector(
+                            onTap: _toggleWakeWord,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: _wakeWordEnabled
+                                    ? AikaTheme.neonBlue.withOpacity(0.15)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _wakeWordEnabled
+                                      ? AikaTheme.neonBlue.withOpacity(0.6)
+                                      : Colors.white24,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.hearing, size: 14,
+                                      color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _wakeWordEnabled ? 'ON' : 'OFF',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Overlay permission indicator
+                          if (!_hasOverlayPermission)
+                            GestureDetector(
+                              onTap: _showOverlayPermissionDialog,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.face_outlined, size: 14, color: Colors.orange),
+                                    SizedBox(width: 4),
+                                    Text('Показать Айку', style: TextStyle(fontSize: 10, color: Colors.orange)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.settings_outlined, color: Colors.white54),
+                            onPressed: _openSettings,
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  Row(
-                    children: [
-                      // Wake word toggle
-                      GestureDetector(
-                        onTap: _toggleWakeWord,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: _wakeWordEnabled
-                                ? AikaTheme.neonBlue.withOpacity(0.15)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: _wakeWordEnabled
-                                  ? AikaTheme.neonBlue.withOpacity(0.6)
-                                  : Colors.white24,
+                ),
+
+                // ── Wake word banner ─────────────────────────────
+                if (_wakeWordEnabled)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AikaTheme.neonBlue.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.hearing, size: 12, color: AikaTheme.neonBlue.withOpacity(0.7)),
+                        const SizedBox(width: 6),
+                        Text('Жду: "Айка"',
+                            style: TextStyle(
+                              color: AikaTheme.neonBlue.withOpacity(0.7),
+                              fontSize: 11, letterSpacing: 1,
+                            )),
+                      ],
+                    ),
+                  ),
+
+                // ── No overlay hint (when no permission) ─────────
+                if (!_hasOverlayPermission)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: GestureDetector(
+                      onTap: _showOverlayPermissionDialog,
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.07),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.touch_app, color: Colors.orange, size: 28),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text('Айка ещё не появилась',
+                                      style: TextStyle(color: Colors.orange,
+                                          fontWeight: FontWeight.bold, fontSize: 13)),
+                                  SizedBox(height: 2),
+                                  Text('Нажми чтобы выдать разрешение и она появится на экране',
+                                      style: TextStyle(color: Colors.white54, fontSize: 11)),
+                                ],
+                              ),
                             ),
+                            const Icon(Icons.arrow_forward_ios, color: Colors.orange, size: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // ── Chat ─────────────────────────────────────────
+                Expanded(
+                  child: _messages.isEmpty && _isThinking
+                      ? Center(child: CircularProgressIndicator(color: AikaTheme.neonBlue))
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          itemCount: _messages.length,
+                          itemBuilder: (ctx, i) => ChatBubble(message: _messages[i]),
+                        ),
+                ),
+
+                // ── Input bar ────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AikaTheme.surface,
+                    border: Border(
+                      top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15)),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Напишите или говорите...',
+                            hintStyle: const TextStyle(color: Colors.white30),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.05),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.hearing,
-                                size: 14,
-                                color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _wakeWordEnabled ? 'ON' : 'OFF',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
-                                ),
-                              ),
-                            ],
-                          ),
+                          onSubmitted: _sendMessage,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      IconButton(
-                        icon: Icon(
-                          _showAvatar ? Icons.face : Icons.face_outlined,
-                          color: _showAvatar ? AikaTheme.neonBlue : Colors.white38,
-                        ),
-                        onPressed: () async {
-                          final prefs = await SharedPreferences.getInstance();
-                          setState(() => _showAvatar = !_showAvatar);
-                          await prefs.setBool('show_avatar', _showAvatar);
-                        },
+                      VoiceButton(
+                        isListening: _isListening,
+                        isSpeaking: false,
+                        onTap: _toggleListening,
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.settings_outlined, color: Colors.white54),
-                        onPressed: _openSettings,
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => _sendMessage(_textController.text),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AikaTheme.neonBlue.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.5)),
+                          ),
+                          child: Icon(Icons.send, color: AikaTheme.neonBlue, size: 20),
+                        ),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-
-            // Avatar
-            if (_showAvatar)
-              ScaleTransition(
-                scale: _pulseAnimation,
-                child: AikaAvatar(isThinking: _isThinking, isListening: _isListening),
-              ),
-
-            // Wake word status banner
-            if (_wakeWordEnabled)
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AikaTheme.neonBlue.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.2)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.hearing, size: 12, color: AikaTheme.neonBlue.withOpacity(0.7)),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Жду: "Айка"',
-                      style: TextStyle(
-                        color: AikaTheme.neonBlue.withOpacity(0.7),
-                        fontSize: 11,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Chat
-            Expanded(
-              child: _messages.isEmpty && _isThinking
-                  ? Center(child: CircularProgressIndicator(color: AikaTheme.neonBlue))
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      itemCount: _messages.length,
-                      itemBuilder: (ctx, i) => ChatBubble(message: _messages[i]),
-                    ),
+              ],
             ),
-
-            // Input bar
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AikaTheme.surface,
-                border: Border(
-                  top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15)),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Напишите или говорите...',
-                        hintStyle: const TextStyle(color: Colors.white30),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.05),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                      ),
-                      onSubmitted: _sendMessage,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  VoiceButton(
-                    isListening: _isListening,
-                    isSpeaking: false,
-                    onTap: _toggleListening,
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _sendMessage(_textController.text),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AikaTheme.neonBlue.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.5)),
-                      ),
-                      child: Icon(Icons.send, color: AikaTheme.neonBlue, size: 20),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    ),
-        AikaAvatar(
-          draggable: true,
-          isThinking: _isThinking,
-          isListening: _isListening,
-        ),
+
+        // ── ЕДИНСТВЕННАЯ Айка — только если есть разрешение ──
+        if (_hasOverlayPermission)
+          AikaAvatar(
+            draggable: true,
+            isThinking: _isThinking,
+            isListening: _isListening,
+          ),
       ],
     );
   }
