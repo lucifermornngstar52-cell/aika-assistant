@@ -296,7 +296,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        return Scaffold(
+        Scaffold(
       backgroundColor: AikaTheme.background,
       body: SafeArea(
         child: Column(
