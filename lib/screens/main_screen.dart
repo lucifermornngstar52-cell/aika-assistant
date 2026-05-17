@@ -13,7 +13,6 @@ import '../widgets/aika_avatar.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import 'settings_screen.dart';
-import '../widgets/aika_mascot.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -491,8 +490,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       ),
     ),
-        AikaMascot(
-          onTap: () {
+{
             // tap mascot — could trigger greeting or idle reaction
           },
         ),
