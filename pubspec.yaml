@@ -50,6 +50,10 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/aika_chibi.png
+    - assets/images/aika_think.png
+    - assets/images/aika_listen.png
+    - assets/images/aika_wave.png
+    - assets/images/aika_idle.png
     - assets/images/
     - assets/animations/
     - assets/models/
