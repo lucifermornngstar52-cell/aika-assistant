@@ -23,9 +23,9 @@ class SpeechService extends ChangeNotifier {
 
   Future<void> initialize() async {
     _isAvailable = await _stt.initialize(
-      onError: (error) => debugPrint('[STT] error: \$error'),
+      onError: (error) => debugPrint('[STT] error: $error'),
       onStatus: (status) {
-        debugPrint('[STT] status: \$status');
+        debugPrint('[STT] status: $status');
         if (status == 'done' || status == 'notListening') {
           _isListening = false;
           notifyListeners();
@@ -33,7 +33,7 @@ class SpeechService extends ChangeNotifier {
       },
     );
 
-    debugPrint('[STT] Available: \$_isAvailable');
+    debugPrint('[STT] Available: $_isAvailable');
 
     await _tts.setLanguage('ru-RU');
     await _tts.setSpeechRate(0.85);
@@ -43,7 +43,7 @@ class SpeechService extends ChangeNotifier {
     final voices = await _tts.getVoices;
     if (voices != null) {
       final allVoices = voices as List;
-      debugPrint('[TTS] Available voices: \${allVoices.length}');
+      debugPrint('[TTS] Available voices: ${allVoices.length}');
 
       final ruVoices = allVoices
           .where((v) => v['locale']?.toString().startsWith('ru') ?? false)
@@ -51,18 +51,18 @@ class SpeechService extends ChangeNotifier {
 
       if (ruVoices.isNotEmpty) {
         final femaleVoice = ruVoices.firstWhere(
-          (v) =>
-              v['name']?.toString().toLowerCase().contains('female') == true ||
-              v['name']?.toString().toLowerCase().contains('alena') == true ||
-              v['name']?.toString().toLowerCase().contains('svetlana') == true ||
-              v['name']?.toString().toLowerCase().contains('katya') == true,
+          (v) {
+            final name = v['name']?.toString().toLowerCase() ?? '';
+            return name.contains('female') ||
+                name.contains('alena') ||
+                name.contains('svetlana') ||
+                name.contains('katya');
+          },
           orElse: () => ruVoices.first,
         );
-        await _tts.setVoice({
-          'name': femaleVoice['name'],
-          'locale': 'ru-RU',
-        });
-        debugPrint('[TTS] Voice set: \${femaleVoice['name']}');
+        final voiceName = femaleVoice['name']?.toString() ?? '';
+        await _tts.setVoice({'name': voiceName, 'locale': 'ru-RU'});
+        debugPrint('[TTS] Voice set: $voiceName');
       } else {
         await _tts.setLanguage('ru-RU');
         debugPrint('[TTS] No ru voices found, using language fallback');
@@ -80,7 +80,7 @@ class SpeechService extends ChangeNotifier {
     });
 
     _tts.setErrorHandler((msg) {
-      debugPrint('[TTS] error: \$msg');
+      debugPrint('[TTS] error: $msg');
       _isSpeaking = false;
       notifyListeners();
     });

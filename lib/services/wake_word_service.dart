@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-/// Listens for wake word using a SHARED SpeechToText instance passed from outside.
+/// Listens for wake word using a SHARED SpeechToText instance passed from SpeechService.
 /// This avoids the conflict of two concurrent STT sessions on Android.
 class WakeWordService {
   bool _isRunning = false;
@@ -14,7 +14,15 @@ class WakeWordService {
     'айка', 'aika', 'aica', 'эйка', 'ика', 'ayka',
   ];
 
-  /// Initialize with a shared SpeechToText instance from SpeechService.
+  /// Called by MainScreen — initializes with shared STT from SpeechService.
+  /// Pass the sharedStt after SpeechService.initialize() completes.
+  Future<void> initialize() async {
+    // No-op: shared STT is injected via initWithSharedStt().
+    // This method exists for API compatibility with MainScreen.
+    debugPrint('[WakeWord] initialize() called (waiting for shared STT)');
+  }
+
+  /// Inject shared SpeechToText instance from SpeechService.
   void initWithSharedStt(SpeechToText stt) {
     _sharedStt = stt;
     debugPrint('[WakeWord] Initialized with shared STT');
@@ -40,7 +48,7 @@ class WakeWordService {
       pauseFor: const Duration(seconds: 3),
       onResult: (result) {
         final words = result.recognizedWords.toLowerCase();
-        debugPrint('[WakeWord] Heard: \$words');
+        debugPrint('[WakeWord] Heard: $words');
         if (_triggers.any((t) => words.contains(t))) {
           debugPrint('[WakeWord] Wake word detected!');
           onWakeWord?.call();
@@ -57,7 +65,7 @@ class WakeWordService {
   Future<void> stop() async {
     _isRunning = false;
     _restartTimer?.cancel();
-    // Don't stop shared STT here — SpeechService manages it
+    // Don't stop shared STT — SpeechService manages it
   }
 
   bool get isRunning => _isRunning;
