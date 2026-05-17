@@ -4,9 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
@@ -15,7 +12,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -64,7 +60,9 @@ class MainActivity : FlutterActivity() {
     private fun hasOverlayPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
-        } else true
+        } else {
+            true
+        }
     }
 
     private fun requestOverlayPermission() {
@@ -81,8 +79,11 @@ class MainActivity : FlutterActivity() {
         return try {
             val assetManager = assets
             val inputStream = assetManager.open("flutter_assets/assets/images/$name")
-            BitmapFactory.decodeStream(inputStream)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            bitmap
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }
@@ -101,13 +102,14 @@ class MainActivity : FlutterActivity() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        val sizePx = 160 // dp converted manually — works across densities
+        val sizePx = 160
         val density = resources.displayMetrics.density
         val sizePxReal = (sizePx * density).roundToInt()
+        val heightPxReal = (sizePx * 1.4 * density).roundToInt()
 
         val params = WindowManager.LayoutParams(
             sizePxReal,
-            (sizePxReal * 1.4).roundToInt(),
+            heightPxReal,
             overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -127,25 +129,38 @@ class MainActivity : FlutterActivity() {
             tag = "avatar"
         }
         updateAvatarImage(imageView, state)
-        frame.addView(imageView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
+
+        frame.addView(
+            imageView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
 
         // Drag support
-        var initialX = 0; var initialY = 0
-        var initialTouchX = 0f; var initialTouchY = 0f
+        var initialX = 0
+        var initialY = 0
+        var initialTouchX = 0f
+        var initialTouchY = 0f
+
         frame.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    initialX = params.x; initialY = params.y
-                    initialTouchX = event.rawX; initialTouchY = event.rawY
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     params.x = initialX + (event.rawX - initialTouchX).roundToInt()
                     params.y = initialY + (event.rawY - initialTouchY).roundToInt()
-                    windowManager?.updateViewLayout(frame, params)
+                    try {
+                        windowManager?.updateViewLayout(frame, params)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                     true
                 }
                 else -> false
@@ -154,20 +169,20 @@ class MainActivity : FlutterActivity() {
 
         overlayView = frame
 
-        // Floating animation via Handler
+        // Floating animation
         val handler = Handler(Looper.getMainLooper())
-        var tick = 0
         val animator = object : Runnable {
+            var tick = 0
             override fun run() {
                 if (overlayView == null) return
-                val offset = (Math.sin(tick * 0.05) * 8 * density).roundToInt()
                 try {
-                    params.y = params.y + 0 // keep y stable, float is visual only
-                    // Animate via translationY on the view
-                    frame.translationY = (Math.sin(tick * 0.05) * 8).toFloat()
-                } catch (_: Exception) {}
-                tick++
-                handler.postDelayed(this, 16)
+                    val floatOffset = (Math.sin(tick * 0.05) * 8).toFloat()
+                    frame.translationY = floatOffset
+                    tick++
+                    handler.postDelayed(this, 16)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
         handler.post(animator)
@@ -182,9 +197,9 @@ class MainActivity : FlutterActivity() {
     private fun updateAvatarImage(imageView: ImageView, state: String) {
         val imageName = when (state) {
             "listening" -> "aika_listen.png"
-            "thinking"  -> "aika_think.png"
-            "greeting"  -> "aika_wave.png"
-            else        -> "aika_idle.png"
+            "thinking" -> "aika_think.png"
+            "greeting" -> "aika_wave.png"
+            else -> "aika_idle.png"
         }
         val bmp = getAssetBitmap(imageName)
         if (bmp != null) {
