@@ -1,6 +1,5 @@
 package com.aika.assistant
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -18,22 +17,35 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "hasPermission" -> result.success(hasOverlayPermission())
-
-                    "requestPermission" -> {
-                        requestOverlayPermission()
-                        result.success(null)
-                    }
-
-                    // Эти вызовы теперь НЕ запускают нативный сервис —
-                    // Flutter сам управляет аватаром через AikaAvatar виджет
-                    "showOverlay"   -> result.success(null)
-                    "updateOverlay" -> result.success(null)
-                    "hideOverlay"   -> result.success(null)
-
-                    else -> result.notImplemented()
+                    "hasPermission"  -> result.success(hasOverlayPermission())
+                    "requestPermission" -> { requestOverlayPermission(); result.success(null) }
+                    // Flutter управляет аватаром сам — нативный сервис не нужен
+                    "showOverlay"    -> result.success(null)
+                    "updateOverlay"  -> result.success(null)
+                    "hideOverlay"    -> result.success(null)
+                    else             -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Принудительно останавливаем нативный overlay сервис если он был запущен ранее
+        stopNativeOverlayService()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // НЕ запускаем нативный сервис — Flutter AikaAvatar управляет аватаром
+    }
+
+    private fun stopNativeOverlayService() {
+        try {
+            val intent = Intent(this, AikaOverlayService::class.java)
+            stopService(intent)
+        } catch (e: Exception) {
+            // Сервис не был запущен — OK
+        }
     }
 
     private fun hasOverlayPermission(): Boolean =
@@ -48,13 +60,5 @@ class MainActivity : FlutterActivity() {
                 Uri.parse("package:$packageName")
             ))
         }
-    }
-
-    // onResume — НЕ запускаем нативный оверлей сервис автоматически.
-    // Аватар управляется только Flutter виджетом AikaAvatar(draggable: true).
-    override fun onResume() {
-        super.onResume()
-        // Намеренно пусто — нативный AikaOverlayService больше не используется
-        // для показа аватара внутри приложения
     }
 }
