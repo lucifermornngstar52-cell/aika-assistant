@@ -50,6 +50,10 @@ flutter:
   assets:
     - assets/images/aika_chibi.png
     - assets/images/aika_think.png
+    - assets/images/aika_dance4.png
+    - assets/images/aika_dance3.png
+    - assets/images/aika_dance2.png
+    - assets/images/aika_dance1.png
     - assets/images/aika_listen.png
     - assets/images/aika_wave.png
     - assets/images/aika_idle.png
