@@ -255,7 +255,7 @@ class _CommandsScreenState extends State<CommandsScreen> {
                   },
                   decoration: InputDecoration(
                     hintText: 'com.example.app',
-                    hintStyle: const TextStyle(color: Colors.white20, fontSize: 12),
+                    hintStyle: const TextStyle(color: Colors.white.withOpacity(0.12), fontSize: 12),
                     filled: true,
                     fillColor: AikaTheme.background,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -482,8 +482,9 @@ class _CommandsScreenState extends State<CommandsScreen> {
                   await _loadCommands();
                 },
               )
-            : Icon(Icons.lock_outline_rounded, color: Colors.white24, size: 18),
+            : Icon(Icons.lock_outline_rounded, color: Colors.white.withOpacity(0.15), size: 18),
       ),
     );
   }
 }
+
