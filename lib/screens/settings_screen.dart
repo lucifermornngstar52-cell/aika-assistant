@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_theme.dart';
+import 'commands_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -242,6 +243,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _showAvatar,
                 activeColor: AikaTheme.neonBlue,
                 onChanged: (v) => setState(() => _showAvatar = v),
+              ),
+            ]),
+            _buildSectionTitle('ГОЛОСОВЫЕ КОМАНДЫ'),
+            _buildCard([
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Icon(Icons.record_voice_over_rounded, color: AikaTheme.neonBlue),
+                title: const Text('Мои команды', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Привязать фразы к приложениям',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: Icon(Icons.arrow_forward_ios_rounded,
+                    color: AikaTheme.neonBlue.withOpacity(0.6), size: 16),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CommandsScreen())),
               ),
             ]),
             _buildSectionTitle('ГОЛОС АССИСТЕНТА'),
