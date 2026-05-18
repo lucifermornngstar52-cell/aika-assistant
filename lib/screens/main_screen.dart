@@ -183,7 +183,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final playing = await MusicDetectorService.isMusicPlaying();
       if (playing && !_isDancing) {
         if (mounted) setState(() => _isDancing = true);
-        OverlayService.updateState('greeting');
+        OverlayService.updateState('dance');
       } else if (!playing && _isDancing) {
         if (mounted) setState(() => _isDancing = false);
         OverlayService.updateState('idle');
@@ -236,7 +236,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void _startDance() {
     if (_isListening || _isThinking) return;
     setState(() => _isDancing = true);
-    OverlayService.updateState('greeting');
+    OverlayService.updateState('dance');
   }
 
   void _stopDance() {
@@ -551,3 +551,4 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
