@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -26,11 +27,18 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
   late Animation<double> _scaleAnim;
   late AnimationController _waveCtrl;
 
+  // Моргание
+  late AnimationController _blinkCtrl;
+  late Animation<double> _blinkAnim;
+  bool _isBlinking = false;
+
   AikaState _currentState = AikaState.idle;
 
   double _x = 20;
   double _y = 120;
   static const double _size = 110.0;
+
+  final _random = Random();
 
   @override
   void initState() {
@@ -50,9 +58,48 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     _waveCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
 
+    // Контроллер моргания — быстрое закрытие/открытие
+    _blinkCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 120));
+    _blinkAnim = Tween<double>(begin: 1.0, end: 0.04)
+        .animate(CurvedAnimation(parent: _blinkCtrl, curve: Curves.easeIn));
+
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) _playGreeting();
     });
+
+    // Запускаем цикл моргания
+    _scheduleBlink();
+  }
+
+  /// Рандомное моргание каждые 3–6 секунд (только в idle)
+  void _scheduleBlink() {
+    final delay = 3000 + _random.nextInt(3000); // 3–6 сек
+    Future.delayed(Duration(milliseconds: delay), () {
+      if (!mounted) return;
+      if (_currentState == AikaState.idle) {
+        _doBlink();
+      }
+      _scheduleBlink();
+    });
+  }
+
+  Future<void> _doBlink() async {
+    if (_isBlinking || !mounted) return;
+    _isBlinking = true;
+    // Закрыть
+    await _blinkCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 40));
+    // Открыть
+    await _blinkCtrl.reverse();
+    // Иногда двойное моргание
+    if (_random.nextDouble() < 0.25) {
+      await Future.delayed(const Duration(milliseconds: 80));
+      await _blinkCtrl.forward();
+      await Future.delayed(const Duration(milliseconds: 40));
+      await _blinkCtrl.reverse();
+    }
+    _isBlinking = false;
   }
 
   Future<void> _playGreeting() async {
@@ -90,6 +137,7 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     _floatCtrl.dispose();
     _scaleCtrl.dispose();
     _waveCtrl.dispose();
+    _blinkCtrl.dispose();
     super.dispose();
   }
 
@@ -128,26 +176,50 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                   color: _currentState == AikaState.listening
                       ? AikaTheme.neonPurple.withOpacity(0.55)
                       : AikaTheme.neonBlue.withOpacity(0.25),
-                  blurRadius:
-                      _currentState == AikaState.listening ? 50 : 28,
-                  spreadRadius:
-                      _currentState == AikaState.listening ? 12 : 4,
+                  blurRadius: _currentState == AikaState.listening ? 50 : 28,
+                  spreadRadius: _currentState == AikaState.listening ? 12 : 4,
                 ),
               ],
             ),
           ),
-          // Sprite
+          // Sprite + blink overlay
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             transitionBuilder: (child, anim) =>
                 FadeTransition(opacity: anim, child: child),
-            child: Image.asset(
-              _currentImage,
+            child: Stack(
               key: ValueKey(_currentState),
-              width: _size,
-              height: _size * 1.4,
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.high,
+              alignment: Alignment.center,
+              children: [
+                // Основной спрайт
+                Image.asset(
+                  _currentImage,
+                  width: _size,
+                  height: _size * 1.4,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+                // Моргание — только в idle, тонкая чёрная полоска поверх глаз
+                if (_currentState == AikaState.idle)
+                  AnimatedBuilder(
+                    animation: _blinkAnim,
+                    builder: (_, __) => Positioned(
+                      top: _size * 0.28, // примерно уровень глаз
+                      child: Transform.scale(
+                        scaleY: 1.0 - _blinkAnim.value, // 0 = глаза открыты, 1 = закрыты
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: _size * 0.55,
+                          height: _size * 0.18,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1a0a2e), // цвет кожи/фона под глазами
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           // Status badge
@@ -159,8 +231,7 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                       _currentState == AikaState.thinking)
                   ? Container(
                       key: ValueKey(_currentState),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                       decoration: BoxDecoration(
                         color: AikaTheme.surface.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(20),
@@ -208,8 +279,6 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     if (!widget.draggable) {
       return SizedBox(height: 240, child: _buildSprite());
     }
-
-    // Draggable overlay mode
     return Positioned(
       left: _x,
       top: _y,
@@ -262,7 +331,7 @@ class _PulsingDotState extends State<_PulsingDot>
         child: Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-                color: widget.color, shape: BoxShape.circle)),
+            decoration:
+                BoxDecoration(color: widget.color, shape: BoxShape.circle)),
       );
 }
