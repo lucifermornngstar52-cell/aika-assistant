@@ -458,30 +458,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-
-            // ── Aika Avatar — большой, красивый ────────────────────
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                // Glow под аватаром
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  width: _isDancing ? 230 : 190,
-                  height: _isDancing ? 230 : 190,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        _isDancing
-                            ? const Color(0xFF64B5F6).withOpacity(0.35)
-                            : _isListening
-                                ? const Color(0xFF64B5F6).withOpacity(0.22)
-                                : _isThinking
-                                    ? Colors.purple.withOpacity(0.18)
-                                    : const Color(0xFF64B5F6).withOpacity(0.08),
-                        Colors.transparent,
-                      ],
-                    ),
                   ),
                 ),
                 // Сам аватар

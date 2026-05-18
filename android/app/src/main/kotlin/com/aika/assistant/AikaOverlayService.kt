@@ -54,47 +54,58 @@ class AikaOverlayService : Service() {
     private var currentState = "idle"
     private var animTick = 0L
 
-    // Аниматоры
-    private var floatAnimator: ValueAnimator? = null
-    private var shakeAnimator: ValueAnimator? = null
-    private var pulseAnimator: ObjectAnimator? = null
+    // Dance frame cycling
+    private var danceFrame = 0
+    private val danceFrameCount = 16
+    private var danceFrameRunnable: Runnable? = null
+
     private var autoReturnJob: Runnable? = null
 
-    // Анимация покачивания — основная
+    // ── 60fps animation loop ──────────────────────────────────────────────────
     private val floatRunnable = object : Runnable {
         override fun run() {
             val view = overlayRoot ?: return
             when (currentState) {
                 "idle" -> {
-                    // Плавное парение: период ~2.4 сек
                     view.translationY = (sin(animTick * 0.025) * 9).toFloat()
-                    // Лёгкий наклон
                     view.rotation = (sin(animTick * 0.018) * 2.5).toFloat()
+                    view.translationX = 0f
                 }
                 "listening" -> {
-                    // Быстрее пульсирует, сильнее наклон
                     view.translationY = (sin(animTick * 0.055) * 6).toFloat()
                     view.rotation = (sin(animTick * 0.055) * 5).toFloat()
+                    view.translationX = 0f
                 }
                 "thinking" -> {
-                    // Медленное покачивание влево-вправо
                     view.translationX = (sin(animTick * 0.020) * 8).toFloat()
                     view.translationY = (cos(animTick * 0.015) * 4).toFloat()
                     view.rotation = (sin(animTick * 0.020) * 3).toFloat()
                 }
                 "greeting" -> {
-                    // Быстрое подпрыгивание
                     val bounce = abs(sin(animTick * 0.07)) * 14
                     view.translationY = -bounce.toFloat()
                     view.rotation = (sin(animTick * 0.07) * 8).toFloat()
+                    view.translationX = 0f
+                }
+                "dance" -> {
+                    // Ритмичный свинг влево-вправо + подпрыгивание
+                    view.rotation = (sin(animTick * 0.09) * 22).toFloat()
+                    val bounce = abs(sin(animTick * 0.09)) * 12
+                    view.translationY = -bounce.toFloat()
+                    view.translationX = (sin(animTick * 0.045) * 6).toFloat()
+                    // Scale пульс в ритм
+                    val scl = 1f + (abs(sin(animTick * 0.09)) * 0.08f)
+                    view.scaleX = scl
+                    view.scaleY = scl
                 }
                 else -> {
                     view.translationY = (sin(animTick * 0.025) * 9).toFloat()
                     view.rotation = 0f
+                    view.translationX = 0f
                 }
             }
             animTick++
-            handler.postDelayed(this, 16) // 60fps
+            handler.postDelayed(this, 16) // ~60fps
         }
     }
 
@@ -108,14 +119,8 @@ class AikaOverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_SHOW   -> {
-                val state = intent.getStringExtra(EXTRA_STATE) ?: "idle"
-                transitionToState(state)
-            }
-            ACTION_UPDATE -> {
-                val state = intent.getStringExtra(EXTRA_STATE) ?: "idle"
-                transitionToState(state)
-            }
+            ACTION_SHOW   -> transitionToState(intent.getStringExtra(EXTRA_STATE) ?: "idle")
+            ACTION_UPDATE -> transitionToState(intent.getStringExtra(EXTRA_STATE) ?: "idle")
             ACTION_HIDE   -> transitionToState("idle")
         }
         return START_STICKY
@@ -159,16 +164,14 @@ class AikaOverlayService : Service() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        // Drag + tap support
-        var ix = 0; var iy = 0; var tx = 0f; var ty = 0f
-        var dragDist = 0f
+        // Drag + tap
+        var ix = 0; var iy = 0; var tx = 0f; var ty = 0f; var dragDist = 0f
         frame.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     ix = params!!.x; iy = params!!.y
                     tx = event.rawX; ty = event.rawY
                     dragDist = 0f
-                    // Лёгкое сжатие при нажатии
                     v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(120).start()
                     true
                 }
@@ -184,10 +187,7 @@ class AikaOverlayService : Service() {
                 MotionEvent.ACTION_UP -> {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(200)
                         .setInterpolator(OvershootInterpolator()).start()
-                    // Тап (без перетаскивания) — запускаем greeting
-                    if (dragDist < 100f) {
-                        playGreetingOnce()
-                    }
+                    if (dragDist < 100f) playGreetingOnce()
                     true
                 }
                 else -> false
@@ -196,12 +196,10 @@ class AikaOverlayService : Service() {
 
         overlayRoot = frame
         avatarView  = imageView
-
         loadAndSetBitmap("idle")
 
         try {
             windowManager?.addView(frame, params)
-            // Появление с анимацией
             imageView.animate().alpha(1f).scaleX(1f).scaleY(1f)
                 .setDuration(600).setInterpolator(OvershootInterpolator(1.2f)).start()
             handler.post(floatRunnable)
@@ -210,46 +208,73 @@ class AikaOverlayService : Service() {
         }
     }
 
+    // ── Dance frame cycling ───────────────────────────────────────────────────
+
+    private fun startDanceFrames() {
+        danceFrame = 0
+        val tick = object : Runnable {
+            override fun run() {
+                if (currentState != "dance") return
+                val bmp = loadAssetBitmap("aika_dance${danceFrame + 1}.png")
+                if (bmp != null) avatarView?.setImageBitmap(bmp)
+                danceFrame = (danceFrame + 1) % danceFrameCount
+                handler.postDelayed(this, 280) // ~3.6fps per frame = smooth cycle
+            }
+        }
+        danceFrameRunnable = tick
+        handler.post(tick)
+    }
+
+    private fun stopDanceFrames() {
+        danceFrameRunnable?.let { handler.removeCallbacks(it) }
+        danceFrameRunnable = null
+        // Reset scale
+        overlayRoot?.scaleX = 1f
+        overlayRoot?.scaleY = 1f
+    }
+
     // ── State machine ─────────────────────────────────────────────────────────
 
     private fun transitionToState(newState: String) {
         handler.post {
-            // Отменяем авто-возврат если был запланирован
             autoReturnJob?.let { handler.removeCallbacks(it) }
             autoReturnJob = null
 
-            // Плавная смена спрайта
-            crossfadeTo(newState)
+            val wasDancing = currentState == "dance"
+            val willDance  = newState == "dance"
 
-            // Авто-возврат в idle для временных состояний
-            val autoReturnMs = when (newState) {
-                "greeting" -> 3500L
-                else       -> null
+            if (wasDancing && !willDance) stopDanceFrames()
+
+            currentState = newState
+
+            if (willDance) {
+                // Start dance: show first frame immediately then start cycling
+                loadBitmap("dance1")?.let { avatarView?.setImageBitmap(it) }
+                startDanceFrames()
+            } else {
+                crossfadeTo(newState)
             }
-            if (autoReturnMs != null) {
+
+            // Auto-return for greeting
+            if (newState == "greeting") {
                 val job = Runnable { transitionToState("idle") }
                 autoReturnJob = job
-                handler.postDelayed(job, autoReturnMs)
+                handler.postDelayed(job, 3500L)
             }
         }
     }
 
     private fun crossfadeTo(newState: String) {
         val view = avatarView ?: return
-        currentState = newState
         val bmp = loadBitmap(newState) ?: return
 
-        // Fade out → swap → fade in
         view.animate().alpha(0f).setDuration(180).setListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
                 view.setImageBitmap(bmp)
-                // Небольшой pop при смене состояния
                 view.scaleX = 0.85f
                 view.scaleY = 0.85f
                 view.animate()
-                    .alpha(1f)
-                    .scaleX(1f)
-                    .scaleY(1f)
+                    .alpha(1f).scaleX(1f).scaleY(1f)
                     .setDuration(250)
                     .setInterpolator(OvershootInterpolator(1.5f))
                     .setListener(null)
@@ -259,7 +284,6 @@ class AikaOverlayService : Service() {
     }
 
     private fun playGreetingOnce() {
-        // Shake + смена на wave спрайт
         overlayRoot?.let { v ->
             v.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).withEndAction {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(300)
@@ -269,18 +293,18 @@ class AikaOverlayService : Service() {
         transitionToState("greeting")
     }
 
-    private fun showOverlay(state: String) = transitionToState(state)
-    private fun updateState(state: String) = transitionToState(state)
-    private fun hideOverlay() = transitionToState("idle")
-
     // ── Bitmap helpers ────────────────────────────────────────────────────────
 
     private fun loadBitmap(state: String): Bitmap? {
-        val name = when (state) {
-            "listening" -> "aika_listen.png"
-            "thinking"  -> "aika_think.png"
-            "greeting"  -> "aika_wave.png"
-            else        -> "aika_idle.png"
+        val name = when {
+            state == "listening" -> "aika_listen.png"
+            state == "thinking"  -> "aika_think.png"
+            state == "greeting"  -> "aika_wave.png"
+            state.startsWith("dance") -> {
+                val n = state.removePrefix("dance").toIntOrNull() ?: 1
+                "aika_dance$n.png"
+            }
+            else -> "aika_idle.png"
         }
         return loadAssetBitmap(name)
     }
@@ -312,8 +336,7 @@ class AikaOverlayService : Service() {
 
     private fun buildNotification(): Notification {
         val openIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -330,9 +353,7 @@ class AikaOverlayService : Service() {
         isRunning = false
         handler.removeCallbacks(floatRunnable)
         autoReturnJob?.let { handler.removeCallbacks(it) }
-        floatAnimator?.cancel()
-        pulseAnimator?.cancel()
-        shakeAnimator?.cancel()
+        stopDanceFrames()
         try { overlayRoot?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         super.onDestroy()
     }
