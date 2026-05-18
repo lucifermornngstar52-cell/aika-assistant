@@ -1,6 +1,8 @@
 package com.aika.assistant
 
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -10,39 +12,47 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.aika.assistant/overlay"
+    private val OVERLAY_CHANNEL = "com.aika.assistant/overlay"
+    private val AUDIO_CHANNEL = "aika/audio"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        // ── Overlay channel ──────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "hasPermission" -> result.success(hasOverlayPermission())
-
                     "requestPermission" -> {
                         requestOverlayPermission()
                         result.success(null)
                     }
-
                     "showOverlay" -> {
                         val state = call.argument<String>("state") ?: "idle"
                         startOverlayService(AikaOverlayService.ACTION_SHOW, state)
                         result.success(null)
                     }
-
                     "updateOverlay" -> {
                         val state = call.argument<String>("state") ?: "idle"
                         startOverlayService(AikaOverlayService.ACTION_UPDATE, state)
                         result.success(null)
                     }
-
                     "hideOverlay" -> {
-                        // Не скрываем — просто переключаем на idle, чиби остаётся
                         startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
                         result.success(null)
                     }
+                    else -> result.notImplemented()
+                }
+            }
 
+        // ── Audio channel — определяем играет ли музыка ─────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isMusicPlaying" -> {
+                        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        result.success(am.isMusicActive)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -50,7 +60,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Запускаем оверлей сразу если разрешение уже есть
         if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
             startOverlayService(AikaOverlayService.ACTION_SHOW, "greeting")
         }
@@ -58,12 +67,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Если разрешение есть, но сервис упал — перезапускаем
         if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
             startOverlayService(AikaOverlayService.ACTION_SHOW, "idle")
-        }
-        // Если сервис уже работает — обновляем до idle (убираем listening/thinking)
-        else if (hasOverlayPermission() && AikaOverlayService.isRunning) {
+        } else if (hasOverlayPermission() && AikaOverlayService.isRunning) {
             startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
         }
     }
