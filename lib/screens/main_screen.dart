@@ -363,6 +363,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -455,6 +456,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ],
                   ),
+                ],
+              ),
+            ),
 
             // ── Wake word banner ────────────────────────────────────
             if (_wakeWordEnabled)
@@ -541,9 +545,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-          ],
-        ),
-      ),
           ],
         ),
       ),
