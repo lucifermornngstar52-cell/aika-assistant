@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -13,6 +14,7 @@ import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
+import '../services/music_detector_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -37,6 +39,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _isDancing = false;
+  Timer? _musicTimer;
   String _assistantName = 'Aika';
   String _userName = '';
 
@@ -69,6 +72,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _loadPrefs();
     _sendGreeting();
     await _recheckOverlayPermission();
+    _startMusicPolling();
   }
 
   Future<void> _recheckOverlayPermission() async {
@@ -172,6 +176,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (voice != null) await _tts.setVoice({'name': voice, 'locale': 'ru-RU'});
   }
 
+
+  void _startMusicPolling() {
+    _musicTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (_isListening || _isThinking) return;
+      final playing = await MusicDetectorService.isMusicPlaying();
+      if (playing && !_isDancing) {
+        if (mounted) setState(() => _isDancing = true);
+        OverlayService.updateState('greeting');
+      } else if (!playing && _isDancing) {
+        if (mounted) setState(() => _isDancing = false);
+        OverlayService.updateState('idle');
+      }
+    });
+  }
+
   void _sendGreeting() {
     final greeting = _userName.isNotEmpty
         ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
@@ -213,9 +232,55 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     ));
   }
 
+  /// Запускаем танец — вызывается из sendMessage если команда "танцуй"
+  void _startDance() {
+    if (_isListening || _isThinking) return;
+    setState(() => _isDancing = true);
+    OverlayService.updateState('greeting');
+  }
+
+  void _stopDance() {
+    if (!_isDancing) return;
+    setState(() => _isDancing = false);
+    OverlayService.updateState('idle');
+  }
+
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _textController.clear();
+
+    // Проверяем команду танца
+    final lower = text.trim().toLowerCase();
+    final isDanceCommand = lower.contains('танцуй') ||
+        lower.contains('танцевать') ||
+        lower.contains('потанцуй') ||
+        lower.contains('dance');
+
+    if (isDanceCommand) {
+      _startDance();
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: '🎵 Хорошо, танцую!',
+        timestamp: DateTime.now(),
+      ));
+      await _speak('Хорошо, танцую!');
+      return;
+    }
+
+    // Стоп-команда
+    final isStopDance = lower.contains('стоп') || lower.contains('хватит') ||
+        lower.contains('остановись') || lower.contains('stop');
+    if (isStopDance && _isDancing) {
+      _stopDance();
+    }
+
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       role: MessageRole.user,
@@ -279,17 +344,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Запускает танец на 6 секунд, потом возвращает в idle
-  void _triggerDance() {
-    if (_isListening || _isThinking) return;
-    setState(() => _isDancing = true);
-    OverlayService.updateState('greeting'); // оверлей тоже оживляем
-    Future.delayed(const Duration(seconds: 6), () {
-      if (mounted) setState(() => _isDancing = false);
-      OverlayService.updateState('idle');
-    });
-  }
-
   Future<void> _openSettings() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
     await _loadPrefs();
@@ -303,6 +357,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _scrollController.dispose();
     _textController.dispose();
     _tts.stop();
+    _musicTimer?.cancel();
     _deviceService.dispose();
     _wakeWordService.stop();
     super.dispose();
@@ -315,7 +370,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ──────────────────────────────────────────
+            // ── Header ─────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
@@ -339,7 +394,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                   Row(
                     children: [
-                      // Wake word toggle
                       GestureDetector(
                         onTap: _toggleWakeWord,
                         child: AnimatedContainer(
@@ -405,58 +459,37 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ),
 
-            // ── Aika Lottie Avatar ───────────────────────────────
-            GestureDetector(
-              onTap: _triggerDance,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Glow background
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 400),
-                    width: _isDancing ? 170 : 140,
-                    height: _isDancing ? 170 : 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          _isDancing
-                              ? AikaTheme.neonBlue.withOpacity(0.35)
-                              : _isListening
-                                  ? AikaTheme.neonBlue.withOpacity(0.25)
-                                  : _isThinking
-                                      ? Colors.purple.withOpacity(0.20)
-                                      : AikaTheme.neonBlue.withOpacity(0.10),
-                          Colors.transparent,
-                        ],
-                      ),
+            // ── Aika Avatar — большой, красивый ────────────────────
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                // Glow под аватаром
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
+                  width: _isDancing ? 230 : 190,
+                  height: _isDancing ? 230 : 190,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        _isDancing
+                            ? const Color(0xFF64B5F6).withOpacity(0.35)
+                            : _isListening
+                                ? const Color(0xFF64B5F6).withOpacity(0.22)
+                                : _isThinking
+                                    ? Colors.purple.withOpacity(0.18)
+                                    : const Color(0xFF64B5F6).withOpacity(0.08),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
-                  // Avatar
-                  AikaAvatar(state: _avatarState, size: 130),
-                  // Dance hint label
-                  if (!_isListening && !_isThinking && !_isDancing)
-                    Positioned(
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AikaTheme.neonBlue.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.25)),
-                        ),
-                        child: Text('нажми чтобы потанцевать 🎵',
-                            style: TextStyle(
-                                color: AikaTheme.neonBlue.withOpacity(0.6), fontSize: 9)),
-                      ),
-                    ),
-                ],
-              ),
+                ),
+                // Сам аватар
+                AikaAvatar(state: _avatarState, size: 210),
+              ],
             ),
 
-            const SizedBox(height: 6),
-
-            // ── Wake word banner ─────────────────────────────────
+            // ── Wake word banner ────────────────────────────────────
             if (_wakeWordEnabled)
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -481,7 +514,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-            // ── Chat ─────────────────────────────────────────────
+            // ── Chat ───────────────────────────────────────────────
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
@@ -491,7 +524,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ),
 
-            // ── Input bar ────────────────────────────────────────
+            // ── Input bar ──────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -513,7 +546,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       ),
                       onSubmitted: _sendMessage,
                     ),
