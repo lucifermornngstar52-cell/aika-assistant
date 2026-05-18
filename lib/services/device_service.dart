@@ -4,6 +4,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'app_launcher_service.dart';
 
 class DeviceService {
   final Battery _battery = Battery();
@@ -21,6 +22,11 @@ class DeviceService {
   }
 
   Future<String?> parseAndExecute(String aiResponse) async {
+    // Проверяем сначала фразовый запуск приложений (без AI)
+    final appResult = await AppLauncherService.tryLaunch(aiResponse);
+    if (appResult != null) return appResult;
+
+    // Ищем ACTION теги
     final regex = RegExp(r'\[ACTION:([^\]]+)\]');
     final match = regex.firstMatch(aiResponse);
     if (match == null) return null;
@@ -29,22 +35,23 @@ class DeviceService {
   }
 
   Future<String?> executeAction(String action) async {
+    // Динамический запуск любого приложения
+    if (action.startsWith('launch_app_')) {
+      final packageName = action.substring('launch_app_'.length);
+      return await _launchApp(packageName);
+    }
+
     switch (action) {
       case 'open_youtube':
-        await _launchUrl('https://youtube.com');
-        return 'YouTube открыт';
+        return await _launchApp('com.google.android.youtube');
       case 'open_telegram':
-        await _launchUrl('https://telegram.org');
-        return 'Telegram открыт';
+        return await _launchApp('org.telegram.messenger');
       case 'open_tiktok':
-        await _launchUrl('https://tiktok.com');
-        return 'TikTok открыт';
+        return await _launchApp('com.zhiliaoapp.musically');
       case 'open_chrome':
-        await _launchUrl('https://google.com');
-        return 'Chrome открыт';
+        return await _launchApp('com.android.chrome');
       case 'open_spotify':
-        await _launchUrl('https://open.spotify.com');
-        return 'Spotify открыт';
+        return await _launchApp('com.spotify.music');
       case 'open_settings':
         final intent = AndroidIntent(action: 'android.settings.SETTINGS');
         await intent.launch();
@@ -98,6 +105,34 @@ class DeviceService {
           return 'Поиск: $query';
         }
         return null;
+    }
+  }
+
+  Future<String> _launchApp(String packageName) async {
+    try {
+      final intent = AndroidIntent(
+        action: 'android.intent.action.MAIN',
+        package: packageName,
+        flags: [
+          Flag.FLAG_ACTIVITY_NEW_TASK,
+          Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+        ],
+      );
+      await intent.launch();
+      return 'Открываю';
+    } catch (e) {
+      // Не установлено — идём в Play Store
+      try {
+        final store = AndroidIntent(
+          action: 'android.intent.action.VIEW',
+          data: 'market://details?id=$packageName',
+          flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
+        );
+        await store.launch();
+        return 'Приложение не найдено, открываю Play Store';
+      } catch (_) {
+        return 'Не удалось открыть приложение';
+      }
     }
   }
 
