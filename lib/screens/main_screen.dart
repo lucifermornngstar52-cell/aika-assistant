@@ -11,6 +11,7 @@ import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
+import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -35,8 +36,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _isThinking = false;
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
+  bool _isDancing = false;
   String _assistantName = 'Aika';
   String _userName = '';
+
+  AikaState get _avatarState {
+    if (_isDancing)   return AikaState.dance;
+    if (_isListening) return AikaState.listening;
+    if (_isThinking)  return AikaState.thinking;
+    return AikaState.idle;
+  }
 
   @override
   void initState() {
@@ -47,7 +56,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // При возврате в приложение перепроверяем разрешение
     if (state == AppLifecycleState.resumed) {
       _recheckOverlayPermission();
     }
@@ -68,11 +76,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (mounted && has != _hasOverlayPermission) {
       setState(() => _hasOverlayPermission = has);
     }
-    // Если разрешение только что выдали — запускаем оверлей
     if (has && mounted) {
       await OverlayService.showOverlay(state: 'idle');
     }
-    // Если нет — показываем диалог
     if (!has && mounted) {
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted && !_hasOverlayPermission) _showOverlayPermissionDialog();
@@ -92,7 +98,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         title: Text('Разрешение на оверлей',
             style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
         content: const Text(
-          'Разреши Айке появляться поверх других приложений — она будет видна всегда, в любом приложении!',
+          'Разреши Айке появляться поверх других приложений — она будет видна всегда!',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -109,7 +115,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             onPressed: () {
               Navigator.pop(ctx);
               OverlayService.requestPermission();
-              // После возврата из настроек didChangeAppLifecycleState сработает
             },
             child: const Text('Разрешить', style: TextStyle(color: Colors.white)),
           ),
@@ -133,7 +138,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onWakeWordDetected() async {
-    // Меняем анимацию оверлея на listening
     await OverlayService.showOverlay(state: 'listening');
     await _speak('Да?');
     setState(() => _isListening = true);
@@ -179,7 +183,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       timestamp: DateTime.now(),
     ));
     _speak(greeting);
-    // Анимация приветствия на оверлее
     OverlayService.showOverlay(state: 'greeting');
   }
 
@@ -219,8 +222,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       content: text,
       timestamp: DateTime.now(),
     ));
-    setState(() => _isThinking = true);
-    // Оверлей → thinking
+    setState(() { _isThinking = true; _isDancing = false; });
     await OverlayService.updateState('thinking');
     await _memoryService.addMessage('user', text);
 
@@ -253,7 +255,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
     } finally {
       setState(() => _isThinking = false);
-      // Оверлей → idle
       await OverlayService.updateState('idle');
     }
   }
@@ -264,7 +265,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() => _isListening = false);
       await OverlayService.updateState('idle');
     } else {
-      setState(() => _isListening = true);
+      setState(() { _isListening = true; _isDancing = false; });
       await OverlayService.updateState('listening');
       await _speechService.startListening(
         onResult: (text) {
@@ -276,6 +277,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         },
       );
     }
+  }
+
+  /// Запускает танец на 6 секунд, потом возвращает в idle
+  void _triggerDance() {
+    if (_isListening || _isThinking) return;
+    setState(() => _isDancing = true);
+    OverlayService.updateState('greeting'); // оверлей тоже оживляем
+    Future.delayed(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _isDancing = false);
+      OverlayService.updateState('idle');
+    });
   }
 
   Future<void> _openSettings() async {
@@ -361,7 +373,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // Баннер — выдать разрешение на оверлей
                       if (!_hasOverlayPermission)
                         GestureDetector(
                           onTap: _showOverlayPermissionDialog,
@@ -393,6 +404,57 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
+
+            // ── Aika Lottie Avatar ───────────────────────────────
+            GestureDetector(
+              onTap: _triggerDance,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Glow background
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 400),
+                    width: _isDancing ? 170 : 140,
+                    height: _isDancing ? 170 : 140,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          _isDancing
+                              ? AikaTheme.neonBlue.withOpacity(0.35)
+                              : _isListening
+                                  ? AikaTheme.neonBlue.withOpacity(0.25)
+                                  : _isThinking
+                                      ? Colors.purple.withOpacity(0.20)
+                                      : AikaTheme.neonBlue.withOpacity(0.10),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Avatar
+                  AikaAvatar(state: _avatarState, size: 130),
+                  // Dance hint label
+                  if (!_isListening && !_isThinking && !_isDancing)
+                    Positioned(
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AikaTheme.neonBlue.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.25)),
+                        ),
+                        child: Text('нажми чтобы потанцевать 🎵',
+                            style: TextStyle(
+                                color: AikaTheme.neonBlue.withOpacity(0.6), fontSize: 9)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 6),
 
             // ── Wake word banner ─────────────────────────────────
             if (_wakeWordEnabled)
