@@ -11,7 +11,7 @@ class SpeechService extends ChangeNotifier {
   bool _isAvailable = false;
   String _lastWords = '';
   double _soundLevel = 0.0;
-  String _ruLocaleId = 'ru_RU'; // будет перезаписан при init
+  static const String _ruLocaleId = 'ru-RU';
 
   bool get isListening => _isListening;
   bool get isSpeaking => _isSpeaking;
@@ -37,26 +37,12 @@ class SpeechService extends ChangeNotifier {
 
     if (_isAvailable) {
       final locales = await _stt.locales();
-      debugPrint('[STT] All locales: ${locales.map((l) => l.localeId).join(", ")}');
-
-      // Ищем русскую локаль — пробуем несколько вариантов написания
-      LocaleName? ruLocale;
-      for (final candidate in ['ru_RU', 'ru-RU', 'ru']) {
-        try {
-          ruLocale = locales.firstWhere(
-            (l) => l.localeId == candidate || l.localeId.startsWith('ru'),
-          );
-          break;
-        } catch (_) {}
-      }
-
-      if (ruLocale != null) {
-        _ruLocaleId = ruLocale.localeId;
-        debugPrint('[STT] Russian locale found: $_ruLocaleId');
-      } else {
-        // Fallback — используем системную, но логируем предупреждение
-        debugPrint('[STT] ⚠️ Russian locale NOT found! Using default. Install Russian STT pack.');
-        _ruLocaleId = locales.isNotEmpty ? locales.first.localeId : 'ru_RU';
+      final ruLocale = locales.where(
+        (l) => l.localeId.startsWith('ru'),
+      ).toList();
+      debugPrint('[STT] Russian locales found: ${ruLocale.map((l) => l.localeId).join(", ")}');
+      if (ruLocale.isEmpty) {
+        debugPrint('[STT] ⚠️ Russian STT pack not installed on device!');
       }
     }
 
@@ -72,8 +58,6 @@ class SpeechService extends ChangeNotifier {
       final voices = await _tts.getVoices;
       if (voices != null) {
         final allVoices = voices as List;
-        debugPrint('[TTS] Total voices: ${allVoices.length}');
-
         final ruVoices = allVoices
             .where((v) => v['locale']?.toString().toLowerCase().startsWith('ru') ?? false)
             .toList();
@@ -81,7 +65,6 @@ class SpeechService extends ChangeNotifier {
         debugPrint('[TTS] Russian voices: ${ruVoices.map((v) => v['name']).join(", ")}');
 
         if (ruVoices.isNotEmpty) {
-          // Предпочитаем женский голос
           final femaleVoice = ruVoices.firstWhere(
             (v) {
               final name = v['name']?.toString().toLowerCase() ?? '';
@@ -98,7 +81,6 @@ class SpeechService extends ChangeNotifier {
           await _tts.setVoice({'name': voiceName, 'locale': voiceLocale});
           debugPrint('[TTS] Voice set: $voiceName ($voiceLocale)');
         } else {
-          // Нет установленных русских голосов — принудительно ставим язык
           await _tts.setLanguage('ru-RU');
           debugPrint('[TTS] ⚠️ No ru voices, forcing language ru-RU');
         }
@@ -135,12 +117,12 @@ class SpeechService extends ChangeNotifier {
     notifyListeners();
 
     await _stt.listen(
-      localeId: _ruLocaleId,          // динамически найденный ru locale
+      localeId: _ruLocaleId,
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 4),
       cancelOnError: false,
       partialResults: true,
-      listenMode: ListenMode.dictation, // диктовочный режим — лучше для русского
+      listenMode: ListenMode.dictation,
       onResult: (result) {
         _lastWords = result.recognizedWords;
         _soundLevel = 0;
