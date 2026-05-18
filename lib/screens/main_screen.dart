@@ -348,6 +348,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
     await _loadPrefs();
     await _applyTtsSettings();
+    await _wakeWordService.updateTriggers();
     await _recheckOverlayPermission();
   }
 
@@ -551,4 +552,5 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
 
