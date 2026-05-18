@@ -33,6 +33,16 @@ class SpeechService extends ChangeNotifier {
       },
     );
 
+    // Форсим русский язык для распознавания
+    if (_isAvailable) {
+      final locales = await _stt.locales();
+      final ruLocale = locales.firstWhere(
+        (l) => l.localeId.startsWith('ru'),
+        orElse: () => locales.first,
+      );
+      debugPrint('[STT] Using locale: \${ruLocale.localeId}');
+    }
+
     debugPrint('[STT] Available: $_isAvailable');
 
     await _tts.setLanguage('ru-RU');
@@ -101,6 +111,8 @@ class SpeechService extends ChangeNotifier {
       localeId: 'ru_RU',
       listenFor: const Duration(seconds: 15),
       pauseFor: const Duration(seconds: 3),
+      cancelOnError: false,
+      partialResults: true,
       onResult: (result) {
         _lastWords = result.recognizedWords;
         _soundLevel = 0;
