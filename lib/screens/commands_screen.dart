@@ -255,7 +255,7 @@ class _CommandsScreenState extends State<CommandsScreen> {
                   },
                   decoration: InputDecoration(
                     hintText: 'com.example.app',
-                    hintStyle: const TextStyle(color: Colors.white.withOpacity(0.12), fontSize: 12),
+                    hintStyle: TextStyle(color: Colors.white12, fontSize: 12),
                     filled: true,
                     fillColor: AikaTheme.background,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
