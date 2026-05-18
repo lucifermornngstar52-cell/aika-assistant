@@ -37,6 +37,10 @@ class AiService {
 [ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:flashlight_toggle]
 [ACTION:volume_up] [ACTION:volume_down] [ACTION:volume_max] [ACTION:volume_mute]
 [ACTION:battery] [ACTION:search_запрос]
+[ACTION:launch_app_PACKAGE] — запустить любое приложение по package name (например: [ACTION:launch_app_com.spotify.music])
+
+Когда пользователь говорит "открой [приложение]" или "включи [приложение]" — используй [ACTION:launch_app_PACKAGE] с нужным package name.
+Примеры: Spotify=com.spotify.music, WhatsApp=com.whatsapp, Instagram=com.instagram.android, VK=com.vkontakte.android, TikTok=com.zhiliaoapp.musically
 
 Используй действия только когда пользователь явно просит. Отвечай на языке пользователя.""";
   }
