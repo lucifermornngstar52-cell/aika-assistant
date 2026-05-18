@@ -458,12 +458,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-                  ),
-                ),
-                // Сам аватар
-                AikaAvatar(state: _avatarState, size: 210),
-              ],
-            ),
 
             // ── Wake word banner ────────────────────────────────────
             if (_wakeWordEnabled)
