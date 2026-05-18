@@ -2,10 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AiService {
-  // Gemini API ключ
-  static const String _geminiKey = 'AIzaSyAOerCk0C4vyAkcenHgefVu9miuijaW46Y';
-  // OpenAI ключ передаётся через --dart-define=OPENAI_API_KEY=...
-  static const String _openaiKey = String.fromEnvironment('OPENAI_API_KEY');
+  // Ключи подставляются при сборке через Codemagic (sed inject)
+  static const String _geminiKey = 'GEMINI_API_KEY_HERE';
+  static const String _openaiKey = 'OPENAI_API_KEY_HERE';
 
   Future<String> sendMessage(
     String message, {
@@ -28,21 +27,17 @@ class AiService {
 
   String _buildSystemPrompt(String userName, String assistantName) {
     final userPart = userName.isNotEmpty ? ', пользователя зовут $userName' : '';
-    return """Ты $assistantName — умный AI-ассистент для Android$userPart.
-Ты говоришь кратко, умно и с характером. Можешь управлять телефоном через команды вида [ACTION:название].
-
-Доступные действия:
-[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_tiktok] [ACTION:open_chrome]
-[ACTION:open_spotify] [ACTION:open_settings] [ACTION:open_camera]
-[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:flashlight_toggle]
-[ACTION:volume_up] [ACTION:volume_down] [ACTION:volume_max] [ACTION:volume_mute]
-[ACTION:battery] [ACTION:search_запрос]
-[ACTION:launch_app_PACKAGE] — запустить любое приложение по package name (например: [ACTION:launch_app_com.spotify.music])
-
-Когда пользователь говорит "открой [приложение]" или "включи [приложение]" — используй [ACTION:launch_app_PACKAGE] с нужным package name.
-Примеры: Spotify=com.spotify.music, WhatsApp=com.whatsapp, Instagram=com.instagram.android, VK=com.vkontakte.android, TikTok=com.zhiliaoapp.musically
-
-Используй действия только когда пользователь явно просит. Отвечай на языке пользователя.""";
+    return 'Ты $assistantName - умный AI-ассистент для Android$userPart. '
+        'Ты говоришь кратко, умно и с характером. Можешь управлять телефоном через команды вида [ACTION:название]. '
+        'Доступные действия: [ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_tiktok] [ACTION:open_chrome] '
+        '[ACTION:open_spotify] [ACTION:open_settings] [ACTION:open_camera] '
+        '[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:flashlight_toggle] '
+        '[ACTION:volume_up] [ACTION:volume_down] [ACTION:volume_max] [ACTION:volume_mute] '
+        '[ACTION:battery] [ACTION:search_запрос] '
+        '[ACTION:launch_app_PACKAGE] - запустить приложение по package name. '
+        'Примеры: Spotify=com.spotify.music, WhatsApp=com.whatsapp, Instagram=com.instagram.android, '
+        'VK=com.vkontakte.android, TikTok=com.zhiliaoapp.musically. '
+        'Используй действия только когда пользователь явно просит. Отвечай на языке пользователя.';
   }
 
   Future<String> _callOpenAI(
@@ -51,7 +46,9 @@ class AiService {
     String assistantName = 'Aika',
     List<String> history = const [],
   }) async {
-    if (_openaiKey.isEmpty) throw Exception('No OpenAI key');
+    if (_openaiKey.isEmpty || _openaiKey == 'OPENAI_API_KEY_HERE') {
+      throw Exception('No OpenAI key');
+    }
     final url = Uri.parse('https://api.openai.com/v1/chat/completions');
 
     final messages = <Map<String, String>>[
@@ -70,7 +67,7 @@ class AiService {
       url,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer \$_openaiKey',
+        'Authorization': 'Bearer $_openaiKey',
       },
       body: jsonEncode({
         'model': 'gpt-4o-mini',
@@ -81,9 +78,8 @@ class AiService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('OpenAI error \${response.statusCode}');
+      throw Exception('OpenAI error ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
     }
-    // Явно декодируем UTF-8 чтобы кириллица не превращалась в кракозябры
     final body = utf8.decode(response.bodyBytes);
     final data = jsonDecode(body);
     return data['choices'][0]['message']['content'] as String;
@@ -95,8 +91,11 @@ class AiService {
     String assistantName = 'Aika',
     List<String> history = const [],
   }) async {
+    if (_geminiKey.isEmpty || _geminiKey == 'GEMINI_API_KEY_HERE') {
+      throw Exception('No Gemini key');
+    }
     final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\$_geminiKey');
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$_geminiKey');
 
     final contents = <Map<String, dynamic>>[];
     for (final h in history.take(10)) {
@@ -108,7 +107,7 @@ class AiService {
     }
     contents.add({'role': 'user', 'parts': [{'text': message}]});
 
-    final body = {
+    final reqBody = {
       'system_instruction': {
         'parts': [{'text': _buildSystemPrompt(userName, assistantName)}]
       },
@@ -119,13 +118,12 @@ class AiService {
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode(body),
+      body: jsonEncode(reqBody),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Gemini error \${response.statusCode}: \${response.body}');
+      throw Exception('Gemini error ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
     }
-    // Явно декодируем UTF-8
     final responseBody = utf8.decode(response.bodyBytes);
     final data = jsonDecode(responseBody);
     return data['candidates'][0]['content']['parts'][0]['text'] as String;
