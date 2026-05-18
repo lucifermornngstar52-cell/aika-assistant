@@ -15,20 +15,13 @@ class AikaAvatar extends StatefulWidget {
 }
 
 class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
-  // Float animation
   late AnimationController _floatCtrl;
   late Animation<double> _floatAnim;
-
-  // Dance swing (tilt left/right)
   late AnimationController _danceCtrl;
   late Animation<double> _danceSwing;
-  late Animation<double> _danceScale;
-
-  // Pop on state change
   late AnimationController _popCtrl;
   late Animation<double> _popAnim;
 
-  // Dance frame cycling
   int _danceFrame = 0;
   Timer? _danceTimer;
 
@@ -37,6 +30,18 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     'assets/images/aika_dance2.png',
     'assets/images/aika_dance3.png',
     'assets/images/aika_dance4.png',
+    'assets/images/aika_dance5.png',
+    'assets/images/aika_dance6.png',
+    'assets/images/aika_dance7.png',
+    'assets/images/aika_dance8.png',
+    'assets/images/aika_dance9.png',
+    'assets/images/aika_dance10.png',
+    'assets/images/aika_dance11.png',
+    'assets/images/aika_dance12.png',
+    'assets/images/aika_dance13.png',
+    'assets/images/aika_dance14.png',
+    'assets/images/aika_dance15.png',
+    'assets/images/aika_dance16.png',
   ];
 
   String get _currentSprite {
@@ -63,21 +68,17 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
 
     _danceCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 280),
     )..repeat(reverse: true);
-    _danceSwing = Tween<double>(begin: -20, end: 20).animate(
+    _danceSwing = Tween<double>(begin: -18, end: 18).animate(
       CurvedAnimation(parent: _danceCtrl, curve: Curves.easeInOut),
     );
-    _danceScale = TweenSequence([
-      TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 1.1), weight: 1),
-      TweenSequenceItem(tween: Tween<double>(begin: 1.1, end: 1.0), weight: 1),
-    ]).animate(_danceCtrl);
 
     _popCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 380),
     );
-    _popAnim = Tween<double>(begin: 1.0, end: 1.18).animate(
+    _popAnim = Tween<double>(begin: 1.0, end: 1.15).animate(
       CurvedAnimation(parent: _popCtrl, curve: Curves.elasticOut),
     );
 
@@ -86,7 +87,8 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
 
   void _startDanceTimer() {
     _danceTimer?.cancel();
-    _danceTimer = Timer.periodic(const Duration(milliseconds: 380), (_) {
+    // 16 frames at ~280ms each = smooth animation loop
+    _danceTimer = Timer.periodic(const Duration(milliseconds: 280), (_) {
       if (mounted && widget.state == AikaState.dance) {
         setState(() => _danceFrame = (_danceFrame + 1) % _danceSprites.length);
       }
@@ -132,25 +134,22 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
         animation: Listenable.merge([_floatAnim, _popAnim,
           if (isDancing) _danceSwing]),
         builder: (ctx, child) {
-          double rotation = isDancing ? (_danceSwing.value * 3.14159 / 180) : 0;
-          double scale = isDancing ? _danceScale.value : _popAnim.value;
-          double dy = isDancing ? 0 : _floatAnim.value;
+          final rotation = isDancing ? (_danceSwing.value * 3.14159 / 180) : 0.0;
+          final scale    = _popAnim.value;
+          final dy       = isDancing ? 0.0 : _floatAnim.value;
 
           return Transform.translate(
             offset: Offset(0, dy),
             child: Transform.scale(
               scale: scale,
-              child: Transform.rotate(
-                angle: rotation,
-                child: child,
-              ),
+              child: Transform.rotate(angle: rotation, child: child),
             ),
           );
         },
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Glow ring
+            // Glow
             AnimatedContainer(
               duration: const Duration(milliseconds: 400),
               width: widget.size * 1.3,
@@ -164,36 +163,30 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                         : widget.state == AikaState.listening
                             ? AikaTheme.neonPurple.withOpacity(0.55)
                             : AikaTheme.neonBlue.withOpacity(0.22),
-                    blurRadius: isDancing ? 60 :
-                        widget.state == AikaState.listening ? 50 : 28,
-                    spreadRadius: isDancing ? 16 :
-                        widget.state == AikaState.listening ? 12 : 4,
+                    blurRadius: isDancing ? 60
+                        : widget.state == AikaState.listening ? 50 : 28,
+                    spreadRadius: isDancing ? 16
+                        : widget.state == AikaState.listening ? 12 : 4,
                   ),
                 ],
               ),
             ),
             // Sprite
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 180),
               transitionBuilder: (child, anim) =>
                   FadeTransition(opacity: anim, child: child),
               child: Image.asset(
                 _currentSprite,
-                key: ValueKey('${ widget.state}_$_danceFrame'),
+                key: ValueKey('${widget.state}_$_danceFrame'),
                 width: widget.size,
                 height: widget.size * 1.3,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.high,
               ),
             ),
-            // Status badge
-            Positioned(
-              bottom: 0,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: _buildBadge(),
-              ),
-            ),
+            // Badge
+            Positioned(bottom: 0, child: _buildBadge()),
           ],
         ),
       ),
@@ -211,8 +204,8 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
           border: Border.all(color: Colors.pinkAccent.withOpacity(0.8), width: 1.2),
         ),
         child: const Text('🎵 Танцую!',
-          style: TextStyle(color: Colors.pinkAccent, fontSize: 11,
-              fontWeight: FontWeight.bold)),
+            style: TextStyle(color: Colors.pinkAccent, fontSize: 11,
+                fontWeight: FontWeight.bold)),
       );
     }
     if (widget.state == AikaState.listening || widget.state == AikaState.thinking) {
@@ -263,8 +256,8 @@ class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderState
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
-      ..repeat(reverse: true);
+    _ctrl = AnimationController(vsync: this,
+        duration: const Duration(milliseconds: 700))..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 1.0).animate(_ctrl);
   }
   @override
@@ -273,6 +266,6 @@ class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderState
   Widget build(BuildContext context) => FadeTransition(
     opacity: _anim,
     child: Container(width: 6, height: 6,
-      decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
   );
 }
