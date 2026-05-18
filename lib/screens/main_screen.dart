@@ -457,7 +457,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-            ),
 
             // ── Wake word banner ────────────────────────────────────
             if (_wakeWordEnabled)
