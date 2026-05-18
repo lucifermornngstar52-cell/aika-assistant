@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class AiService {
   // Gemini API ключ
   static const String _geminiKey = 'AIzaSyAOerCk0C4vyAkcenHgefVu9miuijaW46Y';
-  // OpenAI ключ берётся из dart-define если есть
+  // OpenAI ключ передаётся через --dart-define=OPENAI_API_KEY=...
   static const String _openaiKey = String.fromEnvironment('OPENAI_API_KEY');
 
   Future<String> sendMessage(
@@ -69,11 +69,11 @@ class AiService {
     final response = await http.post(
       url,
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_openaiKey',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': 'Bearer \$_openaiKey',
       },
       body: jsonEncode({
-        'model': 'gpt-4o',
+        'model': 'gpt-4o-mini',
         'messages': messages,
         'max_tokens': 512,
         'temperature': 0.8,
@@ -81,9 +81,11 @@ class AiService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('OpenAI error ${response.statusCode}');
+      throw Exception('OpenAI error \${response.statusCode}');
     }
-    final data = jsonDecode(response.body);
+    // Явно декодируем UTF-8 чтобы кириллица не превращалась в кракозябры
+    final body = utf8.decode(response.bodyBytes);
+    final data = jsonDecode(body);
     return data['choices'][0]['message']['content'] as String;
   }
 
@@ -94,7 +96,7 @@ class AiService {
     List<String> history = const [],
   }) async {
     final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$_geminiKey');
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\$_geminiKey');
 
     final contents = <Map<String, dynamic>>[];
     for (final h in history.take(10)) {
@@ -116,14 +118,16 @@ class AiService {
 
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
       body: jsonEncode(body),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Gemini error ${response.statusCode}: ${response.body}');
+      throw Exception('Gemini error \${response.statusCode}: \${response.body}');
     }
-    final data = jsonDecode(response.body);
+    // Явно декодируем UTF-8
+    final responseBody = utf8.decode(response.bodyBytes);
+    final data = jsonDecode(responseBody);
     return data['candidates'][0]['content']['parts'][0]['text'] as String;
   }
 }
