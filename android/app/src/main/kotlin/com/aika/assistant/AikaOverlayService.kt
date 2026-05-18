@@ -94,7 +94,7 @@ class AikaOverlayService : Service() {
                     view.translationY = -bounce.toFloat()
                     view.translationX = (sin(animTick * 0.045) * 6).toFloat()
                     // Scale пульс в ритм
-                    val scl = 1f + (abs(sin(animTick * 0.09)) * 0.08f)
+                    val scl = (1.0 + (abs(sin(animTick * 0.09)) * 0.08)).toFloat()
                     view.scaleX = scl
                     view.scaleY = scl
                 }
