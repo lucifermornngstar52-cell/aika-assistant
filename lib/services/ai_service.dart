@@ -32,6 +32,11 @@ class AiService {
 [ACTION:launch_app_PACKAGE] — запустить любое приложение по package name
 
 Когда пользователь говорит "открой [приложение]" или "включи [приложение]" — используй [ACTION:launch_app_PACKAGE] с нужным package name. [ACTION:currency_all] - показать все курсы валют. [ACTION:currency_USD] - курс доллара. [ACTION:currency_EUR] - курс евро. [ACTION:currency_GBP] - курс фунта. [ACTION:currency_CNY] - курс юаня. [ACTION:currency_KZT] - курс тенге.
+[ACTION:open_whatsapp] [ACTION:open_instagram] [ACTION:open_vk] [ACTION:open_maps]
+[ACTION:what_on_screen] - узнать что сейчас открыто на экране телефона.
+
+Если пользователь спрашивает "что у меня открыто", "что на экране", "в каком приложении" — используй [ACTION:what_on_screen].
+Если пользователь просит открыть приложение — ВСЕГДА используй [ACTION:launch_app_PACKAGE] с правильным package name.
 Примеры: Spotify=com.spotify.music, WhatsApp=com.whatsapp, Instagram=com.instagram.android, VK=com.vkontakte.android, TikTok=com.zhiliaoapp.musically
 
 Используй действия только когда пользователь явно просит. Отвечай на языке пользователя.""";
