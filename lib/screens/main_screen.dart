@@ -14,6 +14,7 @@ import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
+import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
 
 class MainScreen extends StatefulWidget {
@@ -377,6 +378,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openCurrency() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const CurrencyScreen()));
+  }
+
   Future<void> _openSettings() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
     await _loadPrefs();
@@ -486,6 +491,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         ),
                       const SizedBox(width: 4),
                       IconButton(
+                        icon: const Icon(Icons.currency_exchange, color: Colors.white54),
+                        onPressed: _openCurrency,
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.settings_outlined, color: Colors.white54),
                         onPressed: _openSettings,
                       ),
@@ -586,6 +595,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
 
 
 
