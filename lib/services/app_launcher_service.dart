@@ -164,60 +164,46 @@ class AppLauncherService {
        .replaceAll(RegExp(r'[.,!?;:\-]'), '')
        .replaceAll(RegExp(r'\s+'), ' ');
 
-  // Карта явных Activity для приложений которые не открываются через package alone
+  // Карта явных Activity — только проверенные компоненты
   static const Map<String, String> _componentNames = {
-    'com.whatsapp':                        'com.whatsapp/com.whatsapp.HomeActivity',
-    'org.telegram.messenger':              'org.telegram.messenger/org.telegram.ui.LaunchActivity',
-    'com.instagram.android':              'com.instagram.android/com.instagram.mainactivity.MainActivity',
-    'com.vkontakte.android':              'com.vkontakte.android/com.vkontakte.android.VKActivity',
-    'com.zhiliaoapp.musically':           'com.zhiliaoapp.musically/com.zhiliaoapp.musically.app.MainActivity',
-    'com.discord':                         'com.discord/com.discord.app.AppActivity\$Main',
-    'com.spotify.music':                  'com.spotify.music/com.spotify.music.MainActivity',
-    'com.google.android.youtube':         'com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell\$HomeActivity',
-    'com.google.android.apps.youtube.music': 'com.google.android.apps.youtube.music/com.google.android.apps.youtube.music.app.MainActivity',
-    'com.netflix.mediaclient':            'com.netflix.mediaclient/com.netflix.mediaclient.ui.launch.UIWebViewActivity',
-    'tv.twitch.android.app':              'tv.twitch.android.app/tv.twitch.android.app.TwitchMainActivity',
+    'org.telegram.messenger': 'org.telegram.messenger/org.telegram.ui.LaunchActivity',
+    'com.discord':            'com.discord/com.discord.app.AppActivity\$Main',
   };
 
   static Future<String> _launch(String packageName) async {
     try {
+      // Используем явный componentName только если он точно известен
       final component = _componentNames[packageName];
+      if (component != null) {
+        final intent = AndroidIntent(
+          action: 'android.intent.action.MAIN',
+          package: packageName,
+          componentName: component,
+          flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED],
+        );
+        await intent.launch();
+        return 'Открываю';
+      }
+      // Для всех остальных — LAUNCHER intent без componentName (getLaunchIntentForPackage)
       final intent = AndroidIntent(
         action: 'android.intent.action.MAIN',
         package: packageName,
-        componentName: component,
-        flags: [
-          Flag.FLAG_ACTIVITY_NEW_TASK,
-          Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
-        ],
+        flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED],
+        category: 'android.intent.category.LAUNCHER',
       );
       await intent.launch();
       return 'Открываю';
     } catch (e) {
-      // Fallback: попробовать без componentName
       try {
-        final intent = AndroidIntent(
-          action: 'android.intent.action.MAIN',
-          package: packageName,
-          flags: [
-            Flag.FLAG_ACTIVITY_NEW_TASK,
-            Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
-          ],
+        final store = AndroidIntent(
+          action: 'android.intent.action.VIEW',
+          data: 'market://details?id=$packageName',
+          flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
         );
-        await intent.launch();
-        return 'Открываю';
-      } catch (e2) {
-        try {
-          final store = AndroidIntent(
-            action: 'android.intent.action.VIEW',
-            data: 'market://details?id=$packageName',
-            flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
-          );
-          await store.launch();
-          return 'Приложение не найдено, открываю Play Store';
-        } catch (_) {
-          return 'Не удалось открыть приложение';
-        }
+        await store.launch();
+        return 'Приложение не найдено, открываю Play Store';
+      } catch (_) {
+        return 'Не удалось открыть приложение';
       }
     }
   }
