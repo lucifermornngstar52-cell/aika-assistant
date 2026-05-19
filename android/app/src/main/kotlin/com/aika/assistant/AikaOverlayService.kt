@@ -59,6 +59,11 @@ class AikaOverlayService : Service() {
     private val danceFrameCount = 16
     private var danceFrameRunnable: Runnable? = null
 
+    // Stretch frame cycling
+    private var stretchFrame = 0
+    private val stretchFrameCount = 15
+    private var stretchFrameRunnable: Runnable? = null
+
     private var autoReturnJob: Runnable? = null
 
     // ── 60fps animation loop ──────────────────────────────────────────────────
@@ -97,6 +102,12 @@ class AikaOverlayService : Service() {
                     val scl = (1.0 + (abs(sin(animTick * 0.09)) * 0.08)).toFloat()
                     view.scaleX = scl
                     view.scaleY = scl
+                }
+                "stretch" -> {
+                    // Плавное потягивание: лёгкий наклон и вытяжение вверх
+                    view.translationY = (sin(animTick * 0.015) * 5).toFloat()
+                    view.rotation = (sin(animTick * 0.012) * 4).toFloat()
+                    view.translationX = 0f
                 }
                 else -> {
                     view.translationY = (sin(animTick * 0.025) * 9).toFloat()
@@ -233,6 +244,28 @@ class AikaOverlayService : Service() {
         overlayRoot?.scaleY = 1f
     }
 
+    // ── Stretch frame cycling ────────────────────────────────────────────────
+
+    private fun startStretchFrames() {
+        stretchFrame = 0
+        val tick = object : Runnable {
+            override fun run() {
+                if (currentState != "stretch") return
+                val bmp = loadAssetBitmap("aika_stretch${stretchFrame + 1}.png")
+                if (bmp != null) avatarView?.setImageBitmap(bmp)
+                stretchFrame = (stretchFrame + 1) % stretchFrameCount
+                handler.postDelayed(this, 120) // 120ms per frame = smooth stretch
+            }
+        }
+        stretchFrameRunnable = tick
+        handler.post(tick)
+    }
+
+    private fun stopStretchFrames() {
+        stretchFrameRunnable?.let { handler.removeCallbacks(it) }
+        stretchFrameRunnable = null
+    }
+
     // ── State machine ─────────────────────────────────────────────────────────
 
     private fun transitionToState(newState: String) {
@@ -240,17 +273,24 @@ class AikaOverlayService : Service() {
             autoReturnJob?.let { handler.removeCallbacks(it) }
             autoReturnJob = null
 
-            val wasDancing = currentState == "dance"
-            val willDance  = newState == "dance"
+            val wasDancing   = currentState == "dance"
+            val willDance    = newState == "dance"
+            val wasStretching = currentState == "stretch"
+            val willStretch  = newState == "stretch"
 
             if (wasDancing && !willDance) stopDanceFrames()
+            if (wasStretching && !willStretch) stopStretchFrames()
 
             currentState = newState
 
             if (willDance) {
                 // Start dance: show first frame immediately then start cycling
-                loadBitmap("dance1")?.let { avatarView?.setImageBitmap(it) }
+                loadAssetBitmap("aika_dance1.png")?.let { avatarView?.setImageBitmap(it) }
                 startDanceFrames()
+            } else if (willStretch) {
+                // Start stretch animation
+                loadAssetBitmap("aika_stretch1.png")?.let { avatarView?.setImageBitmap(it) }
+                startStretchFrames()
             } else {
                 crossfadeTo(newState)
             }
