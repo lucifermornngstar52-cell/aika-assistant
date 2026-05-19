@@ -6,144 +6,159 @@ import 'dart:convert';
 class AppLauncherService {
   static const _prefsKey = 'custom_app_commands';
 
-  static const Map<String, String> builtinCommands = {
-    // Spotify / Музыка
-    'открой музыку':           'com.spotify.music',
-    'включи музыку':           'com.spotify.music',
-    'запусти музыку':          'com.spotify.music',
-    'открой спотифай':         'com.spotify.music',
-    'открой spotify':          'com.spotify.music',
-    'спотифай':                'com.spotify.music',
-    'spotify':                 'com.spotify.music',
-    // YouTube Music
-    'открой ютуб музыку':      'com.google.android.apps.youtube.music',
-    'ютуб музыка':             'com.google.android.apps.youtube.music',
-    'youtube music':           'com.google.android.apps.youtube.music',
-    // YouTube
-    'открой ютуб':             'com.google.android.youtube',
-    'открой youtube':          'com.google.android.youtube',
-    'включи ютуб':             'com.google.android.youtube',
-    'запусти ютуб':            'com.google.android.youtube',
-    'ютуб':                    'com.google.android.youtube',
-    'youtube':                 'com.google.android.youtube',
-    // TikTok
-    'открой тикток':           'com.zhiliaoapp.musically',
-    'открой tiktok':           'com.zhiliaoapp.musically',
-    'тикток':                  'com.zhiliaoapp.musically',
-    'tiktok':                  'com.zhiliaoapp.musically',
-    // Telegram
-    'открой телеграм':         'org.telegram.messenger',
-    'открой telegram':         'org.telegram.messenger',
-    'запусти телеграм':        'org.telegram.messenger',
-    'телеграм':                'org.telegram.messenger',
-    'telegram':                'org.telegram.messenger',
-    // WhatsApp
-    'открой вацап':            'com.whatsapp',
-    'открой whatsapp':         'com.whatsapp',
-    'вацап':                   'com.whatsapp',
-    'whatsapp':                'com.whatsapp',
-    // VK
-    'открой вк':               'com.vkontakte.android',
-    'открой вконтакте':        'com.vkontakte.android',
-    'вконтакте':               'com.vkontakte.android',
-    'вк':                      'com.vkontakte.android',
-    // Instagram
-    'открой инстаграм':        'com.instagram.android',
-    'открой instagram':        'com.instagram.android',
-    'инстаграм':               'com.instagram.android',
-    'instagram':               'com.instagram.android',
-    // Yandex Music
-    'яндекс музыка':           'ru.yandex.music',
-    'открой яндекс музыку':    'ru.yandex.music',
-    'включи яндекс музыку':    'ru.yandex.music',
-    // Netflix
-    'открой нетфликс':         'com.netflix.mediaclient',
-    'открой netflix':          'com.netflix.mediaclient',
-    'нетфликс':                'com.netflix.mediaclient',
-    // Twitch
-    'открой твич':             'tv.twitch.android.app',
-    'открой twitch':           'tv.twitch.android.app',
-    'твич':                    'tv.twitch.android.app',
-    // Discord
-    'открой дискорд':          'com.discord',
-    'открой discord':          'com.discord',
-    'дискорд':                 'com.discord',
-    // System
-    'открой настройки':        'com.android.settings',
-    'настройки':               'com.android.settings',
-    'открой камеру':           'com.android.camera2',
-    'камера':                  'com.android.camera2',
-    'открой калькулятор':      'com.google.android.calculator',
-    'калькулятор':             'com.google.android.calculator',
-    'открой карты':            'com.google.android.apps.maps',
-    'открой гугл карты':       'com.google.android.apps.maps',
-    'карты':                   'com.google.android.apps.maps',
-    'открой браузер':          'com.android.chrome',
-    'открой хром':             'com.android.chrome',
-    'открой chrome':           'com.android.chrome',
-    'хром':                    'com.android.chrome',
-    'открой файлы':            'com.google.android.documentsui',
-    'открой почту':            'com.google.android.gm',
-    'открой гмейл':            'com.google.android.gm',
-    'открой gmail':            'com.google.android.gm',
-    'открой часы':             'com.google.android.deskclock',
-    'открой будильник':        'com.google.android.deskclock',
-    'будильник':               'com.google.android.deskclock',
-  };
+  // Команды отсортированы от ДЛИННЫХ к КОРОТКИМ —
+  // чтобы "ютуб музыка" проверялась раньше чем "ютуб"
+  // и "яндекс музыку" раньше чем просто "музыку"
+  static const List<MapEntry<String, String>> _orderedCommands = [
+    // === YouTube Music (длиннее — проверяем первым) ===
+    MapEntry('открой ютуб музыку',      'com.google.android.apps.youtube.music'),
+    MapEntry('запусти ютуб музыку',     'com.google.android.apps.youtube.music'),
+    MapEntry('включи ютуб музыку',      'com.google.android.apps.youtube.music'),
+    MapEntry('ютуб музыка',             'com.google.android.apps.youtube.music'),
+    MapEntry('youtube music',           'com.google.android.apps.youtube.music'),
+    // === Yandex Music ===
+    MapEntry('открой яндекс музыку',    'ru.yandex.music'),
+    MapEntry('запусти яндекс музыку',   'ru.yandex.music'),
+    MapEntry('включи яндекс музыку',    'ru.yandex.music'),
+    MapEntry('яндекс музыка',           'ru.yandex.music'),
+    MapEntry('яндекс музыку',           'ru.yandex.music'),
+    // === Spotify ===
+    MapEntry('открой спотифай',         'com.spotify.music'),
+    MapEntry('запусти спотифай',        'com.spotify.music'),
+    MapEntry('открой spotify',          'com.spotify.music'),
+    MapEntry('спотифай',                'com.spotify.music'),
+    MapEntry('spotify',                 'com.spotify.music'),
+    // === YouTube (после YouTube Music!) ===
+    MapEntry('открой ютуб',             'com.google.android.youtube'),
+    MapEntry('включи ютуб',             'com.google.android.youtube'),
+    MapEntry('запусти ютуб',            'com.google.android.youtube'),
+    MapEntry('открой youtube',          'com.google.android.youtube'),
+    MapEntry('ютуб',                    'com.google.android.youtube'),
+    MapEntry('youtube',                 'com.google.android.youtube'),
+    // === Музыка (общая — после всех конкретных!) ===
+    MapEntry('открой музыку',           'com.spotify.music'),
+    MapEntry('включи музыку',           'com.spotify.music'),
+    MapEntry('запусти музыку',          'com.spotify.music'),
+    // === TikTok ===
+    MapEntry('открой тикток',           'com.zhiliaoapp.musically'),
+    MapEntry('открой tiktok',           'com.zhiliaoapp.musically'),
+    MapEntry('тикток',                  'com.zhiliaoapp.musically'),
+    MapEntry('tiktok',                  'com.zhiliaoapp.musically'),
+    // === Telegram ===
+    MapEntry('открой телеграм',         'org.telegram.messenger'),
+    MapEntry('запусти телеграм',        'org.telegram.messenger'),
+    MapEntry('открой telegram',         'org.telegram.messenger'),
+    MapEntry('телеграм',                'org.telegram.messenger'),
+    MapEntry('telegram',                'org.telegram.messenger'),
+    // === WhatsApp ===
+    MapEntry('открой вацап',            'com.whatsapp'),
+    MapEntry('открой whatsapp',         'com.whatsapp'),
+    MapEntry('запусти вацап',           'com.whatsapp'),
+    MapEntry('вацап',                   'com.whatsapp'),
+    MapEntry('whatsapp',                'com.whatsapp'),
+    // === Instagram ===
+    MapEntry('открой инстаграм',        'com.instagram.android'),
+    MapEntry('открой instagram',        'com.instagram.android'),
+    MapEntry('инстаграм',               'com.instagram.android'),
+    MapEntry('instagram',               'com.instagram.android'),
+    // === VKontakte (ТОЛЬКО полные формы — "вк" слишком короткое!) ===
+    MapEntry('открой вконтакте',        'com.vkontakte.android'),
+    MapEntry('открой вк',               'com.vkontakte.android'),
+    MapEntry('запусти вконтакте',       'com.vkontakte.android'),
+    MapEntry('вконтакте',               'com.vkontakte.android'),
+    // === Netflix ===
+    MapEntry('открой нетфликс',         'com.netflix.mediaclient'),
+    MapEntry('открой netflix',          'com.netflix.mediaclient'),
+    MapEntry('нетфликс',                'com.netflix.mediaclient'),
+    MapEntry('netflix',                 'com.netflix.mediaclient'),
+    // === Twitch ===
+    MapEntry('открой твич',             'tv.twitch.android.app'),
+    MapEntry('открой twitch',           'tv.twitch.android.app'),
+    MapEntry('твич',                    'tv.twitch.android.app'),
+    MapEntry('twitch',                  'tv.twitch.android.app'),
+    // === Discord ===
+    MapEntry('открой дискорд',          'com.discord'),
+    MapEntry('открой discord',          'com.discord'),
+    MapEntry('дискорд',                 'com.discord'),
+    MapEntry('discord',                 'com.discord'),
+    // === Google Maps ===
+    MapEntry('открой гугл карты',       'com.google.android.apps.maps'),
+    MapEntry('открой карты',            'com.google.android.apps.maps'),
+    MapEntry('гугл карты',              'com.google.android.apps.maps'),
+    MapEntry('карты',                   'com.google.android.apps.maps'),
+    // === Chrome ===
+    MapEntry('открой браузер',          'com.android.chrome'),
+    MapEntry('открой хром',             'com.android.chrome'),
+    MapEntry('открой chrome',           'com.android.chrome'),
+    MapEntry('хром',                    'com.android.chrome'),
+    // === Gmail ===
+    MapEntry('открой почту',            'com.google.android.gm'),
+    MapEntry('открой гмейл',            'com.google.android.gm'),
+    MapEntry('открой gmail',            'com.google.android.gm'),
+    MapEntry('gmail',                   'com.google.android.gm'),
+    // === Settings ===
+    MapEntry('открой настройки',        'com.android.settings'),
+    MapEntry('настройки',               'com.android.settings'),
+    // === Camera ===
+    MapEntry('открой камеру',           'com.android.camera2'),
+    MapEntry('камера',                  'com.android.camera2'),
+    // === Calculator ===
+    MapEntry('открой калькулятор',      'com.google.android.calculator'),
+    MapEntry('калькулятор',             'com.google.android.calculator'),
+    // === Clock / Alarm ===
+    MapEntry('открой будильник',        'com.google.android.deskclock'),
+    MapEntry('открой часы',             'com.google.android.deskclock'),
+    MapEntry('будильник',               'com.google.android.deskclock'),
+    MapEntry('часы',                    'com.google.android.deskclock'),
+    // === Files ===
+    MapEntry('открой файлы',            'com.google.android.documentsui'),
+  ];
 
-  /// Пытаемся распознать и запустить приложение по фразе.
-  /// Возвращает null если команда не распознана.
+  // Для совместимости с CommandsScreen
+  static Map<String, String> get builtinCommands =>
+      Map.fromEntries(_orderedCommands);
+
+  /// Главный метод — разбираем фразу и запускаем приложение
   static Future<String?> tryLaunch(String phrase) async {
     final normalized = _normalize(phrase);
 
-    // Пользовательские команды — приоритет
+    // 1. Пользовательские команды — приоритет
     final custom = await _loadCustomCommands();
     for (final entry in custom.entries) {
-      if (normalized.contains(_normalize(entry.key))) {
+      if (_matchesPhrase(normalized, _normalize(entry.key))) {
         return await _launch(entry.value);
       }
     }
 
-    // Встроенные команды
-    for (final entry in builtinCommands.entries) {
-      if (normalized.contains(_normalize(entry.key))) {
+    // 2. Встроенные — в порядке от длинных к коротким
+    for (final entry in _orderedCommands) {
+      if (_matchesPhrase(normalized, _normalize(entry.key))) {
         return await _launch(entry.value);
       }
     }
-
-    // Умный разбор: "открой/запусти/включи [название]"
-    final smartResult = await _smartParse(normalized);
-    if (smartResult != null) return smartResult;
 
     return null;
   }
 
-  /// Нормализация: нижний регистр + убираем лишние символы
+  /// Умное сопоставление: ключ должен быть отдельным словом/фразой,
+  /// а не подстрокой внутри другого слова (например "вк" не должно
+  /// триггерить на "включи").
+  static bool _matchesPhrase(String text, String key) {
+    if (!text.contains(key)) return false;
+
+    // Проверяем что вокруг ключа — пробелы или начало/конец строки
+    final idx = text.indexOf(key);
+    final before = idx == 0 ? true : text[idx - 1] == ' ';
+    final after  = (idx + key.length) >= text.length ? true
+                  : text[idx + key.length] == ' ';
+    return before && after;
+  }
+
+  /// Нормализация текста
   static String _normalize(String s) =>
       s.toLowerCase().trim()
-       .replaceAll(RegExp(r'[.,!?;:]'), '')
+       .replaceAll(RegExp(r'[.,!?;:\-]'), '')
        .replaceAll(RegExp(r'\s+'), ' ');
-
-  /// Умный разбор: ищем ключевое слово после глагола
-  static Future<String?> _smartParse(String normalized) async {
-    final verbs = ['открой', 'запусти', 'включи', 'покажи', 'запусти', 'открыть'];
-    for (final verb in verbs) {
-      if (normalized.startsWith(verb)) {
-        final rest = normalized.substring(verb.length).trim();
-        if (rest.isEmpty) continue;
-        // Ищем rest в builtin как ключевое слово
-        for (final entry in builtinCommands.entries) {
-          final key = _normalize(entry.key);
-          // Убираем глагол из ключа и сравниваем
-          final keyRest = key.replaceFirst(RegExp(r'^(открой|запусти|включи|покажи)\s*'), '');
-          if (keyRest.isNotEmpty && rest.contains(keyRest)) {
-            return await _launch(entry.value);
-          }
-        }
-      }
-    }
-    return null;
-  }
 
   static Future<String> _launch(String packageName) async {
     try {
