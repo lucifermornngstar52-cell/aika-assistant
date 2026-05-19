@@ -74,7 +74,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _initServices() async {
     await _speechService.initialize();
     await _wakeWordService.initialize();
-    _wakeWordService.initWithSharedStt(_speechService.sharedStt);
+    // initWithSharedStt больше не нужен — WakeWordService имеет свой STT
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
@@ -82,6 +82,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _recheckAccessibilityPermission();
     _startMusicPolling();
     _resetIdleTimer();
+    // Автозапуск постоянного прослушивания wake word
+    Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
+  }
+
+  Future<void> _autoStartWakeWord() async {
+    if (_wakeWordEnabled) return;
+    await _wakeWordService.startListening(() {
+      if (!_isListening && !_isThinking) _onWakeWordDetected();
+    });
+    if (mounted) setState(() => _wakeWordEnabled = true);
   }
 
   Future<void> _recheckOverlayPermission() async {
@@ -666,6 +676,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
 
 
 
