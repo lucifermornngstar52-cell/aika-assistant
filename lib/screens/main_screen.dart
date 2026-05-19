@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../services/app_launcher_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -396,6 +397,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _stopDance();
     }
 
+    // ── Сначала проверяем локальные команды запуска приложений ──
+    final appLaunchResult = await AppLauncherService.tryLaunch(text);
+    if (appLaunchResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: appLaunchResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(appLaunchResult);
+      return;
+    }
+
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       role: MessageRole.user,
@@ -676,6 +696,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
 
 
 
