@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 
-/// Коллбэк: pkg, label -> реакция Айки (текст) или null (молчать)
 typedef ScreenReactionCallback = void Function(String reaction);
 
 class ScreenWatcherService {
@@ -12,8 +11,12 @@ class ScreenWatcherService {
   static String _currentLabel   = '';
   static StreamSubscription? _sub;
 
-  // Последний пакет для которого уже сказали реакцию (чтобы не повторять)
+  // Последний пакет на который среагировали + время реакции
   static String _lastReactedPackage = '';
+  static DateTime? _lastReactionTime;
+
+  // Минимальный интервал между реакциями на ОДНО И ТО ЖЕ приложение — 5 минут
+  static const _cooldown = Duration(minutes: 5);
 
   static Map<String, String>? getCurrentAppInfo() {
     if (_currentPackage.isEmpty) return null;
@@ -23,22 +26,31 @@ class ScreenWatcherService {
   static String get currentPackage => _currentPackage;
   static String get currentLabel   => _currentLabel;
 
-  /// Запустить прослушивание. [onReaction] вызывается когда Айке есть что сказать.
   static void startWatching({ScreenReactionCallback? onReaction}) {
     _sub?.cancel();
     _sub = _eventChannel.receiveBroadcastStream().listen((event) {
       if (event is! Map) return;
       final pkg   = (event['package'] ?? '') as String;
       final label = (event['label']   ?? '') as String;
-      if (pkg.isEmpty || pkg == _currentPackage) return;
+      if (pkg.isEmpty) return;
 
+      // Обновляем текущее приложение
       _currentPackage = pkg;
       _currentLabel   = label;
 
-      if (onReaction != null && pkg != _lastReactedPackage) {
+      if (onReaction == null) return;
+
+      final now = DateTime.now();
+      final isSamePkg = pkg == _lastReactedPackage;
+      final cooldownExpired = _lastReactionTime == null ||
+          now.difference(_lastReactionTime!) > _cooldown;
+
+      // Реагируем если: другое приложение ИЛИ то же но прошло >5 мин
+      if (!isSamePkg || cooldownExpired) {
         final reaction = _buildReaction(pkg, label);
         if (reaction != null) {
           _lastReactedPackage = pkg;
+          _lastReactionTime   = now;
           onReaction(reaction);
         }
       }
@@ -60,10 +72,8 @@ class ScreenWatcherService {
     try { await _channel.invokeMethod('openAccessibilitySettings'); } catch (_) {}
   }
 
-  /// Реакции на конкретные приложения
   static String? _buildReaction(String pkg, String label) {
     switch (pkg) {
-      // Развлечения
       case 'com.google.android.youtube':
         return 'О, ютуб открыл. Что смотришь?';
       case 'com.zhiliaoapp.musically':
@@ -73,8 +83,6 @@ class ScreenWatcherService {
         return 'Музыка — хороший выбор. Сказать танцевать?';
       case 'com.netflix.mediaclient':
         return 'Netflix! Кино или сериал?';
-
-      // Соцсети
       case 'com.instagram.android':
         return 'Инстаграм. Листаем ленту?';
       case 'com.vkontakte.android':
@@ -83,8 +91,6 @@ class ScreenWatcherService {
         return 'Телеграм. Есть что-то важное?';
       case 'com.whatsapp':
         return 'Вацап. Не забудь ответить всем 😏';
-
-      // Работа / учёба
       case 'com.google.android.apps.docs':
         return 'Гугл документы. Работаем?';
       case 'com.google.android.apps.spreadsheets':
@@ -94,20 +100,15 @@ class ScreenWatcherService {
         return 'Office открыт. Помочь с чем-нибудь?';
       case 'com.android.chrome':
         return null; // Браузер — слишком часто, молчим
-
-      // Игры (по ключевым словам в label)
       default:
-        if (_isGamePackage(pkg, label)) {
-          return 'Игра? Удачи! 🎮';
-        }
-        // Всё остальное — молчим, не раздражаем
+        if (_isGamePackage(pkg, label)) return 'Игра? Удачи! 🎮';
         return null;
     }
   }
 
   static bool _isGamePackage(String pkg, String label) {
-    final gameKeywords = ['game', 'games', 'play', 'clash', 'pubg', 'brawl', 'arena'];
+    final keywords = ['game', 'games', 'play', 'clash', 'pubg', 'brawl', 'arena'];
     final lower = pkg.toLowerCase();
-    return gameKeywords.any((k) => lower.contains(k));
+    return keywords.any((k) => lower.contains(k));
   }
 }
