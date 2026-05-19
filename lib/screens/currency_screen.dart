@@ -109,7 +109,7 @@ class _CurrencyCard extends StatelessWidget {
   // Генерируем псевдо-историю на основе текущего курса (±3%) для визуала
   // Реальная история требует отдельного API — добавим на следующем шаге
   List<double> _fakeHistory() {
-    final r = Random(rate.code.codeUnits.fold(0, (a, b) => a + b));
+    final r = Random(rate.code.codeUnits.fold<int>(0, (a, b) => a + b));
     final base = rate.rateToRub;
     return List.generate(7, (i) {
       final delta = (r.nextDouble() - 0.48) * base * 0.06;
