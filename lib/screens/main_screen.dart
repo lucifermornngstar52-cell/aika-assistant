@@ -39,14 +39,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _isDancing = false;
+  bool _isStretching = false;
   Timer? _musicTimer;
+  Timer? _idleTimer;      // Таймер бездействия → stretch
   String _assistantName = 'Aika';
   String _userName = '';
 
   AikaState get _avatarState {
-    if (_isDancing)   return AikaState.dance;
-    if (_isListening) return AikaState.listening;
-    if (_isThinking)  return AikaState.thinking;
+    if (_isDancing)    return AikaState.dance;
+    if (_isListening)  return AikaState.listening;
+    if (_isThinking)   return AikaState.thinking;
+    if (_isStretching) return AikaState.stretch;
     return AikaState.idle;
   }
 
@@ -73,6 +76,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _sendGreeting();
     await _recheckOverlayPermission();
     _startMusicPolling();
+    _resetIdleTimer();
   }
 
   Future<void> _recheckOverlayPermission() async {
@@ -142,6 +146,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onWakeWordDetected() async {
+    _resetIdleTimer();
     await OverlayService.showOverlay(state: 'listening');
     await _speak('Да?');
     setState(() => _isListening = true);
@@ -176,6 +181,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (voice != null) await _tts.setVoice({'name': voice, 'locale': 'ru-RU'});
   }
 
+
+  /// Сбрасывает таймер бездействия. Вызывается после каждого действия.
+  void _resetIdleTimer() {
+    _idleTimer?.cancel();
+    if (mounted && _isStretching) setState(() => _isStretching = false);
+    _idleTimer = Timer(const Duration(seconds: 30), () {
+      if (mounted && !_isListening && !_isThinking && !_isDancing) {
+        setState(() => _isStretching = true);
+        // Через 3 секунды возвращаемся в idle
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _isStretching = false);
+        });
+      }
+    });
+  }
 
   void _startMusicPolling() {
     _musicTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
@@ -260,6 +280,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _textController.clear();
+    _resetIdleTimer(); // Активность — сбрасываем stretch таймер
 
     // Проверяем команду танца
     final lower = text.trim().toLowerCase();
@@ -371,6 +392,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _textController.dispose();
     _tts.stop();
     _musicTimer?.cancel();
+    _idleTimer?.cancel();
     _deviceService.dispose();
     _wakeWordService.stop();
     super.dispose();
@@ -564,5 +586,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
 
 
