@@ -50,10 +50,14 @@ class AppLauncherService {
     MapEntry('открой telegram',         'org.telegram.messenger'),
     MapEntry('телеграм',                'org.telegram.messenger'),
     MapEntry('telegram',                'org.telegram.messenger'),
-    // === WhatsApp ===
+    // === WhatsApp (вацап / ватсап / ватсап — все варианты STT) ===
+    MapEntry('открой ватсап',           'com.whatsapp'),
     MapEntry('открой вацап',            'com.whatsapp'),
     MapEntry('открой whatsapp',         'com.whatsapp'),
+    MapEntry('запусти ватсап',          'com.whatsapp'),
     MapEntry('запусти вацап',           'com.whatsapp'),
+    MapEntry('включи ватсап',           'com.whatsapp'),
+    MapEntry('ватсап',                  'com.whatsapp'),
     MapEntry('вацап',                   'com.whatsapp'),
     MapEntry('whatsapp',                'com.whatsapp'),
     // === Instagram ===
@@ -213,3 +217,4 @@ class AppLauncherService {
     return {...builtinCommands, ...custom};
   }
 }
+
