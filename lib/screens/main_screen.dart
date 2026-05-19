@@ -268,13 +268,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   /// Сбрасывает таймер бездействия. Вызывается после каждого действия.
   void _resetIdleTimer() {
     _idleTimer?.cancel();
-    if (mounted && _isStretching) setState(() => _isStretching = false);
+    if (mounted && _isStretching) {
+      setState(() => _isStretching = false);
+      OverlayService.updateState('idle');
+    }
     _idleTimer = Timer(const Duration(seconds: 30), () {
       if (mounted && !_isListening && !_isThinking && !_isDancing) {
         setState(() => _isStretching = true);
+        OverlayService.updateState('stretch');
         // Через 3 секунды возвращаемся в idle
         Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) setState(() => _isStretching = false);
+          if (mounted) {
+            setState(() => _isStretching = false);
+            OverlayService.updateState('idle');
+          }
         });
       }
     });
