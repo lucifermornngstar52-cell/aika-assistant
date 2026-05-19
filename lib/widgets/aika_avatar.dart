@@ -43,7 +43,6 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     'assets/images/aika_dance13.png',
     'assets/images/aika_dance14.png',
     'assets/images/aika_dance15.png',
-    'assets/images/aika_dance16.png',
   ];
 
   // 15 спрайтов анимации растяжки
@@ -334,3 +333,4 @@ class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderState
         decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
   );
 }
+
