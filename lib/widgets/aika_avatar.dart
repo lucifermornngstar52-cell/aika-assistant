@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-enum AikaState { idle, listening, thinking, greeting, dance }
+enum AikaState { idle, listening, thinking, greeting, dance, stretch }
 
 class AikaAvatar extends StatefulWidget {
   final AikaState state;
@@ -23,7 +23,9 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
   late Animation<double> _popAnim;
 
   int _danceFrame = 0;
+  int _stretchFrame = 0;
   Timer? _danceTimer;
+  Timer? _stretchTimer;
 
   static const _danceSprites = [
     'assets/images/aika_dance1.png',
@@ -44,6 +46,25 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     'assets/images/aika_dance16.png',
   ];
 
+  // 15 спрайтов анимации растяжки
+  static const _stretchSprites = [
+    'assets/images/aika_stretch1.png',
+    'assets/images/aika_stretch2.png',
+    'assets/images/aika_stretch3.png',
+    'assets/images/aika_stretch4.png',
+    'assets/images/aika_stretch5.png',
+    'assets/images/aika_stretch6.png',
+    'assets/images/aika_stretch7.png',
+    'assets/images/aika_stretch8.png',
+    'assets/images/aika_stretch9.png',
+    'assets/images/aika_stretch10.png',
+    'assets/images/aika_stretch11.png',
+    'assets/images/aika_stretch12.png',
+    'assets/images/aika_stretch13.png',
+    'assets/images/aika_stretch14.png',
+    'assets/images/aika_stretch15.png',
+  ];
+
   String get _currentSprite {
     switch (widget.state) {
       case AikaState.idle:      return 'assets/images/aika_idle.png';
@@ -51,6 +72,7 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
       case AikaState.thinking:  return 'assets/images/aika_think.png';
       case AikaState.greeting:  return 'assets/images/aika_wave.png';
       case AikaState.dance:     return _danceSprites[_danceFrame];
+      case AikaState.stretch:   return _stretchSprites[_stretchFrame];
     }
   }
 
@@ -83,11 +105,11 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     );
 
     if (widget.state == AikaState.dance) _startDanceTimer();
+    if (widget.state == AikaState.stretch) _startStretchTimer();
   }
 
   void _startDanceTimer() {
     _danceTimer?.cancel();
-    // 16 frames at ~280ms each = smooth animation loop
     _danceTimer = Timer.periodic(const Duration(milliseconds: 280), (_) {
       if (mounted && widget.state == AikaState.dance) {
         setState(() => _danceFrame = (_danceFrame + 1) % _danceSprites.length);
@@ -101,6 +123,24 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     _danceFrame = 0;
   }
 
+  void _startStretchTimer() {
+    _stretchTimer?.cancel();
+    _stretchFrame = 0;
+    // 15 кадров по 120ms = ~1.8 секунды на один цикл, плавно
+    _stretchTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+      if (!mounted || widget.state != AikaState.stretch) return;
+      setState(() {
+        _stretchFrame = (_stretchFrame + 1) % _stretchSprites.length;
+      });
+    });
+  }
+
+  void _stopStretchTimer() {
+    _stretchTimer?.cancel();
+    _stretchTimer = null;
+    _stretchFrame = 0;
+  }
+
   @override
   void didUpdateWidget(AikaAvatar old) {
     super.didUpdateWidget(old);
@@ -111,6 +151,11 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
       } else {
         _stopDanceTimer();
       }
+      if (widget.state == AikaState.stretch) {
+        _startStretchTimer();
+      } else {
+        _stopStretchTimer();
+      }
     }
   }
 
@@ -120,12 +165,14 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     _danceCtrl.dispose();
     _popCtrl.dispose();
     _danceTimer?.cancel();
+    _stretchTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDancing = widget.state == AikaState.dance;
+    final isDancing  = widget.state == AikaState.dance;
+    final isStretching = widget.state == AikaState.stretch;
 
     return SizedBox(
       width: widget.size,
@@ -136,7 +183,7 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
         builder: (ctx, child) {
           final rotation = isDancing ? (_danceSwing.value * 3.14159 / 180) : 0.0;
           final scale    = _popAnim.value;
-          final dy       = isDancing ? 0.0 : _floatAnim.value;
+          final dy       = (isDancing || isStretching) ? 0.0 : _floatAnim.value;
 
           return Transform.translate(
             offset: Offset(0, dy),
@@ -160,12 +207,16 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                   BoxShadow(
                     color: isDancing
                         ? Colors.pinkAccent.withOpacity(0.5)
-                        : widget.state == AikaState.listening
-                            ? AikaTheme.neonPurple.withOpacity(0.55)
-                            : AikaTheme.neonBlue.withOpacity(0.22),
+                        : isStretching
+                            ? Colors.purpleAccent.withOpacity(0.35)
+                            : widget.state == AikaState.listening
+                                ? AikaTheme.neonPurple.withOpacity(0.55)
+                                : AikaTheme.neonBlue.withOpacity(0.22),
                     blurRadius: isDancing ? 60
+                        : isStretching ? 40
                         : widget.state == AikaState.listening ? 50 : 28,
                     spreadRadius: isDancing ? 16
+                        : isStretching ? 8
                         : widget.state == AikaState.listening ? 12 : 4,
                   ),
                 ],
@@ -173,12 +224,12 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
             ),
             // Sprite
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
+              duration: const Duration(milliseconds: 80),
               transitionBuilder: (child, anim) =>
                   FadeTransition(opacity: anim, child: child),
               child: Image.asset(
                 _currentSprite,
-                key: ValueKey('${widget.state}_$_danceFrame'),
+                key: ValueKey('${widget.state}_${_danceFrame}_${_stretchFrame}'),
                 width: widget.size,
                 height: widget.size * 1.3,
                 fit: BoxFit.contain,
@@ -205,6 +256,20 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
         ),
         child: const Text('🎵 Танцую!',
             style: TextStyle(color: Colors.pinkAccent, fontSize: 11,
+                fontWeight: FontWeight.bold)),
+      );
+    }
+    if (widget.state == AikaState.stretch) {
+      return Container(
+        key: const ValueKey('stretch'),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.purple.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.purpleAccent.withOpacity(0.7), width: 1.2),
+        ),
+        child: const Text('🙆 Потягиваюсь~',
+            style: TextStyle(color: Colors.purpleAccent, fontSize: 11,
                 fontWeight: FontWeight.bold)),
       );
     }
