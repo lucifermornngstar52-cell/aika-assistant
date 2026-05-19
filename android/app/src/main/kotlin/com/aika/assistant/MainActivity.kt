@@ -1,7 +1,9 @@
 package com.aika.assistant
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -9,11 +11,17 @@ import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val OVERLAY_CHANNEL = "com.aika.assistant/overlay"
-    private val AUDIO_CHANNEL = "aika/audio"
+    private val OVERLAY_CHANNEL  = "com.aika.assistant/overlay"
+    private val AUDIO_CHANNEL    = "aika/audio"
+    private val SCREEN_CHANNEL   = "com.aika.assistant/screen"
+    private val SCREEN_EVENTS    = "com.aika.assistant/screen_events"
+
+    private var screenEventSink: EventChannel.EventSink? = null
+    private var screenReceiver: BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -22,22 +30,19 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "hasPermission" -> result.success(hasOverlayPermission())
-                    "requestPermission" -> {
-                        requestOverlayPermission()
-                        result.success(null)
-                    }
-                    "showOverlay" -> {
+                    "hasPermission"      -> result.success(hasOverlayPermission())
+                    "requestPermission"  -> { requestOverlayPermission(); result.success(null) }
+                    "showOverlay"        -> {
                         val state = call.argument<String>("state") ?: "idle"
                         startOverlayService(AikaOverlayService.ACTION_SHOW, state)
                         result.success(null)
                     }
-                    "updateOverlay" -> {
+                    "updateOverlay"      -> {
                         val state = call.argument<String>("state") ?: "idle"
                         startOverlayService(AikaOverlayService.ACTION_UPDATE, state)
                         result.success(null)
                     }
-                    "hideOverlay" -> {
+                    "hideOverlay"        -> {
                         startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
                         result.success(null)
                     }
@@ -45,7 +50,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // ── Audio channel — определяем играет ли музыка ─────────
+        // ── Audio channel ────────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -56,6 +61,60 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // ── Screen method channel (accessibility status) ─────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isAccessibilityEnabled" -> {
+                        result.success(isAccessibilityServiceEnabled())
+                    }
+                    "openAccessibilitySettings" -> {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        })
+                        result.success(null)
+                    }
+                    "getCurrentApp" -> {
+                        result.success(mapOf(
+                            "package" to AikaAccessibilityService.currentPackage,
+                            "label"   to AikaAccessibilityService.currentAppLabel
+                        ))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Screen event channel (поток событий смены приложения) ─
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+                    screenEventSink = sink
+                    screenReceiver = object : BroadcastReceiver() {
+                        override fun onReceive(ctx: Context?, intent: Intent?) {
+                            if (intent?.action == AikaAccessibilityService.ACTION_SCREEN_EVENT) {
+                                sink?.success(mapOf(
+                                    "package" to (intent.getStringExtra(AikaAccessibilityService.EXTRA_PACKAGE) ?: ""),
+                                    "label"   to (intent.getStringExtra(AikaAccessibilityService.EXTRA_LABEL) ?: ""),
+                                    "event"   to (intent.getStringExtra(AikaAccessibilityService.EXTRA_EVENT_TYPE) ?: "")
+                                ))
+                            }
+                        }
+                    }
+                    val filter = IntentFilter(AikaAccessibilityService.ACTION_SCREEN_EVENT)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        registerReceiver(screenReceiver, filter)
+                    }
+                }
+
+                override fun onCancel(args: Any?) {
+                    screenReceiver?.let { unregisterReceiver(it) }
+                    screenEventSink = null
+                    screenReceiver = null
+                }
+            })
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,17 +126,17 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
-            startOverlayService(AikaOverlayService.ACTION_SHOW, "idle")
-        } else if (hasOverlayPermission() && AikaOverlayService.isRunning) {
-            startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
+        if (hasOverlayPermission()) {
+            if (!AikaOverlayService.isRunning)
+                startOverlayService(AikaOverlayService.ACTION_SHOW, "idle")
+            else
+                startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
         }
     }
 
     private fun hasOverlayPermission(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            Settings.canDrawOverlays(this)
-        else true
+            Settings.canDrawOverlays(this) else true
 
     private fun requestOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -94,10 +153,16 @@ class MainActivity : FlutterActivity() {
             this.action = action
             putExtra(AikaOverlayService.EXTRA_STATE, state)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            startForegroundService(intent) else startService(intent)
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val serviceName = "$packageName/${AikaAccessibilityService::class.java.canonicalName}"
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.split(":").any { it.equals(serviceName, ignoreCase = true) }
     }
 }
