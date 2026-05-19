@@ -41,6 +41,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
+  bool _screenCommentsEnabled = true; // Айка комментирует смену приложений
   bool _isDancing = false;
   bool _isStretching = false;
   Timer? _musicTimer;
@@ -102,7 +103,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final has = await ScreenWatcherService.isAccessibilityEnabled();
     if (mounted) setState(() => _hasAccessibilityPermission = has);
     if (has) {
-      ScreenWatcherService.startWatching();
+      ScreenWatcherService.startWatching(
+        onReaction: (reaction) {
+          if (!_screenCommentsEnabled) return;
+          if (!_isListening && !_isThinking && !_isDancing) {
+            // Добавляем сообщение в чат и говорим
+            _addMessage(ChatMessage(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              role: MessageRole.aika,
+              content: reaction,
+              timestamp: DateTime.now(),
+            ));
+            _speak(reaction);
+            OverlayService.updateState('greeting');
+            Future.delayed(const Duration(seconds: 3), () {
+              OverlayService.updateState('idle');
+            });
+          }
+        },
+      );
     } else {
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
