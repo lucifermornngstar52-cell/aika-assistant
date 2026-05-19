@@ -31,7 +31,7 @@ class AiService {
 [ACTION:battery] [ACTION:search_запрос]
 [ACTION:launch_app_PACKAGE] — запустить любое приложение по package name
 
-Когда пользователь говорит "открой [приложение]" или "включи [приложение]" — используй [ACTION:launch_app_PACKAGE] с нужным package name.
+Когда пользователь говорит "открой [приложение]" или "включи [приложение]" — используй [ACTION:launch_app_PACKAGE] с нужным package name. [ACTION:currency_all] - показать все курсы валют. [ACTION:currency_USD] - курс доллара. [ACTION:currency_EUR] - курс евро. [ACTION:currency_GBP] - курс фунта. [ACTION:currency_CNY] - курс юаня. [ACTION:currency_KZT] - курс тенге.
 Примеры: Spotify=com.spotify.music, WhatsApp=com.whatsapp, Instagram=com.instagram.android, VK=com.vkontakte.android, TikTok=com.zhiliaoapp.musically
 
 Используй действия только когда пользователь явно просит. Отвечай на языке пользователя.""";
@@ -82,3 +82,4 @@ class AiService {
     return data['choices'][0]['message']['content'] as String;
   }
 }
+
