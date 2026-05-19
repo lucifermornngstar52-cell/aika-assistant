@@ -5,9 +5,11 @@ import 'package:volume_controller/volume_controller.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_launcher_service.dart';
+import 'currency_service.dart';
 
 class DeviceService {
   final Battery _battery = Battery();
+  final CurrencyService _currencyService = CurrencyService();
   bool _flashlightOn = false;
   double _currentVolume = 0.5;
 
@@ -99,6 +101,14 @@ class DeviceService {
         final level = await _battery.batteryLevel;
         return 'Заряд батареи: $level%';
       default:
+        if (action.startsWith('currency_')) {
+          final code = action.substring('currency_'.length).toUpperCase();
+          if (code == 'ALL') {
+            return await _currencyService.getRatesText();
+          } else {
+            return await _currencyService.getSingleRate(code);
+          }
+        }
         if (action.startsWith('search_')) {
           final query = action.substring(7);
           await _launchUrl('https://google.com/search?q=$query');
