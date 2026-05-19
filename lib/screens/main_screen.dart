@@ -16,6 +16,7 @@ import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
+import '../services/screen_watcher_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -39,6 +40,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _isThinking = false;
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
+  bool _hasAccessibilityPermission = false;
   bool _isDancing = false;
   bool _isStretching = false;
   Timer? _musicTimer;
@@ -76,6 +78,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _loadPrefs();
     _sendGreeting();
     await _recheckOverlayPermission();
+    await _recheckAccessibilityPermission();
     _startMusicPolling();
     _resetIdleTimer();
   }
@@ -93,6 +96,55 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (mounted && !_hasOverlayPermission) _showOverlayPermissionDialog();
       });
     }
+  }
+
+  Future<void> _recheckAccessibilityPermission() async {
+    final has = await ScreenWatcherService.isAccessibilityEnabled();
+    if (mounted) setState(() => _hasAccessibilityPermission = has);
+    if (has) {
+      ScreenWatcherService.startWatching();
+    } else {
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
+      });
+    }
+  }
+
+  void _showAccessibilityDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AikaTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AikaTheme.neonPurple.withOpacity(0.4)),
+        ),
+        title: Text('Отслеживание экрана',
+            style: TextStyle(color: AikaTheme.neonPurple, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Разреши Айке видеть какое приложение открыто — она сможет помогать в контексте.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Не сейчас', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AikaTheme.neonPurple.withOpacity(0.2),
+              side: BorderSide(color: AikaTheme.neonPurple),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScreenWatcherService.openAccessibilitySettings();
+            },
+            child: const Text('Включить', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showOverlayPermissionDialog() {
