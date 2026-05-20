@@ -8,23 +8,45 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/android/app/release.keystore
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
-          channel: 'stable'
+          flutter-version: '3.29.0'
+          channel: stable
+
+      - name: Create local.properties
+        run: |
+          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> android/local.properties
+
+      - name: Decode and create release keystore
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+          fi
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Build APK
         run: |
-          flutter build apk --release \
-            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          flutter build apk --release --dart-define=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
