@@ -996,3 +996,4 @@ class _SendCommand {
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
 
+
