@@ -24,6 +24,9 @@ import '../services/screen_watcher_service.dart';
 import '../services/people_memory_service.dart';
 import '../services/reminder_service.dart';
 import '../services/mood_service.dart';
+import '../services/game_service.dart';
+import '../services/alarm_service.dart';
+import '../services/briefing_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -41,6 +44,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final PeopleMemoryService _peopleMemory = PeopleMemoryService();
   final ReminderService _reminderService = ReminderService();
   final MoodService _moodService = MoodService();
+  final GameService _gameService = GameService();
+  final AlarmService _alarmService = AlarmService();
+  final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
@@ -94,6 +100,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _resetIdleTimer();
     // Инициализируем новые сервисы
     await _reminderService.initialize();
+    await _alarmService.initialize();
+    _alarmService.onAlarmFired = (text) {
+      if (!mounted) return;
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _speak(text);
+    };
     _reminderService.onReminderFired = (text) {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -560,6 +577,71 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _stopDance();
     }
 
+    // ── Мини-игры голосом ──
+    final gameResult = _gameService.tryHandleGame(text);
+    if (gameResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: gameResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(gameResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
+    // ── Будильник ──
+    final alarmResult = await _alarmService.tryParseAlarm(text);
+    if (alarmResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: alarmResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(alarmResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
+    // ── Утренний брифинг ──
+    if (_briefingService.isBriefingRequest(text)) {
+      setState(() { _isThinking = true; });
+      try {
+        final briefing = await _briefingService.getMorningBriefing();
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.user,
+          content: text,
+          timestamp: DateTime.now(),
+        ));
+        _addMessage(ChatMessage(
+          id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+          role: MessageRole.aika,
+          content: briefing,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(briefing);
+        _moodService.onUserSpoke();
+      } finally {
+        setState(() { _isThinking = false; });
+      }
+      return;
+    }
+
     // ── Проверяем напоминания/таймеры ──
     final reminderResult = await _reminderService.tryParseReminder(text);
     if (reminderResult != null) {
@@ -913,3 +995,4 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
