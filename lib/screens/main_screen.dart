@@ -802,3 +802,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
+
+/// Команда отправки сообщения — парсится из голосовой команды
+class _SendCommand {
+  final String app;
+  final String contact;
+  final String message;
+  const _SendCommand({required this.app, required this.contact, required this.message});
+}
