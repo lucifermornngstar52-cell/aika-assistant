@@ -1,11 +1,6 @@
 package com.aika.assistant
 
 import android.content.BroadcastReceiver
-import android.content.ComponentName
-import android.media.AudioManager
-import android.media.session.MediaController
-import android.media.session.MediaSessionManager
-import android.view.KeyEvent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -122,7 +117,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "mediaControl" -> {
                         val action = call.argument<String>("action") ?: ""
-                        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
                         val keyCode = when (action) {
                             "play"     -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY
                             "pause"    -> android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
@@ -132,8 +127,10 @@ class MainActivity : FlutterActivity() {
                             else       -> -1
                         }
                         if (keyCode != -1) {
-                            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                            val down = android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode)
+                            val up   = android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode)
+                            am.dispatchMediaKeyEvent(down)
+                            am.dispatchMediaKeyEvent(up)
                         }
                         result.success(null)
                     }
