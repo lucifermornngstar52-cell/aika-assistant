@@ -1,7 +1,5 @@
-import 'weather_service.dart';
 
 class BriefingService {
-  final WeatherService _weatherService = WeatherService();
 
   /// Утренний брифинг — погода + мотивация
   Future<String> getMorningBriefing({String city = ''}) async {
@@ -15,12 +13,6 @@ class BriefingService {
     buf.writeln('Сегодня $dayName, $dateStr.');
     buf.writeln('');
 
-    // Погода
-    try {
-      final weather = await _weatherService.getWeather(city: city);
-      buf.writeln('☀️ Погода:');
-      buf.writeln(weather);
-      buf.writeln('');
     } catch (e) {
       buf.writeln('☁️ Погоду не удалось получить.');
       buf.writeln('');
@@ -77,3 +69,4 @@ class BriefingService {
         t.contains('что нового сегодня');
   }
 }
+
