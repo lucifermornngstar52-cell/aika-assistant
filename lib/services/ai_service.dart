@@ -17,6 +17,40 @@ class AiService {
     String screenContext = '',
     String openAiKey = '',
   }) async {
+    // GPT is primary, Gemini is fallback
+    if (openAiKey.isNotEmpty) {
+      try {
+        return await _callOpenAi(
+          message,
+          userName: userName,
+          assistantName: assistantName,
+          history: history,
+          memoryContext: memoryContext,
+          screenContext: screenContext,
+          openAiKey: openAiKey,
+        );
+      } catch (e) {
+        final errStr = e.toString();
+        // Fallback to Gemini on rate limit or server errors
+        if (errStr.contains('429') || errStr.contains('503') || errStr.contains('quota')) {
+          try {
+            return await _callGemini(
+              message,
+              userName: userName,
+              assistantName: assistantName,
+              history: history,
+              memoryContext: memoryContext,
+              screenContext: screenContext,
+            );
+          } catch (e2) {
+            throw Exception('AI недоступен: GPT — $e | Gemini — $e2');
+          }
+        }
+        throw Exception('AI недоступен: $e');
+      }
+    }
+
+    // No OpenAI key — use Gemini directly
     try {
       return await _callGemini(
         message,
@@ -27,22 +61,6 @@ class AiService {
         screenContext: screenContext,
       );
     } catch (e) {
-      final errStr = e.toString();
-      if ((errStr.contains('429') || errStr.contains('503') || errStr.contains('quota')) && openAiKey.isNotEmpty) {
-        try {
-          return await _callOpenAi(
-            message,
-            userName: userName,
-            assistantName: assistantName,
-            history: history,
-            memoryContext: memoryContext,
-            screenContext: screenContext,
-            openAiKey: openAiKey,
-          );
-        } catch (e2) {
-          throw Exception('AI недоступен: Gemini — $e | GPT — $e2');
-        }
-      }
       throw Exception('AI недоступен: $e');
     }
   }
@@ -97,7 +115,7 @@ class AiService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Gemini error \${response.statusCode}: \${utf8.decode(response.bodyBytes)}');
+      throw Exception('Gemini error ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -148,7 +166,7 @@ class AiService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('OpenAI error \${response.statusCode}: \${utf8.decode(response.bodyBytes)}');
+      throw Exception('OpenAI error ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
