@@ -2,22 +2,22 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Долгосрочная память Айки о людях и фактах.
-/// Хранит: имена, отношения, факты, заметки.
 class PeopleMemoryService {
-  static const _keyPeople  = 'aika_people_memory';
-  static const _keyFacts   = 'aika_facts_memory';
+  static const _keyPeople = 'aika_people_memory';
+  static const _keyFacts  = 'aika_facts_memory';
 
-  // ──────────────────────── ЛЮДИ ────────────────────────
+  // ──────────────── ЛЮДИ ────────────────
 
-  /// Добавить или обновить человека
   Future<void> savePerson(String name, {
-    String? relation,   // друг, мама, коллега...
+    String? relation,
     String? phone,
     String? notes,
   }) async {
     final people = await _loadPeople();
     final key = name.toLowerCase().trim();
+    final existing = people[key] ?? {};
     people[key] = {
+      ...existing,
       'name': name.trim(),
       if (relation != null) 'relation': relation,
       if (phone    != null) 'phone': phone,
@@ -27,17 +27,12 @@ class PeopleMemoryService {
     await _savePeople(people);
   }
 
-  /// Найти человека по имени (нечёткий поиск)
   Future<Map<String, dynamic>?> findPerson(String query) async {
     final people = await _loadPeople();
     final q = query.toLowerCase().trim();
-    // Точное совпадение
     if (people.containsKey(q)) return people[q];
-    // Частичное совпадение
     for (final entry in people.entries) {
-      if (entry.key.contains(q) || q.contains(entry.key)) {
-        return entry.value;
-      }
+      if (entry.key.contains(q) || q.contains(entry.key)) return entry.value;
     }
     return null;
   }
@@ -51,9 +46,8 @@ class PeopleMemoryService {
     await _savePeople(people);
   }
 
-  // ──────────────────────── ФАКТЫ ────────────────────────
+  // ──────────────── ФАКТЫ ────────────────
 
-  /// Сохранить произвольный факт о пользователе
   Future<void> saveFact(String key, String value) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_keyFacts) ?? '{}';
@@ -75,20 +69,17 @@ class PeopleMemoryService {
     return Map<String, String>.from(jsonDecode(raw));
   }
 
-  // ──────────────────────── КОНТЕКСТ ДЛЯ GPT ────────────────────────
+  // ──────────────── КОНТЕКСТ ДЛЯ GPT ────────────────
 
-  /// Формирует блок памяти для системного промпта
   Future<String> buildMemoryContext() async {
     final people = await _loadPeople();
     final facts  = await getAllFacts();
-
-    final buf = StringBuffer();
+    final buf    = StringBuffer();
 
     if (facts.isNotEmpty) {
       buf.writeln('== Факты о пользователе ==');
       facts.forEach((k, v) => buf.writeln('• $k: $v'));
     }
-
     if (people.isNotEmpty) {
       buf.writeln('== Люди которых знает пользователь ==');
       people.forEach((_, p) {
@@ -98,37 +89,82 @@ class PeopleMemoryService {
         buf.writeln('• ${p['name']}$rel$phone$notes');
       });
     }
-
     return buf.toString().trim();
   }
 
-  // ──────────────────────── ПАРСИНГ КОМАНД ────────────────────────
+  // ──────────────── ПАРСИНГ КОМАНД ────────────────
 
-  /// Пытается распознать команду "запомни что Богдан — мой друг" и сохранить
-  /// Возвращает true если команда распознана
+  /// Возвращает true + сохраняет если распознал команду памяти
   Future<bool> tryParseMemoryCommand(String text) async {
     final t = text.toLowerCase().trim();
 
-    // "запомни что [имя] это/— [отношение/факт]"
-    final personRegex = RegExp(
-      r'запомни\s+(?:что\s+)?([а-яёa-z]+)\s+(?:это|—|-|является|мой|моя|мои|мое|мою)\s+(.+)',
+    // "запомни что Богдан это/— мой друг"
+    // "Богдан это мой друг", "Маша это моя сестра"
+    final personRegexes = [
+      RegExp(r'запомни[,:]?\s+(?:что\s+)?([а-яёa-z][а-яёa-z]*)\s+(?:это|—|-|является)\s+мо[йяеёи]\s+(.+)', caseSensitive: false),
+      RegExp(r'запомни[,:]?\s+(?:что\s+)?([а-яёa-z][а-яёa-z]*)\s+(?:это|—|-)\s+(.+)', caseSensitive: false),
+      RegExp(r'([а-яёa-z][а-яёa-z]*)\s+(?:это|—)\s+мо[йяеёи]\s+(друг|подруга|брат|сестра|мама|папа|коллега|начальник|парень|девушка|муж|жена)', caseSensitive: false),
+    ];
+
+    for (final regex in personRegexes) {
+      final m = regex.firstMatch(t);
+      if (m != null) {
+        final name = _capitalize(m.group(1)!.trim());
+        final rel  = m.group(2)!.trim();
+        await savePerson(name, relation: rel);
+        return true;
+      }
+    }
+
+    // "запомни телефон Маши: +7..."
+    final phoneRegex = RegExp(
+      r'запомни\s+(?:номер|телефон)\s+([а-яёa-z]+)[:\s]+(\+?[\d\s\-]+)',
       caseSensitive: false,
     );
-    final m = personRegex.firstMatch(t);
-    if (m != null) {
-      final name = _capitalize(m.group(1)!.trim());
-      final rel  = m.group(2)!.trim();
-      await savePerson(name, relation: rel);
+    final pm = phoneRegex.firstMatch(t);
+    if (pm != null) {
+      final name  = _capitalize(pm.group(1)!.trim());
+      final phone = pm.group(2)!.trim();
+      await savePerson(name, phone: phone);
       return true;
     }
 
-    // "запомни: [факт]" или "запомни [факт]"
-    if (t.startsWith('запомни') && !t.contains(RegExp(r'[а-яё]+ (?:это|—|мой|моя)'))) {
+    // "запомни заметку про Богдана: встреча в пятницу"
+    final noteRegex = RegExp(
+      r'запомни\s+(?:заметку\s+)?про\s+([а-яёa-z]+)[:\s]+(.+)',
+      caseSensitive: false,
+    );
+    final nm = noteRegex.firstMatch(t);
+    if (nm != null) {
+      final name = _capitalize(nm.group(1)!.trim());
+      final note = nm.group(2)!.trim();
+      await savePerson(name, notes: note);
+      return true;
+    }
+
+    // "запомни: [произвольный факт]"
+    if (t.startsWith('запомни') && !t.contains(RegExp(r'[а-яё]+ (?:это|—|мой|моя|про)'))) {
       final fact = t.replaceFirst(RegExp(r'^запомни[:\s]*'), '').trim();
-      if (fact.isNotEmpty) {
-        await saveFact('заметка_${DateTime.now().millisecondsSinceEpoch}', fact);
+      if (fact.isNotEmpty && fact.length > 3) {
+        await saveFact('факт_${DateTime.now().millisecondsSinceEpoch}', fact);
         return true;
       }
+    }
+
+    // Автоизвлечение: "напомни Богдану что встреча в 6" — сохраняем Богдана
+    final mentionRegex = RegExp(
+      r'напомни\s+([а-яё][а-яё]+у?|[а-яё][а-яё]+е?)\s+что',
+      caseSensitive: false,
+    );
+    final mm = mentionRegex.firstMatch(t);
+    if (mm != null) {
+      final name = _capitalize(mm.group(1)!.trim()
+          .replaceAll(RegExp(r'[уе]$'), '')); // убираем падеж
+      final existing = await findPerson(name);
+      if (existing == null) {
+        await savePerson(name); // просто запоминаем имя
+      }
+      // Не возвращаем true — пусть дальше обрабатывается как команда
     }
 
     return false;
@@ -136,8 +172,6 @@ class PeopleMemoryService {
 
   String _capitalize(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
-  // ──────────────────────── INTERNAL ────────────────────────
 
   Future<Map<String, Map<String, dynamic>>> _loadPeople() async {
     final prefs = await SharedPreferences.getInstance();
