@@ -11,8 +11,8 @@ dependencies:
     sdk: flutter
   
   # Speech & Voice
-  speech_to_text: ^6.6.2
-  flutter_tts: ^4.0.2
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.2.5
   
   # Animations
   flutter_animate: ^4.5.0
