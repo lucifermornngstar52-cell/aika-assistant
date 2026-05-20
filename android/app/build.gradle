@@ -21,8 +21,8 @@ def useReleaseKey = keystoreFile != null && keystoreFile.exists()
 
 android {
     namespace "com.aika.assistant"
-    compileSdk 34
-    ndkVersion "25.1.8937393"
+    compileSdk 36
+    ndkVersion "26.3.11579264"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -40,7 +40,7 @@ android {
     defaultConfig {
         applicationId "com.aika.assistant"
         minSdkVersion 23
-        targetSdkVersion 34
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
