@@ -7,10 +7,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app_launcher_service.dart';
 import 'currency_service.dart';
 import 'screen_watcher_service.dart';
+import 'weather_service.dart';
 
 class DeviceService {
   final Battery _battery = Battery();
   final CurrencyService _currencyService = CurrencyService();
+  final WeatherService _weatherService = WeatherService();
   bool _flashlightOn = false;
   double _currentVolume = 0.5;
 
@@ -43,6 +45,21 @@ class DeviceService {
       final code = action.substring('currency_'.length).toUpperCase();
       if (code == 'ALL') return await _currencyService.getRatesText();
       return await _currencyService.getSingleRate(code);
+    }
+
+    // Погода
+    if (action.startsWith('weather_')) {
+      final city = action.substring('weather_'.length).replaceAll('_', ' ').trim();
+      return await _weatherService.getWeather(city: city);
+    }
+    if (action == 'weather') {
+      return await _weatherService.getWeather();
+    }
+    if (action == 'forecast' || action.startsWith('forecast_')) {
+      final city = action.startsWith('forecast_')
+          ? action.substring('forecast_'.length).replaceAll('_', ' ').trim()
+          : '';
+      return await _weatherService.getForecast(city: city);
     }
 
     // Поиск
