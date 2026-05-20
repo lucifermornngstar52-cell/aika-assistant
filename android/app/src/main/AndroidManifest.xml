@@ -130,5 +130,20 @@
             </intent-filter>
         </receiver>
 
+
+        <!-- Notification Listener — читает уведомления для брифинга -->
+        <service
+            android:name=".AikaNotificationListenerService"
+            android:exported="true"
+            android:label="Айка — уведомления"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.notification"
+                android:resource="@xml/notification_service_config" />
+        </service>
+
     </application>
 </manifest>
