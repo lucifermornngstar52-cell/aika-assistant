@@ -34,6 +34,9 @@ jobs:
         run: |
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           echo "sdk.dir=$ANDROID_SDK_ROOT" >> android/local.properties
+          echo "flutter.compileSdkVersion=36" >> android/local.properties
+          echo "flutter.minSdkVersion=24" >> android/local.properties
+          echo "flutter.targetSdkVersion=36" >> android/local.properties
 
       - name: Decode and create release keystore
         run: |
