@@ -21,6 +21,7 @@ import '../services/message_sender_service.dart';
 import '../services/url_launcher_service.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
+import '../services/notification_service.dart';
 import '../services/people_memory_service.dart';
 import '../services/reminder_service.dart';
 import '../services/mood_service.dart';
@@ -57,7 +58,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
-  bool _screenCommentsEnabled = true; // Айка комментирует смену приложений
+  bool _screenCommentsEnabled = true;
+  bool _hasNotifPermission = false;
   bool _isDancing = false;
   bool _isStretching = false;
   Timer? _musicTimer;
@@ -96,6 +98,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _sendGreeting();
     await _recheckOverlayPermission();
     await _recheckAccessibilityPermission();
+    await _initNotifications();
     _startMusicPolling();
     _resetIdleTimer();
     // Инициализируем новые сервисы
@@ -176,6 +179,65 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
       });
     }
+  }
+
+  Future<void> _initNotifications() async {
+    final has = await NotificationService.hasPermission();
+    if (mounted) setState(() => _hasNotifPermission = has);
+    if (has) {
+      NotificationService.startListening(
+        onNew: (notif) {
+          // Можно добавить реакцию на важные уведомления
+          final title = notif['title'] ?? '';
+          final text  = notif['text']  ?? '';
+          if (title.isNotEmpty) {
+            // Пока просто кэшируем — брифинг по запросу
+          }
+        },
+      );
+    } else {
+      // Попросим через 6 секунд если нет разрешения
+      Future.delayed(const Duration(seconds: 6), () {
+        if (mounted && !_hasNotifPermission) _showNotifPermissionDialog();
+      });
+    }
+  }
+
+  void _showNotifPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AikaTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
+        ),
+        title: Text('Чтение уведомлений',
+            style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Разреши Айке читать уведомления — она сможет рассказать что пришло пока тебя не было.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Не сейчас', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AikaTheme.neonBlue.withOpacity(0.2),
+              side: BorderSide(color: AikaTheme.neonBlue),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              NotificationService.openPermissionSettings();
+            },
+            child: const Text('Разрешить', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showAccessibilityDialog() {
@@ -663,6 +725,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
 
     // ── Проверяем команды памяти (запомни что Богдан — друг) ──
+    // Брифинг уведомлений
+    if (text.contains('уведомлен') || text.contains('что пришло') ||
+        text.contains('что пропустил') || text.contains('пока я спал') ||
+        text.contains('пока меня не было')) {
+      final briefing = NotificationService.buildBriefingText();
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: briefing,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(briefing);
+      _moodService.onUserSpoke();
+      return;
+    }
+
     final isMemoryCmd = await _peopleMemory.tryParseMemoryCommand(text);
     if (isMemoryCmd) {
       const reply = 'Запомнила!';
@@ -717,7 +795,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _moodService.onThinking();
       final context = await _memoryService.getUserContext();
       final history = await _memoryService.getHistory();
-      final memoryCtx = await _peopleMemory.buildMemoryContext();
+      final memoryCtx   = await _peopleMemory.buildMemoryContext();
+      final screenCtx   = ScreenWatcherService.currentLabel.isNotEmpty
+          ? 'Сейчас на экране: \${ScreenWatcherService.currentLabel} (\${ScreenWatcherService.currentPackage})'
+          : '';
       final response = await _aiService.sendMessage(
         text,
         userName: context['userName'] ?? '',
