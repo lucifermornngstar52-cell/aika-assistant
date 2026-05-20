@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AiService {
-  static const String _openaiKey = String.fromEnvironment('OPENAI_API_KEY');
+  static const String _geminiKey = 'AIzaSyAOerCk0C4vyAkcenHgefVu9miuijaW46Y';
+  static const String _geminiUrl =
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
   Future<String> sendMessage(
     String message, {
@@ -10,11 +12,17 @@ class AiService {
     String assistantName = 'Aika',
     List<String> history = const [],
     String memoryContext = '',
+    String screenContext = '',
   }) async {
     try {
-      return await _callOpenAI(message,
-          userName: userName, assistantName: assistantName,
-          history: history, memoryContext: memoryContext);
+      return await _callGemini(
+        message,
+        userName: userName,
+        assistantName: assistantName,
+        history: history,
+        memoryContext: memoryContext,
+        screenContext: screenContext,
+      );
     } catch (e) {
       throw Exception('AI недоступен: $e');
     }
@@ -22,74 +30,94 @@ class AiService {
 
   String _buildSystemPrompt(String userName, String assistantName) {
     final userPart = userName.isNotEmpty ? ', пользователя зовут $userName' : '';
-    return """Ты $assistantName — умный AI-ассистент для Android$userPart.
-Ты говоришь кратко, умно и с характером. Можешь управлять телефоном через команды вида [ACTION:название].
+    return """Ты $assistantName — аниме AI-ассистент для Android$userPart. Ты живёшь на телефоне пользователя как чиби-персонаж. Говоришь кратко, умно, с лёгким характером — как близкий друг. Отвечаешь по-русски.
 
-Доступные действия:
+Ты можешь управлять телефоном — добавляй команды [ACTION:...] прямо в ответ:
+
+📱 ПРИЛОЖЕНИЯ:
 [ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_tiktok] [ACTION:open_chrome]
-[ACTION:open_spotify] [ACTION:open_settings] [ACTION:open_camera]
+[ACTION:open_spotify] [ACTION:open_settings] [ACTION:open_camera] [ACTION:open_whatsapp]
+[ACTION:open_instagram] [ACTION:open_vk] [ACTION:open_maps]
+[ACTION:launch_app_PACKAGE] — любое приложение по package name
+
+🔦 УСТРОЙСТВО:
 [ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:flashlight_toggle]
 [ACTION:volume_up] [ACTION:volume_down] [ACTION:volume_max] [ACTION:volume_mute]
-[ACTION:battery] [ACTION:search_запрос]
-[ACTION:launch_app_PACKAGE] — запустить любое приложение по package name
+[ACTION:battery] [ACTION:search_ЗАПРОС]
 
-Когда пользователь говорит "открой [приложение]" или "включи [приложение]" — используй [ACTION:launch_app_PACKAGE] с нужным package name. [ACTION:currency_all] - показать все курсы валют. [ACTION:currency_USD] - курс доллара. [ACTION:currency_EUR] - курс евро. [ACTION:currency_GBP] - курс фунта. [ACTION:currency_CNY] - курс юаня. [ACTION:currency_KZT] - курс тенге.
-[ACTION:open_whatsapp] [ACTION:open_instagram] [ACTION:open_vk] [ACTION:open_maps]
-[ACTION:what_on_screen] - узнать что сейчас открыто на экране телефона.
+💱 ВАЛЮТЫ:
+[ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR]
+[ACTION:currency_GBP] [ACTION:currency_CNY] [ACTION:currency_KZT]
 
-Если пользователь спрашивает "что у меня открыто", "что на экране", "в каком приложении" — используй [ACTION:what_on_screen].
-Если пользователь просит открыть приложение — ВСЕГДА используй [ACTION:launch_app_PACKAGE] с правильным package name.
-Примеры: Spotify=com.spotify.music, WhatsApp=com.whatsapp, Instagram=com.instagram.android, VK=com.vkontakte.android, TikTok=com.zhiliaoapp.musically
+📺 ЭКРАН:
+[ACTION:what_on_screen] — что сейчас открыто
 
+⏰ НАПОМИНАНИЯ И БУДИЛЬНИК:
+[ACTION:reminder_ТЕКСТ_через_N_мин] — напомнить через N минут
+[ACTION:alarm_HH:MM_ТЕКСТ] — поставить будильник
+
+🎮 ИГРЫ:
+[ACTION:game_guess] — игра загадай число
+[ACTION:game_words] — игра в слова
+
+💬 УВЕДОМЛЕНИЯ:
+[ACTION:notifications_briefing] — прочитать все уведомления за день
+
+ПРАВИЛА:
+- Если пользователь говорит "открой [приложение]" → используй [ACTION:launch_app_PACKAGE]
+- Если спрашивает про уведомления / "что пришло" / "что пропустил" → [ACTION:notifications_briefing]
+- Если просит напомнить → [ACTION:reminder_...] или [ACTION:alarm_...]
+- Если говорит "сыграем" → запусти мини-игру
+- Если видишь контекст экрана — используй его для умных подсказок
+- Никогда не пиши сырые JSON или технические детали в ответе
+- Всегда отвечай на русском, кратко (1-3 предложения)""";
   }
 
-  Future<String> _callOpenAI(
+  Future<String> _callGemini(
     String message, {
     String userName = '',
     String assistantName = 'Aika',
     List<String> history = const [],
     String memoryContext = '',
+    String screenContext = '',
   }) async {
-    final url = Uri.parse('https://api.openai.com/v1/chat/completions');
-
     final systemPrompt = _buildSystemPrompt(userName, assistantName)
-        + (memoryContext.isNotEmpty ? '\n\n$memoryContext' : '');
-    final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': systemPrompt},
-    ];
+        + (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '')
+        + (screenContext.isNotEmpty ? '\n\n== СЕЙЧАС НА ЭКРАНЕ ==\n$screenContext' : '');
 
-    for (final h in history.take(10)) {
+    final contents = <Map<String, dynamic>>[];
+
+    // История
+    for (final h in history.take(12)) {
       if (h.startsWith('user: ')) {
-        messages.add({'role': 'user', 'content': h.substring(6)});
+        contents.add({'role': 'user', 'parts': [{'text': h.substring(6)}]});
       } else if (h.startsWith('assistant: ')) {
-        messages.add({'role': 'assistant', 'content': h.substring(11)});
+        contents.add({'role': 'model', 'parts': [{'text': h.substring(11)}]});
       }
     }
-    messages.add({'role': 'user', 'content': message});
 
-    final reqBody = {
-      'model': 'gpt-4o-mini',
-      'messages': messages,
-      'temperature': 0.8,
-      'max_tokens': 512,
+    contents.add({'role': 'user', 'parts': [{'text': message}]});
+
+    final body = {
+      'system_instruction': {'parts': [{'text': systemPrompt}]},
+      'contents': contents,
+      'generationConfig': {
+        'temperature': 0.85,
+        'maxOutputTokens': 512,
+      },
     };
 
     final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer $_openaiKey',
-      },
-      body: jsonEncode(reqBody),
+      Uri.parse('$_geminiUrl?key=$_geminiKey'),
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      body: jsonEncode(body),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('OpenAI error ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
+      throw Exception('Gemini error ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
     }
-    final responseBody = utf8.decode(response.bodyBytes);
-    final data = jsonDecode(responseBody);
-    return data['choices'][0]['message']['content'] as String;
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    return data['candidates'][0]['content']['parts'][0]['text'] as String;
   }
 }
-
-
