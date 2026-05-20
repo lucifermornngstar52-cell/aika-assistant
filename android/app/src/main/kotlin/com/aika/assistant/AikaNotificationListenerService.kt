@@ -5,8 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.EventChannel
 
 /**
  * Слушает все входящие уведомления и шлёт их во Flutter через EventChannel.
@@ -34,9 +32,10 @@ class AikaNotificationListenerService : NotificationListenerService() {
             "ru.ok.android",
         )
 
+        private const val MAX_CAPACITY = 50
+
         // Кэш последних уведомлений (для брифинга)
-        val recentNotifications = ArrayDeque<Map<String, String>>(maxCapacity = 50)
-        private const val maxCapacity = 50
+        val recentNotifications: ArrayDeque<Map<String, String>> = ArrayDeque(MAX_CAPACITY)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -58,7 +57,7 @@ class AikaNotificationListenerService : NotificationListenerService() {
         )
 
         // Добавляем в кэш
-        if (recentNotifications.size >= maxCapacity) recentNotifications.removeFirst()
+        if (recentNotifications.size >= MAX_CAPACITY) recentNotifications.removeFirst()
         recentNotifications.addLast(entry)
 
         // Шлём broadcast во Flutter
