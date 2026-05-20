@@ -21,6 +21,9 @@ import '../services/message_sender_service.dart';
 import '../services/url_launcher_service.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
+import '../services/people_memory_service.dart';
+import '../services/reminder_service.dart';
+import '../services/mood_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -35,6 +38,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final MemoryService _memoryService = MemoryService();
   final SpeechService _speechService = SpeechService();
   final WakeWordService _wakeWordService = WakeWordService();
+  final PeopleMemoryService _peopleMemory = PeopleMemoryService();
+  final ReminderService _reminderService = ReminderService();
+  final MoodService _moodService = MoodService();
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
@@ -86,6 +92,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _recheckAccessibilityPermission();
     _startMusicPolling();
     _resetIdleTimer();
+    // Инициализируем новые сервисы
+    await _reminderService.initialize();
+    _reminderService.onReminderFired = (text) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: '⏰ ',
+        timestamp: DateTime.now(),
+      ));
+      _speak(text);
+    };
+    _moodService.setIdle();
     // Автозапуск постоянного прослушивания wake word
     Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
   }
@@ -542,6 +560,47 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _stopDance();
     }
 
+    // ── Проверяем напоминания/таймеры ──
+    final reminderResult = await _reminderService.tryParseReminder(text);
+    if (reminderResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: reminderResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(reminderResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
+    // ── Проверяем команды памяти (запомни что Богдан — друг) ──
+    final isMemoryCmd = await _peopleMemory.tryParseMemoryCommand(text);
+    if (isMemoryCmd) {
+      const reply = 'Запомнила!';
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(reply);
+      _moodService.onUserSpoke();
+      return;
+    }
+
     // ── Сначала проверяем локальные команды запуска приложений ──
     final appLaunchResult = await AppLauncherService.tryLaunch(text);
     if (appLaunchResult != null) {
@@ -558,6 +617,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(appLaunchResult);
+      _moodService.onUserSpoke();
       return;
     }
 
@@ -572,13 +632,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _memoryService.addMessage('user', text);
 
     try {
+      _moodService.onThinking();
       final context = await _memoryService.getUserContext();
       final history = await _memoryService.getHistory();
+      final memoryCtx = await _peopleMemory.buildMemoryContext();
       final response = await _aiService.sendMessage(
         text,
         userName: context['userName'] ?? '',
         assistantName: context['assistantName'] ?? _assistantName,
         history: history,
+        memoryContext: memoryCtx,
       );
       final actionResult = await _deviceService.parseAndExecute(response);
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
@@ -591,6 +654,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(finalMsg);
+      _moodService.onUserSpoke();
     } catch (e) {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
