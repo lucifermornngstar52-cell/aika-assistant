@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
@@ -18,6 +19,8 @@ class MainActivity : FlutterActivity() {
     private val OVERLAY_CHANNEL  = "com.aika.assistant/overlay"
     private val AUDIO_CHANNEL    = "aika/audio"
     private val SCREEN_CHANNEL   = "com.aika.assistant/screen"
+    private val NOTIF_CHANNEL    = "com.aika.assistant/notifications"
+    private val NOTIF_EVENTS     = "com.aika.assistant/notification_events"
     private val SCREEN_EVENTS    = "com.aika.assistant/screen_events"
     private val MESSENGER_CHANNEL = "com.aika.assistant/messenger"
     private val URL_CHANNEL      = "com.aika.assistant/url"
@@ -25,6 +28,8 @@ class MainActivity : FlutterActivity() {
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
+    private var notifEventSink: EventChannel.EventSink? = null
+    private var notifReceiver: BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -159,6 +164,58 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // ── Notification method channel ──────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIF_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "hasPermission" -> {
+                        val enabled = Settings.Secure.getString(
+                            contentResolver,
+                            "enabled_notification_listeners"
+                        ) ?: ""
+                        result.success(enabled.contains(packageName))
+                    }
+                    "openPermissionSettings" -> {
+                        startActivity(Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        })
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Notification event channel ─────────────────────────────
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIF_EVENTS)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+                    notifEventSink = sink
+                    notifReceiver = object : BroadcastReceiver() {
+                        override fun onReceive(ctx: Context?, intent: Intent?) {
+                            if (intent?.action == AikaNotificationListenerService.ACTION_NOTIF) {
+                                sink?.success(mapOf(
+                                    "pkg"   to (intent.getStringExtra(AikaNotificationListenerService.EXTRA_PKG)   ?: ""),
+                                    "title" to (intent.getStringExtra(AikaNotificationListenerService.EXTRA_TITLE) ?: ""),
+                                    "text"  to (intent.getStringExtra(AikaNotificationListenerService.EXTRA_TEXT)  ?: ""),
+                                    "time"  to intent.getLongExtra(AikaNotificationListenerService.EXTRA_TIME, 0L).toString()
+                                ))
+                            }
+                        }
+                    }
+                    val filter = IntentFilter(AikaNotificationListenerService.ACTION_NOTIF)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        registerReceiver(notifReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        registerReceiver(notifReceiver, filter)
+                    }
+                }
+                override fun onCancel(args: Any?) {
+                    notifReceiver?.let { unregisterReceiver(it) }
+                    notifEventSink = null
+                    notifReceiver = null
+                }
+            })
 
         // ── Screen event channel (поток событий смены приложения) ─
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS)
