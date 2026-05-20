@@ -17,6 +17,19 @@ allprojects {
     }
 }
 
+// Fix for plugins that rely on flutter.compileSdkVersion
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                if (compileSdkVersion == null || compileSdkVersion == 0) {
+                    compileSdkVersion 36
+                }
+            }
+        }
+    }
+}
+
 rootProject.buildDir = '../build'
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
