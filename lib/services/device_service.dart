@@ -1,3 +1,4 @@
+import 'notification_service.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:torch_light/torch_light.dart';
@@ -115,6 +116,10 @@ class DeviceService {
         return 'Заряд батареи: $level%';
 
       // ── Экран ─────────────────────────────────────────────────
+      case 'notifications_briefing':
+        final briefing = NotificationService.buildBriefingText();
+        return briefing;
+
       case 'what_on_screen':
       case 'screen_info':
         final info = ScreenWatcherService.getCurrentAppInfo();
