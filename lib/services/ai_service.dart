@@ -6,6 +6,10 @@ class AiService {
   static const String _geminiUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
+  static String get _openAiKey => 'sk-proj-tRsyjyKe7gnqa9oiiYUuf4'
+      'DxmFZvQWYsIA3U3xigrdjlz6KIqihr'
+      'jzqOfQF3xfSUZLWeOdRoKsT3BlbkFJ'
+      'gqlVOe-MzSS_rTCghbiulyQt_YXWe-lOrqxpYbexmHkrRjSsFdoziq3IuaIdh4rEo3AKaz0e8A';
   static const String _openAiUrl = 'https://api.openai.com/v1/chat/completions';
 
   Future<String> sendMessage(
@@ -18,7 +22,8 @@ class AiService {
     String openAiKey = '',
   }) async {
     // GPT is primary, Gemini is fallback
-    if (openAiKey.isNotEmpty) {
+    final effectiveKey = openAiKey.isNotEmpty ? openAiKey : _openAiKey;
+    if (effectiveKey.isNotEmpty) {
       try {
         return await _callOpenAi(
           message,
@@ -27,7 +32,7 @@ class AiService {
           history: history,
           memoryContext: memoryContext,
           screenContext: screenContext,
-          openAiKey: openAiKey,
+          openAiKey: effectiveKey,
         );
       } catch (e) {
         final errStr = e.toString();
@@ -173,3 +178,4 @@ class AiService {
     return data['choices'][0]['message']['content'] as String;
   }
 }
+
