@@ -105,6 +105,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _reminderService.initialize();
     await _alarmService.initialize();
     _alarmService.onAlarmFired = (text) {
+      _moodService.onAlarmFired();
       if (!mounted) return;
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -357,6 +358,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     setState(() => _isListening = true);
     await _speechService.startListening(
       onResult: (text) async {
+        // Если Айка задремала — радостное приветствие
+        if (_moodService.isSleepy) {
+          final wakeMsg = _moodService.getWakeUpMessage();
+          _addMessage(ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            role: MessageRole.aika,
+            content: wakeMsg,
+            timestamp: DateTime.now(),
+          ));
+          await _speak(wakeMsg);
+          _moodService.onUserSpoke();
+        }
         setState(() => _isListening = false);
         await OverlayService.updateState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
