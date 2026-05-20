@@ -6,13 +6,18 @@ class BriefingService {
     final now = DateTime.now();
     final greeting = _getGreeting(now.hour);
     final dayName = _getDayName(now.weekday);
-    final dateStr = '${now.day} ${_getMonthName(now.month)}';
+    final dateStr = '\${now.day} \${_getMonthName(now.month)}';
 
     final buf = StringBuffer();
-    buf.writeln('$greeting! 🌸');
-    buf.writeln('Сегодня $dayName, $dateStr.');
+    buf.writeln('\$greeting! 🌸');
+    buf.writeln('Сегодня \$dayName, \$dateStr.');
     buf.writeln('');
 
+    try {
+      // Погода (заглушка — можно подключить API)
+      if (city.isNotEmpty) {
+        buf.writeln('🌤 Погода в \$city: данные недоступны.');
+      }
     } catch (e) {
       buf.writeln('☁️ Погоду не удалось получить.');
       buf.writeln('');
@@ -64,9 +69,8 @@ class BriefingService {
         t.contains('расскажи утром') ||
         t.contains('утренний обзор') ||
         t.contains('доброе утро айка') ||
-        t.contains('что сегодня') && t.contains('утро') ||
+        (t.contains('что сегодня') && t.contains('утро')) ||
         t.contains('как дела сегодня') ||
         t.contains('что нового сегодня');
   }
 }
-
