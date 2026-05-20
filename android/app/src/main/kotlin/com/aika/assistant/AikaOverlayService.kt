@@ -81,6 +81,9 @@ class AikaOverlayService : Service() {
                     view.rotation = (sin(animTick * 0.055) * 5).toFloat()
                     view.translationX = 0f
                 }
+                "wave" -> {
+                    loadAndSetBitmap("wave")
+                }
                 "thinking" -> {
                     view.translationX = (sin(animTick * 0.020) * 8).toFloat()
                     view.translationY = (cos(animTick * 0.015) * 4).toFloat()
@@ -339,6 +342,7 @@ class AikaOverlayService : Service() {
         val name = when {
             state == "listening" -> "aika_listen.png"
             state == "thinking"  -> "aika_think.png"
+            state == "wave"      -> "aika_wave.png"
             state == "greeting"  -> "aika_wave.png"
             state.startsWith("dance") -> {
                 val n = state.removePrefix("dance").toIntOrNull() ?: 1
