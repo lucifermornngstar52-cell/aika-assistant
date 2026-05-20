@@ -832,12 +832,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final screenCtx   = ScreenWatcherService.currentLabel.isNotEmpty
           ? 'Сейчас на экране: \${ScreenWatcherService.currentLabel} (\${ScreenWatcherService.currentPackage})'
           : '';
+      const _openAiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
       final response = await _aiService.sendMessage(
         text,
         userName: context['userName'] ?? '',
         assistantName: context['assistantName'] ?? _assistantName,
         history: history,
         memoryContext: memoryCtx,
+        screenContext: screenCtx,
+        openAiKey: _openAiKey,
       );
       final actionResult = await _deviceService.parseAndExecute(response);
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
