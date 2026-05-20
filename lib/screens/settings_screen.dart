@@ -15,6 +15,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _assistantNameController = TextEditingController();
+  final TextEditingController _openAiKeyController = TextEditingController();
 
   List<dynamic> _voices = [];
   String? _selectedVoice;
@@ -36,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _nameController.text = prefs.getString('user_name') ?? '';
       _assistantNameController.text = prefs.getString('assistant_name') ?? 'Aika';
+      _openAiKeyController.text = prefs.getString('openai_api_key') ?? '';
       _speechRate = prefs.getDouble('tts_rate') ?? 0.5;
       _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
       _volume = prefs.getDouble('tts_volume') ?? 1.0;
@@ -60,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_name', _nameController.text.trim());
+    await prefs.setString('openai_api_key', _openAiKeyController.text.trim());
     await prefs.setString('assistant_name',
         _assistantNameController.text.trim().isEmpty ? 'Aika' : _assistantNameController.text.trim());
     await prefs.setDouble('tts_rate', _speechRate);
@@ -97,6 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _tts.stop();
     _nameController.dispose();
     _assistantNameController.dispose();
+    _openAiKeyController.dispose();
     super.dispose();
   }
 
@@ -232,6 +236,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildCard([
               _buildTextField(_nameController, 'Ваше имя', 'Как вас зовут?'),
             ]),
+            _buildSectionTitle('API КЛЮЧИ'),
+            _buildCard([
+              _buildTextField(_openAiKeyController, 'OpenAI API Key', 'sk-...'),
+            ]),
             _buildSectionTitle('АССИСТЕНТ'),
             _buildCard([
               _buildTextField(_assistantNameController, 'Имя ассистента', 'Aika'),
@@ -328,3 +336,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
