@@ -9,10 +9,12 @@ class AiService {
     String userName = '',
     String assistantName = 'Aika',
     List<String> history = const [],
+    String memoryContext = '',
   }) async {
     try {
       return await _callOpenAI(message,
-          userName: userName, assistantName: assistantName, history: history);
+          userName: userName, assistantName: assistantName,
+          history: history, memoryContext: memoryContext);
     } catch (e) {
       throw Exception('AI недоступен: $e');
     }
@@ -47,11 +49,14 @@ class AiService {
     String userName = '',
     String assistantName = 'Aika',
     List<String> history = const [],
+    String memoryContext = '',
   }) async {
     final url = Uri.parse('https://api.openai.com/v1/chat/completions');
 
+    final systemPrompt = _buildSystemPrompt(userName, assistantName)
+        + (memoryContext.isNotEmpty ? '\n\n$memoryContext' : '');
     final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _buildSystemPrompt(userName, assistantName)},
+      {'role': 'system', 'content': systemPrompt},
     ];
 
     for (final h in history.take(10)) {
