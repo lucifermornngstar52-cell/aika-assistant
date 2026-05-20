@@ -36,20 +36,74 @@ class AlarmEntry {
 class AlarmService {
   static const _keyAlarms = 'aika_alarms';
   final _rng = Random();
-  final FlutterLocalNotificationsPlugin _notif =
-      FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
   Timer? _ticker;
   Function(String text)? onAlarmFired;
 
-  static const List<String> _wakeMessages = [
-    'Доброе утро! Вставай, соня, день тебя ждёт! ☀️',
-    'Привет! Будильник сработал — это Айка. Вставай! 🌸',
-    'Эй, просыпайся! Мир не будет ждать вечно 😄',
-    'Дзинь-дзинь! Пора открывать глаза! ✨',
-    'Доброе утро! Ты отлично поспал, теперь вперёд! 🚀',
-    'Эй, соня! Уже ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2,"0")}. Пора! 😏',
-    'Подъём! Сегодня будет отличный день, обещаю 💪',
-  ];
+  // Сообщения зависят от времени суток и дня недели
+  String _getWakeMessage(int hour, int weekday) {
+    // Понедельник = 1, Воскресенье = 7
+    final isWeekend = weekday >= 6;
+    final isEarly   = hour < 7;
+    final isMorning = hour >= 7 && hour < 10;
+
+    if (isWeekend && isEarly) {
+      return [
+        'Эй, в выходной так рано? Ты уверен? 😅',
+        'Серьёзно? В выходной — и уже встаёшь! 🤯',
+        'Это точно не ошибка? Суббота же... 😴',
+      ][_rng.nextInt(3)];
+    }
+
+    if (isWeekend) {
+      return [
+        'Доброе утро! Выходной — никуда не торопись 🌿',
+        'Подъём, соня! Хотя... выходной, можно ещё поваляться 😄',
+        'Доброе утро в выходной! Что сегодня планируешь? ☕',
+      ][_rng.nextInt(3)];
+    }
+
+    if (isEarly) {
+      return [
+        'Очень ранний подъём! Ты точно чемпион 💪',
+        'Ого, так рано! Завтрак уже ждёт 🍳',
+        'Тёмно ещё снаружи, но ты уже герой! 🌙→☀️',
+      ][_rng.nextInt(3)];
+    }
+
+    if (weekday == 1) { // Понедельник
+      return [
+        'Доброе утро, понедельник! Новая неделя — новые победы 🚀',
+        'Понедельник — день тяжёлый, но ты справишься! 💪',
+        'Привет! Новая неделя началась. Ты готов? ✨',
+      ][_rng.nextInt(3)];
+    }
+
+    if (weekday == 5) { // Пятница
+      return [
+        'Пятница! Почти выходные, давай! 🎉',
+        'Доброе утро! Сегодня пятница — финишная прямая 🏁',
+        'Подъём! Пятница — лучший день недели 😎',
+      ][_rng.nextInt(3)];
+    }
+
+    if (isMorning) {
+      return [
+        'Доброе утро! Вставай, день тебя ждёт ☀️',
+        'Привет! Айка здесь. Время просыпаться! 🌸',
+        'Подъём! Сегодня будет отличный день 💫',
+        'Дзинь! Пора открывать глаза ✨',
+        'Доброе утро, соня! Вперёд! 😄',
+      ][_rng.nextInt(5)];
+    }
+
+    // Дневное/вечернее время
+    return [
+      'Бип-бип! Твой будильник, напоминаю ⏰',
+      'Эй, не забудь — будильник! 📍',
+      'Напоминание! Что-то важное было в это время 💡',
+    ][_rng.nextInt(3)];
+  }
 
   Future<void> initialize() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -61,7 +115,6 @@ class AlarmService {
 
   void _startTicker() {
     _ticker?.cancel();
-    // Проверяем каждые 30 секунд
     _ticker = Timer.periodic(const Duration(seconds: 30), (_) => _checkAlarms());
   }
 
@@ -77,10 +130,10 @@ class AlarmService {
   }
 
   Future<void> _fireAlarm(AlarmEntry alarm) async {
-    final msg = _wakeMessages[_rng.nextInt(_wakeMessages.length)];
-    final full = alarm.label.isNotEmpty ? '$msg\n(${alarm.label})' : msg;
+    final now = DateTime.now();
+    final msg = _getWakeMessage(now.hour, now.weekday);
+    final full = alarm.label.isNotEmpty ? '$msg\n📌 ${alarm.label}' : msg;
 
-    // Уведомление
     await _notif.show(
       alarm.id.hashCode,
       '⏰ Будильник Айки',
@@ -95,11 +148,9 @@ class AlarmService {
       ),
     );
 
-    // Callback → Айка зачитывает вслух
     onAlarmFired?.call(full);
   }
 
-  /// Парсим текстовую команду: "поставь будильник на 7 утра"
   Future<String?> tryParseAlarm(String text) async {
     final t = text.toLowerCase();
 
@@ -108,7 +159,6 @@ class AlarmService {
       return null;
     }
 
-    // Удалить / список
     if (t.contains('удали') || t.contains('убери') || t.contains('отмени')) {
       await _deleteAll();
       return 'Все будильники удалены!';
@@ -117,7 +167,6 @@ class AlarmService {
       return await _listAlarms();
     }
 
-    // Парсим время HH:MM или "в X утра/вечера"
     final time = _parseTime(t);
     if (time == null) return 'Не понял время. Скажи например: "поставь будильник на 7:30"';
 
@@ -128,11 +177,22 @@ class AlarmService {
       label: _extractLabel(t),
     );
     await _saveAlarm(alarm);
-    return 'Будильник на ${alarm.timeStr} поставлен! ⏰ Разбужу с характером 😄';
+
+    final now = DateTime.now();
+    final fireAt = DateTime(now.year, now.month, now.day, time[0], time[1]);
+    final diff = fireAt.isAfter(now)
+        ? fireAt.difference(now)
+        : fireAt.add(const Duration(days: 1)).difference(now);
+    final hoursLeft = diff.inHours;
+    final minsLeft  = diff.inMinutes % 60;
+    final leftStr   = hoursLeft > 0
+        ? 'через $hoursLeft ч $minsLeft мин'
+        : 'через $minsLeft мин';
+
+    return 'Будильник на ${alarm.timeStr} поставлен! ⏰ Разбужу $leftStr с характером 😄';
   }
 
   List<int>? _parseTime(String t) {
-    // HH:MM
     final re = RegExp(r'(\d{1,2})[:\.](\d{2})');
     final m = re.firstMatch(t);
     if (m != null) {
@@ -141,15 +201,12 @@ class AlarmService {
       if (h < 24 && min < 60) return [h, min];
     }
 
-    // "в 7 утра" / "в 8 вечера" / "в 7" / "на 7"
     final re2 = RegExp(r'(?:в|на)\s+(\d{1,2})(?:\s*(утра|утром|вечера|вечером|ночи|дня))?');
     final m2 = re2.firstMatch(t);
     if (m2 != null) {
       int h = int.parse(m2.group(1)!);
       final period = m2.group(2) ?? '';
-      if ((period.contains('вечер') || period.contains('ночи') || period.contains('дня')) && h < 12) {
-        h += 12;
-      }
+      if ((period.contains('вечер') || period.contains('ночи') || period.contains('дня')) && h < 12) h += 12;
       if (h < 24) return [h, 0];
     }
 
@@ -158,9 +215,10 @@ class AlarmService {
 
   String _extractLabel(String t) {
     if (t.contains('работ')) return 'Работа';
-    if (t.contains('тренировк') || t.contains('спортзал') || t.contains('зал')) return 'Тренировка';
+    if (t.contains('тренировк') || t.contains('спортзал')) return 'Тренировка';
     if (t.contains('встреч')) return 'Встреча';
     if (t.contains('школ') || t.contains('учёб') || t.contains('уроки')) return 'Учёба';
+    if (t.contains('врач') || t.contains('больниц')) return 'Врач';
     return '';
   }
 
