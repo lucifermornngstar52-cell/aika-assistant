@@ -124,6 +124,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _speak(text);
     };
     _moodService.setIdle();
+
+    // Подписываемся на изменения настроения → обновляем оверлей
+    _moodService.moodStream.listen((mood) {
+      final state = _moodToOverlayState(mood);
+      OverlayService.updateState(state);
+    });
     // Автозапуск постоянного прослушивания wake word
     Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
   }
@@ -178,6 +184,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
       });
+    }
+  }
+
+  /// Конвертирует AikaMood → строку для оверлея
+  String _moodToOverlayState(AikaMood mood) {
+    switch (mood) {
+      case AikaMood.idle:      return 'idle';
+      case AikaMood.happy:     return 'greeting';
+      case AikaMood.listening: return 'listening';
+      case AikaMood.thinking:  return 'thinking';
+      case AikaMood.dancing:
+      case AikaMood.music:     return 'dance';
+      case AikaMood.sleepy:    return 'idle';
+      case AikaMood.surprised: return 'greeting';
     }
   }
 
@@ -655,7 +675,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(gameResult);
-      _moodService.onUserSpoke();
+      _moodService.onSurprised();
       return;
     }
 
