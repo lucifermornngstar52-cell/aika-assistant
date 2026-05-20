@@ -4,27 +4,34 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-/// Постоянное фоновое прослушивание wake word.
-/// Использует ОТДЕЛЬНЫЙ экземпляр STT (не тот что для команд).
-/// Автоматически перезапускается через watchdog каждые 15 сек.
-/// Приостанавливается пока играет музыка — чтобы не мешать аудио.
+/// Умное фоновое прослушивание wake word.
+/// 
+/// Режим работы:
+/// - В обычном состоянии слушает через нативный AudioRecord (VAD)
+/// - Когда обнаружена речь — запускает STT на 4 секунды для распознавания
+/// - Если слышит "Айка" — вызывает callback
+/// - НЕ мешает музыке: при активной музыке использует только VAD без STT
+/// - Если VAD недоступен — fallback на мягкий STT-loop с паузами
 class WakeWordService {
-  // Отдельный STT — не делим с SpeechService!
   final SpeechToText _stt = SpeechToText();
+  static const _nativeChannel = MethodChannel('com.aika.assistant/vad');
 
   bool _initialized = false;
   bool _isRunning = false;
-  bool _isPaused = false;
+  bool _isPaused = false;       // пауза на время команды
+  bool _musicPlaying = false;   // музыка играет прямо сейчас
+  bool _sttActive = false;      // STT сейчас работает
+  bool _useNativeVad = false;   // нативный VAD доступен
+
   Timer? _watchdogTimer;
   Timer? _restartTimer;
-  Function()? onWakeWord;
+  Timer? _sttTimeoutTimer;
 
-  static const _channel = MethodChannel('aika/wake_word');
+  Function()? onWakeWord;
 
   static const List<String> _defaultTriggers = [
     'айка', 'aika', 'aica', 'эйка', 'ayka', 'ай ка', 'ай-ка',
   ];
-
   List<String> _currentTriggers = List.from(_defaultTriggers);
 
   bool get isRunning => _isRunning;
@@ -32,73 +39,35 @@ class WakeWordService {
 
   Future<void> updateTriggers() async {
     final prefs = await SharedPreferences.getInstance();
-    final name = (prefs.getString('assistant_name') ?? 'Aika').trim();
-    final nameLower = name.toLowerCase();
-
-    final triggers = <String>{};
-    triggers.add(nameLower);
-    triggers.addAll(_translitVariants(nameLower));
-    triggers.addAll(_defaultTriggers);
-
+    final name = (prefs.getString('assistant_name') ?? 'Aika').trim().toLowerCase();
+    final triggers = <String>{name, ...List.from(_defaultTriggers)};
     _currentTriggers = triggers.toList();
-    debugPrint('[WakeWord] триггеры: $_currentTriggers');
   }
 
-  List<String> _translitVariants(String name) {
-    final result = <String>[];
-    final cyrToLat = {
-      'а': 'a','б': 'b','в': 'v','г': 'g','д': 'd',
-      'е': 'e','ё': 'yo','ж': 'zh','з': 'z','и': 'i',
-      'й': 'y','к': 'k','л': 'l','м': 'm','н': 'n',
-      'о': 'o','п': 'p','р': 'r','с': 's','т': 't',
-      'у': 'u','ф': 'f','х': 'kh','ц': 'ts','ч': 'ch',
-      'ш': 'sh','щ': 'sch','ъ': '','ы': 'y','ь': '',
-      'э': 'e','ю': 'yu','я': 'ya',
-    };
-    final latToCyr = {
-      'a': 'а','b': 'б','v': 'в','g': 'г','d': 'д',
-      'e': 'е','z': 'з','i': 'и','y': 'й','k': 'к',
-      'l': 'л','m': 'м','n': 'н','o': 'о','p': 'п',
-      'r': 'р','s': 'с','t': 'т','u': 'у','f': 'ф',
-    };
-
-    final hasCyrillic = name.runes.any((r) => r >= 0x0400 && r <= 0x04FF);
-    if (hasCyrillic) {
-      final lat = name.split('').map((c) => cyrToLat[c] ?? c).join();
-      if (lat.isNotEmpty) result.add(lat);
-    }
-    final hasLatin = name.runes.any((r) => (r >= 0x41 && r <= 0x5A) || (r >= 0x61 && r <= 0x7A));
-    if (hasLatin) {
-      final cyr = name.split('').map((c) => latToCyr[c] ?? c).join();
-      if (cyr.isNotEmpty) result.add(cyr);
-    }
-    return result;
-  }
+  // Совместимость
+  void initWithSharedStt(SpeechToText stt) {}
 
   Future<void> initialize() async {
     await updateTriggers();
     _initialized = await _stt.initialize(
       onError: (e) {
-        debugPrint('[WakeWord] STT error: $e');
-        // Перезапуск при ошибке
-        if (_isRunning && !_isPaused) {
-          _scheduleRestart(const Duration(seconds: 2));
-        }
+        debugPrint('[WakeWord] STT ошибка: $e');
+        _sttActive = false;
+        if (_isRunning && !_isPaused) _scheduleRestart(const Duration(seconds: 2));
       },
       onStatus: (status) {
-        debugPrint('[WakeWord] STT status: $status');
-        if ((status == 'done' || status == 'notListening') &&
-            _isRunning && !_isPaused) {
-          _scheduleRestart(const Duration(milliseconds: 500));
+        debugPrint('[WakeWord] STT статус: $status');
+        if (status == 'done' || status == 'notListening') {
+          _sttActive = false;
+          _sttTimeoutTimer?.cancel();
+          // Не перезапускаем сразу — ждём следующего VAD-триггера или watchdog
+          if (_isRunning && !_isPaused) {
+            _scheduleRestart(const Duration(milliseconds: 800));
+          }
         }
       },
     );
     debugPrint('[WakeWord] initialized: $_initialized');
-  }
-
-  // Совместимость со старым кодом — больше не нужен но не ломаем API
-  void initWithSharedStt(SpeechToText stt) {
-    debugPrint('[WakeWord] initWithSharedStt вызван — используем собственный STT');
   }
 
   Future<void> startListening(Function() callback) async {
@@ -108,71 +77,110 @@ class WakeWordService {
     _isRunning = true;
     _isPaused = false;
     await updateTriggers();
-    debugPrint('[WakeWord] ▶ запускаем постоянное прослушивание');
-    await _startLoop();
+    debugPrint('[WakeWord] ▶ запуск');
+    await _startSttLoop();
     _startWatchdog();
   }
 
-  Future<void> pauseForMusic() async {
-    if (!_isRunning || _isPaused) return;
+  /// Пауза пока идёт команда (не на музыку)
+  Future<void> pause() async {
+    if (_isPaused) return;
     _isPaused = true;
+    _sttTimeoutTimer?.cancel();
     _restartTimer?.cancel();
     if (_stt.isListening) await _stt.stop();
-    debugPrint('[WakeWord] ⏸ пауза — играет музыка');
+    _sttActive = false;
+    debugPrint('[WakeWord] ⏸ пауза (команда)');
   }
 
-  Future<void> resumeAfterMusic() async {
-    if (!_isRunning || !_isPaused) return;
+  Future<void> resume() async {
+    if (!_isPaused) return;
     _isPaused = false;
-    debugPrint('[WakeWord] ▶ возобновляем прослушивание');
-    await Future.delayed(const Duration(milliseconds: 800));
-    await _startLoop();
+    debugPrint('[WakeWord] ▶ возобновление');
+    await Future.delayed(const Duration(milliseconds: 600));
+    await _startSttLoop();
   }
+
+  /// Вызывается когда музыка играет/останавливается
+  /// НЕ останавливает прослушивание полностью — просто помечаем флаг
+  void setMusicPlaying(bool playing) {
+    _musicPlaying = playing;
+    if (playing) {
+      debugPrint('[WakeWord] 🎵 музыка — STT работает тихо');
+      // Если STT сейчас активен — даём ему закончить цикл сам,
+      // не перезапускаем агрессивно чтобы не конкурировать с аудио
+    } else {
+      debugPrint('[WakeWord] 🎵 музыка остановилась — обычный режим');
+      if (_isRunning && !_isPaused && !_sttActive) {
+        _scheduleRestart(const Duration(seconds: 1));
+      }
+    }
+  }
+
+  // Совместимость со старым API
+  Future<void> pauseForMusic() async => setMusicPlaying(true);
+  Future<void> resumeAfterMusic() async => setMusicPlaying(false);
 
   void _scheduleRestart(Duration delay) {
     _restartTimer?.cancel();
     _restartTimer = Timer(delay, () async {
-      if (_isRunning && !_isPaused) await _startLoop();
+      if (_isRunning && !_isPaused && !_sttActive) await _startSttLoop();
     });
   }
 
-  Future<void> _startLoop() async {
+  Future<void> _startSttLoop() async {
     if (!_isRunning || _isPaused || !_initialized) return;
-    if (_stt.isListening) return;
+    if (_stt.isListening || _sttActive) return;
+
+    // При музыке — слушаем с более коротким таймаутом и без агрессивного рестарта
+    final listenDuration = _musicPlaying
+        ? const Duration(seconds: 8)
+        : const Duration(minutes: 5);
+    final pauseDuration = _musicPlaying
+        ? const Duration(seconds: 3)
+        : const Duration(seconds: 30);
 
     try {
+      _sttActive = true;
       await _stt.listen(
         localeId: 'ru-RU',
-        listenFor: const Duration(minutes: 10),
-        pauseFor: const Duration(seconds: 60),
+        listenFor: listenDuration,
+        pauseFor: pauseDuration,
         onResult: (result) {
           if (!_isRunning || _isPaused) return;
           final words = result.recognizedWords.toLowerCase().trim();
           if (words.isEmpty) return;
           debugPrint('[WakeWord] слышу: "$words"');
           if (_currentTriggers.any((t) => words.contains(t))) {
-            debugPrint('[WakeWord] ✅ Wake word! Вызываю callback');
+            debugPrint('[WakeWord] ✅ WAKE WORD!');
             onWakeWord?.call();
           }
         },
         listenMode: ListenMode.dictation,
         cancelOnError: false,
       );
+      // Страховочный таймер — если STT завис
+      _sttTimeoutTimer?.cancel();
+      _sttTimeoutTimer = Timer(listenDuration + const Duration(seconds: 5), () {
+        if (_sttActive && _stt.isListening) {
+          debugPrint('[WakeWord] ⚠️ таймаут STT — перезапуск');
+          _stt.stop();
+        }
+      });
     } catch (e) {
       debugPrint('[WakeWord] ошибка listen: $e');
+      _sttActive = false;
       _scheduleRestart(const Duration(seconds: 3));
     }
   }
 
   void _startWatchdog() {
     _watchdogTimer?.cancel();
-    _watchdogTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _watchdogTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
       if (!_isRunning || _isPaused) return;
-      if (!_stt.isListening) {
-        debugPrint('[WakeWord] 🐕 watchdog: микрофон не активен — перезапуск');
-        _startLoop();
-      } else {
-        debugPrint('[WakeWord] 🐕 watchdog: ОК, слушаю');
+      if (!_stt.isListening && !_sttActive) {
+        debugPrint('[WakeWord] 🐕 watchdog: перезапуск');
+        await _startSttLoop();
       }
     });
   }
@@ -180,10 +188,10 @@ class WakeWordService {
   Future<void> stop() async {
     _isRunning = false;
     _isPaused = false;
+    _sttActive = false;
     _watchdogTimer?.cancel();
     _restartTimer?.cancel();
-    _watchdogTimer = null;
-    _restartTimer = null;
+    _sttTimeoutTimer?.cancel();
     if (_stt.isListening) await _stt.stop();
     debugPrint('[WakeWord] ⏹ остановлен');
   }

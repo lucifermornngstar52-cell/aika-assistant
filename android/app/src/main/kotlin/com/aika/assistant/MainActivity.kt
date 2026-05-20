@@ -1,6 +1,11 @@
 package com.aika.assistant
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.media.AudioManager
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.view.KeyEvent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -20,6 +25,8 @@ class MainActivity : FlutterActivity() {
     private val SCREEN_CHANNEL   = "com.aika.assistant/screen"
     private val SCREEN_EVENTS    = "com.aika.assistant/screen_events"
     private val MESSENGER_CHANNEL = "com.aika.assistant/messenger"
+    private val URL_CHANNEL      = "com.aika.assistant/url"
+    private val MEDIA_CHANNEL    = "com.aika.assistant/media"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
@@ -81,6 +88,54 @@ class MainActivity : FlutterActivity() {
                             "package" to AikaAccessibilityService.currentPackage,
                             "label"   to AikaAccessibilityService.currentAppLabel
                         ))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── URL channel ──────────────────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, URL_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openUrl" -> {
+                        val url = call.argument<String>("url") ?: ""
+                        try {
+                            val intent = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(url)
+                            ).apply {
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Media control channel ─────────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "mediaControl" -> {
+                        val action = call.argument<String>("action") ?: ""
+                        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        val keyCode = when (action) {
+                            "play"     -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+                            "pause"    -> android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+                            "next"     -> android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+                            "previous" -> android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                            "stop"     -> android.view.KeyEvent.KEYCODE_MEDIA_STOP
+                            else       -> -1
+                        }
+                        if (keyCode != -1) {
+                            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                        }
+                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }

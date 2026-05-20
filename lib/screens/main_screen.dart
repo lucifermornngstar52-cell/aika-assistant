@@ -18,6 +18,8 @@ import 'settings_screen.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
 import '../services/message_sender_service.dart';
+import '../services/url_launcher_service.dart';
+import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
 
 class MainScreen extends StatefulWidget {
@@ -231,6 +233,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _onWakeWordDetected() async {
     _resetIdleTimer();
+    // Приостанавливаем wake word пока обрабатываем команду
+    await _wakeWordService.pause();
     await OverlayService.showOverlay(state: 'listening');
     await _speak('Да?');
     setState(() => _isListening = true);
@@ -240,10 +244,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await OverlayService.updateState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
         await OverlayService.updateState('idle');
+        // Возобновляем wake word после команды
+        if (_wakeWordEnabled) await _wakeWordService.resume();
       },
       onDone: () {
         setState(() => _isListening = false);
         OverlayService.updateState('idle');
+        if (_wakeWordEnabled) _wakeWordService.resume();
       },
     );
   }
@@ -293,23 +300,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (_isListening || _isThinking) return;
       final playing = await MusicDetectorService.isMusicPlaying();
       if (playing) {
-        // Музыка играет — танцуем + приостанавливаем wake word
         if (!_isDancing) {
           if (mounted) setState(() => _isDancing = true);
           OverlayService.updateState('dance');
         }
-        if (_wakeWordEnabled && !_wakeWordService.isPaused) {
-          await _wakeWordService.pauseForMusic();
-        }
+        // Не останавливаем wake word полностью — просто сообщаем что играет музыка
+        _wakeWordService.setMusicPlaying(true);
       } else {
-        // Музыка остановилась — возобновляем wake word
         if (_isDancing) {
           if (mounted) setState(() => _isDancing = false);
           OverlayService.updateState('idle');
         }
-        if (_wakeWordEnabled && _wakeWordService.isPaused) {
-          await _wakeWordService.resumeAfterMusic();
-        }
+        _wakeWordService.setMusicPlaying(false);
       }
     });
   }
@@ -456,6 +458,43 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (text.trim().isEmpty) return;
     _textController.clear();
     _resetIdleTimer();
+
+    // ── Управление музыкой ───────────────────────────────────────────────
+    final musicCmd = MusicControlService.parseCommand(text);
+    if (musicCmd != null) {
+      await MusicControlService.send(musicCmd);
+      final replies = {
+        'play': 'Включаю музыку 🎵',
+        'pause': 'Поставила на паузу ⏸',
+        'stop': 'Останавливаю музыку ⏹',
+        'next': 'Следующий трек ⏭',
+        'previous': 'Предыдущий трек ⏮',
+      };
+      final reply = replies[musicCmd] ?? 'Готово';
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(reply);
+      return;
+    }
+
+    // ── Открытие сайтов ──────────────────────────────────────────────────
+    final url = UrlLauncherService.parseUrlCommand(text);
+    if (url != null) {
+      final reply = 'Открываю $url 🌐';
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      await _speak('Открываю');
+      await UrlLauncherService.openUrl(url);
+      return;
+    }
 
     // ── Попытка команды отправки сообщения ──────────────────────────────
     final sendResult = await _trySendMessage(text);
