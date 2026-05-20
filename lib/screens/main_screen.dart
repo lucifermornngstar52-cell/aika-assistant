@@ -17,6 +17,7 @@ import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
+import '../services/message_sender_service.dart';
 import '../services/screen_watcher_service.dart';
 
 class MainScreen extends StatefulWidget {
@@ -354,6 +355,90 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     ));
   }
 
+
+  // ── Парсер команды отправки сообщения ─────────────────────────────────────
+  // Форматы: "отправь/напиши [в ватсап/телеграм] контакту [имя] [текст]"
+  //          "айка отправь богдану привет как дела"
+  _SendCommand? _parseSendCommand(String text) {
+    final lower = text.toLowerCase().trim();
+
+    // Триггерные слова
+    final triggers = ['отправь', 'напиши', 'скинь', 'пошли'];
+    bool hasTrigger = triggers.any((t) => lower.contains(t));
+    if (!hasTrigger) return null;
+
+    // Определяем приложение
+    String app = 'whatsapp'; // по умолчанию
+    if (lower.contains('телеграм') || lower.contains('telegram') || lower.contains('тг')) {
+      app = 'telegram';
+    } else if (lower.contains('ватсап') || lower.contains('вацап') || lower.contains('whatsapp')) {
+      app = 'whatsapp';
+    }
+
+    // Убираем триггер и название приложения
+    String cleaned = lower;
+    for (final t in triggers) { cleaned = cleaned.replaceFirst(t, ''); }
+    cleaned = cleaned
+        .replaceAll(RegExp(r'в ватсап|в вацап|в whatsapp|в телеграм|в telegram|в тг'), '')
+        .replaceAll(RegExp(r'ватсап|вацап|whatsapp|телеграм|telegram'), '')
+        .trim();
+
+    // Ищем имя контакта: "контакту [имя]" или "[имя]у/у [имя]"
+    String contact = '';
+    String message = '';
+
+    final contactPattern = RegExp(r'контакту?\s+(\S+)(.*)');
+    final m = contactPattern.firstMatch(cleaned);
+    if (m != null) {
+      contact = m.group(1)!.trim();
+      message = m.group(2)!.trim();
+    } else {
+      // Без слова "контакт" — первое слово это имя
+      final parts = cleaned.trim().split(RegExp(r'\s+'));
+      if (parts.length >= 2) {
+        contact = parts[0];
+        message = parts.sublist(1).join(' ');
+      } else {
+        return null; // Не хватает данных
+      }
+    }
+
+    // Убираем падежные окончания из имени (богдану → богдан)
+    contact = _normalizeName(contact);
+
+    if (contact.isEmpty || message.isEmpty) return null;
+    return _SendCommand(app: app, contact: contact, message: message);
+  }
+
+  String _normalizeName(String name) {
+    // Убираем распространённые падежные окончания
+    final suffixes = ['у', 'ю', 'а', 'е', 'ом', 'ем', 'ой', 'ей', 'ам', 'ям'];
+    for (final s in suffixes) {
+      if (name.length > 3 && name.endsWith(s)) {
+        return name.substring(0, name.length - s.length);
+      }
+    }
+    return name;
+  }
+
+  Future<String?> _trySendMessage(String text) async {
+    final cmd = _parseSendCommand(text);
+    if (cmd == null) return null;
+
+    final appName = cmd.app == 'whatsapp' ? 'WhatsApp' : 'Telegram';
+    final reply = 'Отправляю "${cmd.message}" контакту ${cmd.contact} в $appName...';
+    OverlayService.updateState('greeting');
+
+    final result = await MessageSenderService.sendMessage(
+      app: cmd.app,
+      contact: cmd.contact,
+      message: cmd.message,
+    );
+
+    Future.delayed(const Duration(seconds: 2), () => OverlayService.updateState('idle'));
+    return reply;
+  }
+
   /// Запускаем танец — вызывается из sendMessage если команда "танцуй"
   void _startDance() {
     if (_isListening || _isThinking) return;
@@ -370,6 +455,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _textController.clear();
+    _resetIdleTimer();
+
+    // ── Попытка команды отправки сообщения ──────────────────────────────
+    final sendResult = await _trySendMessage(text);
+    if (sendResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: sendResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(sendResult);
+      return;
+    }
     _resetIdleTimer(); // Активность — сбрасываем stretch таймер
 
     // Проверяем команду танца
@@ -703,9 +802,3 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 }
-
-
-
-
-
-

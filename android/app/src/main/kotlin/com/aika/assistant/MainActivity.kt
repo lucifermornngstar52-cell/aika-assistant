@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
     private val AUDIO_CHANNEL    = "aika/audio"
     private val SCREEN_CHANNEL   = "com.aika.assistant/screen"
     private val SCREEN_EVENTS    = "com.aika.assistant/screen_events"
+    private val MESSENGER_CHANNEL = "com.aika.assistant/messenger"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
@@ -80,6 +81,28 @@ class MainActivity : FlutterActivity() {
                             "package" to AikaAccessibilityService.currentPackage,
                             "label"   to AikaAccessibilityService.currentAppLabel
                         ))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Messenger channel (отправка сообщений через Accessibility) ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MESSENGER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "sendMessage" -> {
+                        val app     = call.argument<String>("app")     ?: "whatsapp"
+                        val contact = call.argument<String>("contact") ?: ""
+                        val message = call.argument<String>("message") ?: ""
+                        val service = AikaAccessibilityService.instance
+                        if (service == null) {
+                            result.error("NO_SERVICE", "Включи Accessibility Service для Айки", null)
+                        } else if (contact.isEmpty()) {
+                            result.error("NO_CONTACT", "Имя контакта не указано", null)
+                        } else {
+                            service.startSendMessage(app, contact, message)
+                            result.success("Ищу $contact в $app...")
+                        }
                     }
                     else -> result.notImplemented()
                 }
