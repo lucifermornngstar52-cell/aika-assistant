@@ -213,6 +213,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (has) {
       ScreenWatcherService.startWatching(
         onReaction: (reaction) {
+          // Game music auto-trigger
+          GameMusicService.onAppChanged(ScreenWatcherService.currentPackage).then((msg) {
+            if (msg != null && mounted) {
+              _addMessage(ChatMessage(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                role: MessageRole.aika,
+                content: msg,
+                timestamp: DateTime.now(),
+              ));
+              _speak(msg);
+            }
+          });
           if (!_screenCommentsEnabled) return;
           if (!_isListening && !_isThinking && !_isDancing) {
             // Добавляем сообщение в чат и говорим
