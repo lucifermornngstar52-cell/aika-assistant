@@ -382,5 +382,98 @@ class AikaAccessibilityService : AccessibilityService() {
     fun performBack() = performGlobalAction(GLOBAL_ACTION_BACK)
 
 
+    // ── Полное управление телефоном ──────────────────────────────────────────
+
+    /** Тап по координатам (Android 7+) */
+    fun tapAt(x: Float, y: Float) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        val path = android.graphics.Path().apply { moveTo(x, y) }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 100))
+            .build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Долгий тап по координатам */
+    fun longTapAt(x: Float, y: Float) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        val path = android.graphics.Path().apply { moveTo(x, y) }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 1000))
+            .build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Свайп от (x1,y1) до (x2,y2) */
+    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long = 300) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        val path = android.graphics.Path().apply {
+            moveTo(x1, y1)
+            lineTo(x2, y2)
+        }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, durationMs))
+            .build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Системная кнопка Home */
+    fun pressHome() = performGlobalAction(GLOBAL_ACTION_HOME)
+
+    /** Недавние приложения */
+    fun pressRecents() = performGlobalAction(GLOBAL_ACTION_RECENTS)
+
+    /** Уведомления */
+    fun openNotifications() = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+
+    /** Быстрые настройки */
+    fun openQuickSettings() = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+
+    /** Ввод текста в активное поле */
+    fun typeText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val editText = findFocusedOrFirstEditText(root) ?: return false
+        val args = android.os.Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        return editText.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    /** Очистить активное поле */
+    fun clearText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val editText = findFocusedOrFirstEditText(root) ?: return false
+        val args = android.os.Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        }
+        return editText.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    /** Нажать Enter/Done в активном поле */
+    fun pressEnter(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val edit = findFocusedOrFirstEditText(root) ?: return false
+        val args = android.os.Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, 
+                   AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE)
+        }
+        return edit.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, args)
+    }
+
+    /** Получить размер экрана */
+    fun getScreenSize(): Map<String, Int> {
+        val dm = resources.displayMetrics
+        return mapOf("width" to dm.widthPixels, "height" to dm.heightPixels)
+    }
+
+    private fun findFocusedOrFirstEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // Сначала ищем фокусированный элемент
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null && focused.isEditable) return focused
+        // Потом первый редактируемый
+        return findNodeByCondition(root) { it.isEditable && it.isFocusable }
+    }
+
+
 }
 
