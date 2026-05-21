@@ -38,6 +38,8 @@ import 'mood_diary_screen.dart';
 import 'telegram_bot_screen.dart';
 import 'app_commands_screen.dart';
 import '../services/game_music_service.dart';
+import '../services/notification_reader_service.dart';
+import '../services/smart_alarm_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -153,6 +155,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Инициализируем новые сервисы
     await _reminderService.initialize();
     await _alarmService.initialize();
+
+    // Smart alarm init
+    SmartAlarmService.onAlarmFired = (text) async {
+      if (!mounted) return;
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(text);
+    };
+    await SmartAlarmService.initialize();
+
+    // Notification reader - озвучивать уведомления вслух
+    NotificationReaderService.onSpeak = (text) async {
+      await _speak(text);
+      return text;
+    };
     _alarmService.onAlarmFired = (text) {
       _moodService.onAlarmFired();
       if (!mounted) return;
@@ -810,6 +831,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── Чтение уведомлений (вкл/выкл голосом) ──
+    final notifReaderResult = await NotificationReaderService.tryParseCommand(text);
+    if (notifReaderResult != null) {
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.user, content: text, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch+1).toString(), role: MessageRole.aika, content: notifReaderResult, timestamp: DateTime.now()));
+      await _speak(notifReaderResult);
+      return;
+    }
+
+    // ── Умный будильник ──
+    final smartAlarmResult = await SmartAlarmService.tryParseCommand(text);
+    if (smartAlarmResult != null) {
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.user, content: text, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch+1).toString(), role: MessageRole.aika, content: smartAlarmResult, timestamp: DateTime.now()));
+      await _speak(smartAlarmResult);
+      return;
+    }
+
     // ── Будильник ──
     final alarmResult = await _alarmService.tryParseAlarm(text);
     if (alarmResult != null) {
@@ -1117,6 +1156,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _idleTimer?.cancel();
     _deviceService.dispose();
     _wakeWordService.stop();
+    SmartAlarmService.dispose();
     super.dispose();
   }
 
