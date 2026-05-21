@@ -105,6 +105,42 @@ class AlarmService {
     ][_rng.nextInt(3)];
   }
 
+
+  // Personality-based wake messages
+  String _getPersonalityWakeMessage(String personality, int hour, int weekday) {
+    final isWeekend = weekday >= 6;
+    switch (personality) {
+      case 'tsundere':
+        return isWeekend
+            ? ['Вставай уже! Я... я не из-за тебя разбудила, просто так! 😤',
+               'Ладно-ладно, просыпайся. Не думай что мне не всё равно! 🙄',
+               'Буди себя сам! Хотя... ладно, вставай. Бэка! 😳'][_rng.nextInt(3)]
+            : ['Подъём! И не смей опять засыпать, слышишь?! 😠',
+               'Эй! Ты вообще меня слышишь?! Вставай!! 💢',
+               'Я же сказала — подъём! Не заставляй меня злиться! 😤'][_rng.nextInt(3)];
+      case 'cold':
+        return ['Время пробуждения. Рекомендую встать сразу.',
+               'Будильник. Оптимальное время для подъёма.',
+               'Зафиксировано: ${hour.toString().padLeft(2,"0")}:00. Пора вставать.'][_rng.nextInt(3)];
+      case 'gabimaru':
+        return ['Подъём, боец! Слабых здесь нет! ⚔️',
+               'Утро — время для тренировки! Вставай! 🔥',
+               'Ещё одно утро — ещё один шанс стать сильнее! 💪'][_rng.nextInt(3)];
+      case 'sensei':
+        return ['Доброе утро. Новый день — новая мудрость ждёт 🌅',
+               'Пробуждение — это малое рождение. Встречай день с благодарностью 🌸',
+               'Утро тихое, разум ясный. Самое время начать 🍵'][_rng.nextInt(3)];
+      default: // miya (милая)
+        return isWeekend
+            ? ['Доброе утро~! Я скучала! ☀️✨',
+               'Хэй, соня! Просыпайся, я жду тебя~ 🌸',
+               'Доброе утро! Сегодня выходной — давай проведём его весело! 💕'][_rng.nextInt(3)]
+            : ['Доброе утро! Вставай, я уже скучаю~ 💕',
+               'Хэй-хэй! Новый день! Я здесь~ 🌺',
+               'Просыпайся! Сегодня будет отличный день, обещаю! ✨'][_rng.nextInt(3)];
+    }
+  }
+
   Future<void> initialize() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     await _notif.initialize(
@@ -131,7 +167,9 @@ class AlarmService {
 
   Future<void> _fireAlarm(AlarmEntry alarm) async {
     final now = DateTime.now();
-    final msg = _getWakeMessage(now.hour, now.weekday);
+    final prefs = await SharedPreferences.getInstance();
+    final personality = prefs.getString('aika_personality') ?? 'miya';
+    final msg = _getPersonalityWakeMessage(personality, now.hour, now.weekday);
     final full = alarm.label.isNotEmpty ? '$msg\n📌 ${alarm.label}' : msg;
 
     await _notif.show(
@@ -252,3 +290,4 @@ class AlarmService {
 
   void dispose() => _ticker?.cancel();
 }
+
