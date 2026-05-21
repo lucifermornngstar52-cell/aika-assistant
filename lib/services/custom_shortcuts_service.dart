@@ -77,7 +77,7 @@ class CustomShortcutsService {
     final delMatch = RegExp(r'удали команду[:\s]+(.+)$', caseSensitive: false).firstMatch(text);
     if (delMatch != null) {
       final raw = delMatch.group(1)!.trim();
-      final trigger = raw.replaceAll(RegExp(r"[\"']"), '').toLowerCase();
+      final trigger = raw.replaceAll('"', '').replaceAll("'", '').toLowerCase();
       await remove(trigger);
       return 'Команда "$trigger" удалена.';
     }
