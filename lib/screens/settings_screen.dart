@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_theme.dart';
+import '../services/wake_word_service.dart';
 import 'commands_screen.dart';
+import 'personality_screen.dart';
+import 'wardrobe_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -72,6 +75,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
     }
+    // Update wake word when assistant name changes
+    await WakeWordService().updateTriggers();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -253,6 +258,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: (v) => setState(() => _showAvatar = v),
               ),
             ]),
+            _buildSectionTitle('ПЕРСОНАЖ'),
+            _buildCard([
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Icon(Icons.face_retouching_natural_rounded, color: AikaTheme.neonBlue),
+                title: const Text('Характер ассистента', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Милая, цундере, Габимару и другие',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: Icon(Icons.arrow_forward_ios_rounded,
+                    color: AikaTheme.neonBlue.withOpacity(0.6), size: 16),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const PersonalityScreen())),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Icon(Icons.checkroom_rounded, color: AikaTheme.neonBlue),
+                title: const Text('Гардероб', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Одежда и аксессуары для Айки',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: Icon(Icons.arrow_forward_ios_rounded,
+                    color: AikaTheme.neonBlue.withOpacity(0.6), size: 16),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const WardrobeScreen())),
+              ),
+            ]),
             _buildSectionTitle('ГОЛОСОВЫЕ КОМАНДЫ'),
             _buildCard([
               ListTile(
@@ -336,4 +367,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
 
