@@ -45,7 +45,9 @@ class BriefingService {
 
   String _todayStr() {
     final n = DateTime.now();
-    return '\${n.year}-\${n.month.toString().padLeft(2,'0')}-\${n.day.toString().padLeft(2,'0')}';
+    final mm = n.month.toString().padLeft(2, '0');
+    final dd = n.day.toString().padLeft(2, '0');
+    return '${n.year}-$mm-$dd';
   }
 
   String _getGreeting(int hour) {
