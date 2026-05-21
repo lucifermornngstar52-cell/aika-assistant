@@ -1,3 +1,4 @@
+import 'package:lottie/lottie.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
@@ -63,6 +64,18 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
     'assets/images/aika_stretch14.png',
     'assets/images/aika_stretch15.png',
   ];
+
+  // Lottie JSON анимации (если есть) — иначе PNG спрайты
+  String? get _lottieAsset {
+    switch (widget.state) {
+      case AikaState.idle:      return 'assets/animations/aika_idle.json';
+      case AikaState.listening: return null; // PNG спрайт
+      case AikaState.thinking:  return 'assets/animations/aika_think.json';
+      case AikaState.greeting:  return 'assets/animations/aika_wave.json';
+      case AikaState.dance:     return 'assets/animations/aika_dance.json';
+      case AikaState.stretch:   return 'assets/animations/aika_stretch.json';
+    }
+  }
 
   String get _currentSprite {
     switch (widget.state) {
@@ -221,19 +234,34 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                 ],
               ),
             ),
-            // Sprite
+            // Sprite — Lottie JSON если есть, иначе PNG
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 80),
+              duration: const Duration(milliseconds: 200),
               transitionBuilder: (child, anim) =>
                   FadeTransition(opacity: anim, child: child),
-              child: Image.asset(
-                _currentSprite,
-                key: ValueKey('${widget.state}_${_danceFrame}_${_stretchFrame}'),
-                width: widget.size,
-                height: widget.size * 1.3,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-              ),
+              child: _lottieAsset != null
+                  ? Lottie.asset(
+                      _lottieAsset!,
+                      key: ValueKey('lottie_\${widget.state}'),
+                      width: widget.size,
+                      height: widget.size * 1.3,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Image.asset(
+                        _currentSprite,
+                        width: widget.size,
+                        height: widget.size * 1.3,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    )
+                  : Image.asset(
+                      _currentSprite,
+                      key: ValueKey('png_\${widget.state}_\${_danceFrame}_\${_stretchFrame}'),
+                      width: widget.size,
+                      height: widget.size * 1.3,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
             ),
             // Badge
             Positioned(bottom: 0, child: _buildBadge()),
@@ -333,4 +361,5 @@ class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderState
         decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
   );
 }
+
 
