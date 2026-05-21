@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import '../services/edge_tts_service.dart';
 import '../theme/app_theme.dart';
 import '../services/wake_word_service.dart';
 import 'commands_screen.dart';
@@ -22,6 +23,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<dynamic> _voices = [];
   String? _selectedVoice;
+  String _selectedEdgeVoice = 'ru-RU-DariyaNeural';
+  bool _useEdgeTts = true;
   double _speechRate = 0.5;
   double _pitch = 1.0;
   double _volume = 1.0;
@@ -45,6 +48,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
       _volume = prefs.getDouble('tts_volume') ?? 1.0;
       _selectedVoice = prefs.getString('tts_voice');
+      _selectedEdgeVoice = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
+      _useEdgeTts = prefs.getBool('use_edge_tts') ?? true;
       _showAvatar = prefs.getBool('show_avatar') ?? true;
       _isLoading = false;
     });
@@ -75,6 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
     }
+    await prefs.setString('edge_voice', _selectedEdgeVoice);
+    await prefs.setBool('use_edge_tts', _useEdgeTts);
     // Update wake word when assistant name changes
     await WakeWordService().updateTriggers();
     if (mounted) {
@@ -86,6 +93,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _testEdgeVoice() async {
+    final svc = EdgeTtsService();
+    await svc.initialize();
+    svc.setVoice(_selectedEdgeVoice);
+    await svc.speak('Привет! Я Айка, ваш голосовой ассистент 🌸');
   }
 
   Future<void> _testVoice() async {
@@ -300,7 +314,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
             _buildSectionTitle('ГОЛОС АССИСТЕНТА'),
             _buildCard([
-              if (_voices.isNotEmpty) ...[
+              // ── Edge TTS переключатель ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.graphic_eq, color: AikaTheme.neonBlue, size: 20),
+                    const SizedBox(width: 8),
+                    const Text('Microsoft Edge TTS (нейросеть)', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    const Spacer(),
+                    Switch(
+                      value: _useEdgeTts,
+                      activeColor: AikaTheme.neonBlue,
+                      onChanged: (v) => setState(() => _useEdgeTts = v),
+                    ),
+                  ],
+                ),
+              ),
+              if (_useEdgeTts) ...[
+                // ── Выбор Edge голоса ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedEdgeVoice,
+                    dropdownColor: AikaTheme.surface,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: '🎙 Нейронный голос',
+                      labelStyle: TextStyle(color: AikaTheme.neonBlue.withOpacity(0.8)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: AikaTheme.neonBlue),
+                      ),
+                    ),
+                    items: EdgeTtsService.voices.map((v) => DropdownMenuItem(
+                      value: v['id'],
+                      child: Text(v['label'] ?? v['id']!),
+                    )).toList(),
+                    onChanged: (v) => setState(() => _selectedEdgeVoice = v ?? _selectedEdgeVoice),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.play_arrow, size: 16),
+                      label: const Text('Тест нейронного голоса'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AikaTheme.neonBlue,
+                        side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.5)),
+                      ),
+                      onPressed: _testEdgeVoice,
+                    ),
+                  ),
+                ),
+              ],
+              if (!_useEdgeTts && _voices.isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: DropdownButtonFormField<String>(
@@ -367,5 +441,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
 
 
