@@ -290,6 +290,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (has) {
       NotificationService.startListening(
         onNew: (notif) {
+          // Read notification aloud if enabled
+          NotificationReaderService.onNotification(notif);
           // Можно добавить реакцию на важные уведомления
           final title = notif['title'] ?? '';
           final text  = notif['text']  ?? '';
