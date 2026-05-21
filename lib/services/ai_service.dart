@@ -7,10 +7,10 @@ class AiService {
   static const String _geminiUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
-  static String get _openAiKey => 'sk-proj-tRsyjyKe7gnqa9oiiYUuf4'
-      'DxmFZvQWYsIA3U3xigrdjlz6KIqihr'
-      'jzqOfQF3xfSUZLWeOdRoKsT3BlbkFJ'
-      'gqlVOe-MzSS_rTCghbiulyQt_YXWe-lOrqxpYbexmHkrRjSsFdoziq3IuaIdh4rEo3AKaz0e8A';
+  static String get _openAiKey => 'sk-proj-yZjSi9Ce5puYb1kfGrgITw'
+      'JQIoRrab57qErCRPWlGN9DTKRLRNtE'
+      '68HOVbLo_xByy5FcH1PtEGT3BlbkFJ'
+      'q--UQq-fr6hEMtKPM4vrKfTMYIml8fo1KYZfOijKRaPP2Dn8pr73mrDwec7dKDxUdQQVHZj3MA';
   static const String _openAiUrl = 'https://api.openai.com/v1/chat/completions';
 
   Future<String> sendMessage(
@@ -75,18 +75,13 @@ class AiService {
     final userPart = userName.isNotEmpty ? ', пользователя зовут $userName' : '';
     final personalityPrompt = PersonalityService.systemPromptAddition;
     return "Ты $assistantName — аниме AI-ассистент для Android$userPart. Говоришь кратко, умно. Отвечаешь по-русски.$personalityPrompt\n\n"
-        "Доступные действия:\n"
         "[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]\n"
         "[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]\n"
         "[ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR]\n"
         "[ACTION:what_on_screen] [ACTION:notifications_briefing]\n"
         "[ACTION:reminder_ТЕКСТ_через_N_мин] [ACTION:alarm_HH:MM_ТЕКСТ]\n"
         "[ACTION:game_guess] [ACTION:game_words]\n"
-        "[ACTION:music_play] [ACTION:music_pause] [ACTION:music_next] [ACTION:music_prev]\n"
-        "[ACTION:schedule_today] [ACTION:schedule_add_НАЗВАНИЕ_ВРЕМЯ]\n"
         "[ACTION:launch_app_PACKAGE]\n"
-        "Если пользователь говорит 'следующий трек', 'пауза', 'стоп музыка' — используй music_ действия.\n"
-        "Если пользователь спрашивает расписание — используй schedule_today.\n"
         "Никогда не пиши JSON в ответе. Отвечай кратко 1-3 предложения.";
   }
 
