@@ -1,15 +1,15 @@
 import 'dart:convert';
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Автоматически запускает музыку при открытии игр.
-/// Пользователь выбирает: какой музыкальный плеер и какие игры триггерят.
+/// Музыка запускается В ФОНЕ — игра не сворачивается.
 class GameMusicService {
-  static const _keyEnabled     = 'game_music_enabled';
-  static const _keyPlayer      = 'game_music_player';
-  static const _keyGameList    = 'game_music_game_packages';
-  static const _keyLastPlayed  = 'game_music_last_played';
+  static const _keyEnabled    = 'game_music_enabled';
+  static const _keyPlayer     = 'game_music_player';
+  static const _keyGameList   = 'game_music_game_packages';
+  static const _mediaChannel  = MethodChannel('com.aika.assistant/media');
+  static const _audioChannel  = MethodChannel('aika/audio');
 
   static const Map<String, String> availablePlayers = {
     'com.spotify.music':                    'Spotify',
@@ -19,7 +19,6 @@ class GameMusicService {
     'com.soundcloud.android':               'SoundCloud',
   };
 
-  // Известные игровые пакеты (встроенный список)
   static const Map<String, String> knownGames = {
     'com.supercell.brawlstars':             'Brawl Stars',
     'com.supercell.clashofclans':           'Clash of Clans',
@@ -34,15 +33,14 @@ class GameMusicService {
     'com.YoStarEN.Arknights':              'Arknights',
     'com.miHoYo.GenshinImpact':            'Genshin Impact',
     'com.mobile.legends':                   'Mobile Legends',
-    'com.vng.mlbbvn':                       'Mobile Legends VN',
     'jp.konami.pesam':                      'eFootball',
     'com.ea.game.nfs14_row':               'Need for Speed',
-    'com.games.uno':                        'UNO!',
     'com.king.candycrushsaga':             'Candy Crush',
     'com.dts.freefireth':                   'Free Fire TH',
+    'com.tencent.tmgp.pubgmhd':            'PUBG Mobile HD',
+    'com.garena.game.kgth':                'Free Fire TH 2',
   };
 
-  static bool _initialized = false;
   static String? _lastTriggeredPkg;
   static DateTime? _lastTriggerTime;
   static const _cooldown = Duration(minutes: 10);
@@ -67,11 +65,10 @@ class GameMusicService {
     await prefs.setString(_keyPlayer, packageName);
   }
 
-  /// Возвращает список пакетов игр выбранных пользователем
   static Future<List<String>> getUserGames() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_keyGameList) ?? '[]';
-    return List<String>.from(json.decode(raw));
+    return List<String>.from(jsonDecode(raw));
   }
 
   static Future<void> addGame(String packageName) async {
@@ -79,7 +76,7 @@ class GameMusicService {
     final list = await getUserGames();
     if (!list.contains(packageName)) {
       list.add(packageName);
-      await prefs.setString(_keyGameList, json.encode(list));
+      await prefs.setString(_keyGameList, jsonEncode(list));
     }
   }
 
@@ -87,7 +84,31 @@ class GameMusicService {
     final prefs = await SharedPreferences.getInstance();
     final list = await getUserGames();
     list.remove(packageName);
-    await prefs.setString(_keyGameList, json.encode(list));
+    await prefs.setString(_keyGameList, jsonEncode(list));
+  }
+
+  /// Проверяет играет ли сейчас музыка
+  static Future<bool> _isMusicPlaying() async {
+    try {
+      return await _audioChannel.invokeMethod<bool>('isMusicPlaying') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Запускает музыку В ФОНЕ через MediaKey — без открытия UI плеера
+  /// Игра остаётся на экране, музыка начинает играть поверх
+  static Future<void> _startMusicInBackground(String playerPackage) async {
+    try {
+      // Сначала пробуем возобновить через media key (не открывает UI)
+      final isPlaying = await _isMusicPlaying();
+      if (!isPlaying) {
+        // Запускаем плеер в фоне через нативный метод
+        await _mediaChannel.invokeMethod('startMusicBackground', {
+          'package': playerPackage,
+        });
+      }
+    } catch (_) {}
   }
 
   /// Вызывается из ScreenWatcher когда меняется приложение
@@ -102,7 +123,7 @@ class GameMusicService {
 
     if (!allTriggerPkgs.contains(packageName)) return null;
 
-    // Cooldown — не спамим
+    // Cooldown
     final now = DateTime.now();
     if (_lastTriggeredPkg == packageName &&
         _lastTriggerTime != null &&
@@ -117,24 +138,15 @@ class GameMusicService {
     final playerName = availablePlayers[player] ?? 'плеер';
     final gameName = knownGames[packageName] ?? packageName.split('.').last;
 
-    // Запускаем плеер
-    await _launchApp(player);
+    // Небольшая задержка чтобы игра успела загрузиться
+    await Future.delayed(const Duration(seconds: 2));
 
-    return '🎮 $gameName запущена! Включаю $playerName 🎵';
+    // Запускаем музыку в фоне — игра не сворачивается!
+    await _startMusicInBackground(player);
+
+    return '🎮 $gameName — включаю $playerName в фоне 🎵';
   }
 
-  static Future<void> _launchApp(String packageName) async {
-    try {
-      final intent = AndroidIntent(
-        action: 'android.intent.action.MAIN',
-        package: packageName,
-        flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
-      );
-      await intent.launch();
-    } catch (_) {}
-  }
-
-  /// Парсим голосовую команду для настройки
   static Future<String?> tryParseCommand(String text) async {
     final t = text.toLowerCase();
 
@@ -143,7 +155,7 @@ class GameMusicService {
       await setEnabled(true);
       final player = await getPlayer();
       final name = availablePlayers[player] ?? 'Spotify';
-      return '🎵 Автомузыка в играх включена! Буду запускать $name когда ты заходишь в игру.';
+      return '🎵 Автомузыка включена! Буду запускать $name в фоне когда заходишь в игру.';
     }
 
     if (t.contains('выключи автомузыку') || t.contains('отключи музыку в играх')) {
