@@ -7,6 +7,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_launcher_service.dart';
 import 'currency_service.dart';
+import 'music_control_service.dart';
 import 'screen_watcher_service.dart';
 
 class DeviceService {
@@ -126,6 +127,24 @@ class DeviceService {
         if (info == null) return 'Не вижу что на экране — включи доступность для Айки';
         return 'Сейчас на экране: ${info['label']} (${info['package']})';
 
+
+      // ── Музыка ────────────────────────────────────────────────────
+      case 'music_play':
+        await MusicControlService.play();
+        return 'Включаю музыку 🎵';
+      case 'music_pause':
+        await MusicControlService.pause();
+        return 'Поставила на паузу ⏸';
+      case 'music_next':
+        await MusicControlService.next();
+        return 'Следующий трек ⏭';
+      case 'music_prev':
+        await MusicControlService.previous();
+        return 'Предыдущий трек ⏮';
+      case 'music_stop':
+        await MusicControlService.stop();
+        return 'Останавливаю музыку ⏹';
+
       default:
         return null;
     }
@@ -168,4 +187,5 @@ class DeviceService {
     }
   }
 }
+
 
