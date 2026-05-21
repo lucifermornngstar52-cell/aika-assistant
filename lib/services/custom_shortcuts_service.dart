@@ -25,36 +25,41 @@ class CustomShortcutsService {
   }
 
   Future<String?> tryAddShortcut(String text) async {
-    // Pattern: "добавь команду: скажу X — сделай Y"
-    final addMatch = RegExp(
-      r'(?:добавь|создай|запомни)\s+команд[уыа]',
+    final hasAddKeyword = RegExp(
+      r'(?:добавь|создай|запомни)\s+команд',
       caseSensitive: false,
     ).hasMatch(text);
 
-    if (!addMatch) return null;
+    if (!hasAddKeyword) return null;
 
-    // Find trigger between quotes
-    final triggerMatch = RegExp(r"['\u2018\u2019\u201c\u201d]([^'\"]+)['\u2018\u2019\u201c\u201d]").firstMatch(text);
+    // Find trigger in single or double quotes
+    final triggerMatch = RegExp(r'"([^"]+)"|' + "'([^']+)'").firstMatch(text);
     if (triggerMatch == null) return null;
 
-    final dashMatch = RegExp(r'[—\-\u2013]\s*(.+)$').firstMatch(text);
-    if (dashMatch == null) return null;
+    final trigger = (triggerMatch.group(1) ?? triggerMatch.group(2) ?? '').trim();
+    if (trigger.isEmpty) return null;
 
-    final trigger = triggerMatch.group(1)!.trim();
-    final action = dashMatch.group(1)!.trim();
+    // Find action after dash
+    final dashIndex = text.lastIndexOf('—');
+    final altDash = text.lastIndexOf(' - ');
+    final idx = dashIndex >= 0 ? dashIndex : altDash;
+    if (idx < 0) return null;
+
+    final action = text.substring(idx + 1).trim();
+    if (action.isEmpty) return null;
 
     await save(trigger, action);
-    return 'Команда добавлена!\n\nФраза: "$trigger"\nДействие: $action\n\nТеперь просто скажи "$trigger"!';
+    return 'Команда добавлена!\n\nФраза: "$trigger"\nДействие: $action\n\nПросто скажи "$trigger" когда нужно!';
   }
 
   Future<String> listShortcuts() async {
     final all = await getAll();
     if (all.isEmpty) {
-      return 'У тебя пока нет кастомных команд.\n\nДобавь так:\n"Добавь команду: скажу домой — открой карты"';
+      return 'Пока нет кастомных команд.\n\nДобавь так:\n"Добавь команду: скажу "домой" — открой карты"';
     }
     final buf = StringBuffer('Твои команды:\n\n');
     all.forEach((trigger, action) {
-      buf.writeln('"$trigger" → $action');
+      buf.writeln('"$trigger" — $action');
     });
     return buf.toString().trim();
   }
@@ -71,8 +76,8 @@ class CustomShortcutsService {
 
     final delMatch = RegExp(r'удали команду[:\s]+(.+)$', caseSensitive: false).firstMatch(text);
     if (delMatch != null) {
-      final trigger = delMatch.group(1)!.trim().toLowerCase()
-          .replaceAll(RegExp(r"['\u2018\u2019\u201c\u201d]"), '');
+      final raw = delMatch.group(1)!.trim();
+      final trigger = raw.replaceAll(RegExp(r"[\"']"), '').toLowerCase();
       await remove(trigger);
       return 'Команда "$trigger" удалена.';
     }
@@ -81,7 +86,7 @@ class CustomShortcutsService {
     final all = await getAll();
     final lower = text.toLowerCase().trim();
     for (final entry in all.entries) {
-      if (lower.contains(entry.key) || lower == entry.key) {
+      if (lower == entry.key || lower.contains(entry.key)) {
         return 'Выполняю: ${entry.value}';
       }
     }
