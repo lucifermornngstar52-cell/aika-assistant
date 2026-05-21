@@ -20,6 +20,7 @@ dependencies:
   # UI & Effects
   animated_text_kit: ^4.2.2
   shimmer: ^3.0.0
+  lottie: ^3.1.0
   
   # Storage & State
   shared_preferences: ^2.2.3
@@ -86,5 +87,6 @@ flutter:
     - assets/images/aika_stretch13.png
     - assets/images/aika_stretch14.png
     - assets/images/aika_stretch15.png
+
 
 
