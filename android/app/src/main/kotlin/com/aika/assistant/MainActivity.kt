@@ -25,6 +25,7 @@ class MainActivity : FlutterActivity() {
     private val MESSENGER_CHANNEL = "com.aika.assistant/messenger"
     private val URL_CHANNEL      = "com.aika.assistant/url"
     private val MEDIA_CHANNEL    = "com.aika.assistant/media"
+    private val APPS_CHANNEL     = "com.aika.assistant/apps"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
@@ -139,6 +140,38 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    // Start music player in background without opening UI (stays in game)
+                    "startMusicBackground" -> {
+                        val packageName = call.argument<String>("package") ?: "com.spotify.music"
+                        val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                        // 1. Request audio focus so player knows to start
+                        am.requestAudioFocus(
+                            null,
+                            android.media.AudioManager.STREAM_MUSIC,
+                            android.media.AudioManager.AUDIOFOCUS_GAIN
+                        )
+                        // 2. Send PLAY media key - this resumes the last session of any player
+                        val down = android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+                        val up   = android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,   android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+                        am.dispatchMediaKeyEvent(down)
+                        am.dispatchMediaKeyEvent(up)
+                        // 3. If no active player, try to start the specific app as a service
+                        //    (won't bring to foreground if FLAG_ACTIVITY_NEW_TASK is NOT set)
+                        if (!am.isMusicActive) {
+                            try {
+                                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                                if (launchIntent != null) {
+                                    // Remove CATEGORY_LAUNCHER so it starts in background context
+                                    launchIntent.addFlags(
+                                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        Intent.FLAG_FROM_BACKGROUND
+                                    )
+                                    startActivity(launchIntent)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                        result.success(am.isMusicActive)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -216,6 +249,27 @@ class MainActivity : FlutterActivity() {
                     notifReceiver = null
                 }
             })
+
+        // ── Apps channel (list installed apps) ─────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APPS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getInstalledApps" -> {
+                        val pm = packageManager
+                        val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                            addCategory(Intent.CATEGORY_LAUNCHER)
+                        }
+                        val apps = pm.queryIntentActivities(intent, 0).map { ri ->
+                            mapOf(
+                                "package" to ri.activityInfo.packageName,
+                                "label"   to ri.loadLabel(pm).toString()
+                            )
+                        }.distinctBy { it["package"] }
+                        result.success(apps)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         // ── Screen event channel (поток событий смены приложения) ─
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS)
