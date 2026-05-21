@@ -29,6 +29,9 @@ import '../services/game_service.dart';
 import '../services/alarm_service.dart';
 import '../services/briefing_service.dart';
 import '../services/news_service.dart';
+import '../services/mood_diary_service.dart';
+import '../services/focus_mode_service.dart';
+import '../services/custom_shortcuts_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -48,6 +51,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final MoodService _moodService = MoodService();
   final GameService _gameService = GameService();
   final NewsService _newsService = NewsService();
+  final MoodDiaryService _moodDiaryService = MoodDiaryService();
+  final CustomShortcutsService _shortcutsService = CustomShortcutsService();
   final AlarmService _alarmService = AlarmService();
   final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
@@ -98,6 +103,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
+    FocusModeService.onMessage = (msg) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: msg,
+        timestamp: DateTime.now(),
+      ));
+      _speak(msg);
+    };
     await _recheckOverlayPermission();
     await _recheckAccessibilityPermission();
     await _initNotifications();
@@ -796,6 +810,66 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── Кастомные команды (shortcuts) ──
+    final shortcutResult = await _shortcutsService.tryHandle(text);
+    if (shortcutResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: shortcutResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(shortcutResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
+    // ── Режим фокуса ──
+    final focusResult = await FocusModeService.tryHandle(text);
+    if (focusResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: focusResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(focusResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
+    // ── Дневник настроения ──
+    final moodResult = await _moodDiaryService.tryHandle(text);
+    if (moodResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: moodResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(moodResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
     // ── Новости ──
     final newsResult = await _newsService.tryParseNews(text);
     if (newsResult != null) {
@@ -1135,6 +1209,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
