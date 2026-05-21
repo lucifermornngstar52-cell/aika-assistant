@@ -1,3 +1,4 @@
+import 'personality_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -72,7 +73,8 @@ class AiService {
 
   String _buildSystemPrompt(String userName, String assistantName) {
     final userPart = userName.isNotEmpty ? ', пользователя зовут $userName' : '';
-    return "Ты $assistantName — аниме AI-ассистент для Android$userPart. Говоришь кратко, умно. Отвечаешь по-русски.\n\n"
+    final personalityPrompt = PersonalityService.systemPromptAddition;
+    return "Ты $assistantName — аниме AI-ассистент для Android$userPart. Говоришь кратко, умно. Отвечаешь по-русски.$personalityPrompt\n\n"
         "[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]\n"
         "[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]\n"
         "[ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR]\n"
@@ -178,4 +180,5 @@ class AiService {
     return data['choices'][0]['message']['content'] as String;
   }
 }
+
 
