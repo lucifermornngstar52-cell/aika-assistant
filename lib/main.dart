@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'services/personality_service.dart';
+import 'services/wardrobe_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +22,8 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
+  await PersonalityService.load();
+  await WardrobeService.load();
   runApp(const AikaApp());
 }
 
@@ -36,3 +40,4 @@ class AikaApp extends StatelessWidget {
     );
   }
 }
+
