@@ -118,3 +118,124 @@ class ScreenReaderService {
     return null;
   }
 }
+
+extension PhoneControl on ScreenReaderService {
+  // ── Управление жестами ──────────────────────────────────────────────────
+
+  static Future<void> tapAt(double x, double y) async {
+    try { await _channel.invokeMethod('tapAt', {'x': x, 'y': y}); } catch (_) {}
+  }
+
+  static Future<void> longTapAt(double x, double y) async {
+    try { await _channel.invokeMethod('longTapAt', {'x': x, 'y': y}); } catch (_) {}
+  }
+
+  static Future<void> swipe(double x1, double y1, double x2, double y2, {int durationMs = 300}) async {
+    try {
+      await _channel.invokeMethod('swipe', {
+        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'duration': durationMs
+      });
+    } catch (_) {}
+  }
+
+  // Стандартные свайпы по экрану
+  static Future<void> swipeLeft()  async => swipe(800, 960, 280, 960);
+  static Future<void> swipeRight() async => swipe(280, 960, 800, 960);
+  static Future<void> swipeUp()    async => swipe(540, 1600, 540, 400);
+  static Future<void> swipeDown()  async => swipe(540, 400, 540, 1600);
+
+  // ── Системные кнопки ─────────────────────────────────────────────────────
+
+  static Future<void> pressHome()          async {
+    try { await _channel.invokeMethod('pressHome'); } catch (_) {}
+  }
+  static Future<void> pressRecents()       async {
+    try { await _channel.invokeMethod('pressRecents'); } catch (_) {}
+  }
+  static Future<void> openNotifications()  async {
+    try { await _channel.invokeMethod('openNotifications'); } catch (_) {}
+  }
+  static Future<void> openQuickSettings()  async {
+    try { await _channel.invokeMethod('openQuickSettings'); } catch (_) {}
+  }
+
+  // ── Ввод текста ──────────────────────────────────────────────────────────
+
+  static Future<bool> typeText(String text) async {
+    try {
+      return await _channel.invokeMethod<bool>('typeText', {'text': text}) ?? false;
+    } catch (_) { return false; }
+  }
+
+  static Future<bool> clearText() async {
+    try { return await _channel.invokeMethod<bool>('clearText') ?? false; } catch (_) { return false; }
+  }
+
+  static Future<bool> pressEnter() async {
+    try { return await _channel.invokeMethod<bool>('pressEnter') ?? false; } catch (_) { return false; }
+  }
+
+  // ── Размер экрана ────────────────────────────────────────────────────────
+  static Future<Map<String, int>> getScreenSize() async {
+    try {
+      final r = await _channel.invokeMethod<Map>('getScreenSize');
+      if (r != null) return {'width': r['width'] as int, 'height': r['height'] as int};
+    } catch (_) {}
+    return {'width': 1080, 'height': 1920};
+  }
+
+  // ── Парсер голосовых команд управления ───────────────────────────────────
+  static bool isPhoneControlRequest(String text) {
+    final t = text.toLowerCase();
+    return t.contains('нажми home') || t.contains('домой') ||
+           t.contains('кнопка home') || t.contains('на главный') ||
+           t.contains('недавние') || t.contains('последние приложения') ||
+           t.contains('шторка') || t.contains('уведомления открой') ||
+           t.contains('быстрые настройки') ||
+           t.contains('свайп') || t.contains('проведи') ||
+           t.contains('напиши в поле') || t.contains('введи текст') ||
+           t.contains('нажми enter') || t.contains('подтверди');
+  }
+
+  static Future<String?> tryHandlePhoneControl(String text) async {
+    final t = text.toLowerCase();
+
+    if (t.contains('home') || t.contains('домой') || t.contains('главный экран')) {
+      await pressHome(); return 'Нажала Home 🏠';
+    }
+    if (t.contains('недавние') || t.contains('последние приложения')) {
+      await pressRecents(); return 'Открыла список приложений 📱';
+    }
+    if (t.contains('шторка') || t.contains('уведомления открой') || t.contains('открой уведомления')) {
+      await openNotifications(); return 'Открыла уведомления 🔔';
+    }
+    if (t.contains('быстрые настройки')) {
+      await openQuickSettings(); return 'Открыла быстрые настройки ⚙️';
+    }
+    if (t.contains('свайп влево') || t.contains('проведи влево')) {
+      await swipeLeft(); return 'Свайп влево ←';
+    }
+    if (t.contains('свайп вправо') || t.contains('проведи вправо')) {
+      await swipeRight(); return 'Свайп вправо →';
+    }
+    if (t.contains('свайп вверх') || t.contains('проведи вверх')) {
+      await swipeUp(); return 'Свайп вверх ↑';
+    }
+    if (t.contains('свайп вниз') || t.contains('проведи вниз')) {
+      await swipeDown(); return 'Свайп вниз ↓';
+    }
+    if (t.contains('нажми enter') || t.contains('подтверди') || t.contains('отправь')) {
+      await pressEnter(); return 'Нажала Enter ✓';
+    }
+    // Ввод текста: "напиши в поле Привет"
+    final typeMatch = RegExp(r'(?:напиши в поле|введи текст|напечатай)\s+(.+)', caseSensitive: false).firstMatch(t);
+    if (typeMatch != null) {
+      final txt = typeMatch.group(1)?.trim() ?? '';
+      if (txt.isNotEmpty) {
+        final ok = await typeText(txt);
+        return ok ? 'Ввела "$txt" ✓' : 'Не нашла поле для ввода';
+      }
+    }
+    return null;
+  }
+}
