@@ -40,6 +40,9 @@ import 'app_commands_screen.dart';
 import '../services/game_music_service.dart';
 import '../services/notification_reader_service.dart';
 import '../services/smart_alarm_service.dart';
+import '../services/schedule_service.dart';
+import 'schedule_screen.dart';
+import 'package:lottie/lottie.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -66,6 +69,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Map<String, String>? _pendingReplyNotif;
   bool _awaitingReplyConfirm = false;
   final AlarmService _alarmService = AlarmService();
+  final ScheduleService _scheduleService = ScheduleService();
   final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
@@ -896,6 +900,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    
+    // ── Расписание дня ────────────────────────────────────────────
+    final addEventResult = await _scheduleService.tryParseAddEvent(text);
+    if (addEventResult != null) {
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: addEventResult, timestamp: DateTime.now()));
+      await _speak(addEventResult);
+      return;
+    }
+    if (_scheduleService.isScheduleRequest(text)) {
+      final tl = text.toLowerCase();
+      final schedule = tl.contains('завтра')
+          ? await _scheduleService.getTomorrowSchedule()
+          : await _scheduleService.getTodaySchedule();
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: schedule, timestamp: DateTime.now()));
+      await _speak(schedule);
+      return;
+    }
+
     // ── Проверяем напоминания/таймеры ──
     final reminderResult = await _reminderService.tryParseReminder(text);
     if (reminderResult != null) {
@@ -1260,12 +1282,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         onSelected: (value) {
                           if (value == 'settings') _openSettings();
                           if (value == 'mood') Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen()));
+                          if (value == 'schedule') Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduleScreen()));
                           if (value == 'telegram') Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen()));
                           if (value == 'appcommands') Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen()));
                         },
                         itemBuilder: (_) => [
                           const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings_outlined, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Настройки', style: TextStyle(color: Colors.white70))])),
-                          const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)),
+                        const PopupMenuItem(
+                          value: 'schedule',
+                          child: Row(children: [
+                            Icon(Icons.calendar_today, color: Colors.white70, size: 18),
+                            SizedBox(width: 8),
+                            Text('Расписание', style: TextStyle(color: Colors.white)),
+                          ]),
+                        ), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'telegram', child: Row(children: [Text('🤖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Telegram Бот', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'appcommands', child: Row(children: [Text('⚡', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Команды приложений', style: TextStyle(color: Colors.white70))])),
                         ],
@@ -1375,6 +1406,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
