@@ -28,6 +28,7 @@ import '../services/mood_service.dart';
 import '../services/game_service.dart';
 import '../services/alarm_service.dart';
 import '../services/briefing_service.dart';
+import '../services/news_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -46,6 +47,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final ReminderService _reminderService = ReminderService();
   final MoodService _moodService = MoodService();
   final GameService _gameService = GameService();
+  final NewsService _newsService = NewsService();
   final AlarmService _alarmService = AlarmService();
   final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
@@ -794,6 +796,26 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── Новости ──
+    final newsResult = await _newsService.tryParseNews(text);
+    if (newsResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: newsResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(newsResult);
+      _moodService.onUserSpoke();
+      return;
+    }
+
     // ── Сначала проверяем локальные команды запуска приложений ──
     final appLaunchResult = await AppLauncherService.tryLaunch(text);
     if (appLaunchResult != null) {
@@ -1113,6 +1135,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
