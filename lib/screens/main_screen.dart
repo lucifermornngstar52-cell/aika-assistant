@@ -43,6 +43,8 @@ import '../services/smart_alarm_service.dart';
 import '../services/schedule_service.dart';
 import 'schedule_screen.dart';
 import 'package:lottie/lottie.dart';
+import '../services/emotion_service.dart';
+import '../services/screen_reader_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -457,6 +459,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ));
           await _speak(wakeMsg);
           _moodService.onUserSpoke();
+
+    // ── Emotion Detection ────────────────────────────────────────────────
+    final detectedEmotion = EmotionService.detect(text);
+    if (EmotionService.shouldReact(detectedEmotion)) {
+      final reaction = EmotionService.getEmotionReaction(detectedEmotion);
+      if (reaction != null) {
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.aika,
+          content: reaction,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(reaction);
+      }
+    }
+    // Меняем настроение Айки по эмоции
+    if (detectedEmotion != UserEmotion.neutral) {
+      final moodName = EmotionService.getAikaMoodForEmotion(detectedEmotion);
+      if (moodName == 'happy') _moodService.onUserSpoke();
+      else if (moodName == 'thinking') _moodService.onThinking();
+    }
         }
         setState(() => _isListening = false);
         await OverlayService.updateState('thinking');
@@ -1109,7 +1132,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         userName: context['userName'] ?? '',
         assistantName: context['assistantName'] ?? _assistantName,
         history: history,
-        memoryContext: memoryCtx,
+        memoryContext: memoryCtx + EmotionService.buildEmotionContext(EmotionService.lastEmotion),
         screenContext: screenCtx,
         openAiKey: _openAiKey,
       );
@@ -1406,6 +1429,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
