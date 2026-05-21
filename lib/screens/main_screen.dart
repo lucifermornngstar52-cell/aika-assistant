@@ -45,6 +45,8 @@ import 'schedule_screen.dart';
 import 'package:lottie/lottie.dart';
 import '../services/emotion_service.dart';
 import '../services/screen_reader_service.dart';
+import '../services/screen_reader_service.dart';
+import '../services/edge_tts_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -1115,6 +1117,52 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     ));
     setState(() { _isThinking = true; _isDancing = false; });
     await OverlayService.updateState('thinking');
+
+    // ── Управление телефоном голосом ─────────────────────────────────────
+    if (ScreenReaderService.isPhoneControlRequest(text)) {
+      final ctrlResult = await ScreenReaderService.tryHandlePhoneControl(text);
+      if (ctrlResult != null) {
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: ctrlResult, timestamp: DateTime.now()));
+        await _speak(ctrlResult);
+        return;
+      }
+    }
+
+    // ── Действия на экране (нажми, листай) ───────────────────────────────
+    if (ScreenReaderService.isScreenActionRequest(text)) {
+      final actionResult = await ScreenReaderService.tryHandleAction(text);
+      if (actionResult != null) {
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: actionResult, timestamp: DateTime.now()));
+        await _speak(actionResult);
+        return;
+      }
+    }
+
+    // ── Чтение контента экрана ───────────────────────────────────────────
+    if (ScreenReaderService.isScreenReadRequest(text)) {
+      final screenText = await ScreenReaderService.getScreenText();
+      if (screenText != null && screenText.isNotEmpty) {
+        final appLabel = ScreenWatcherService.currentLabel;
+        final formatted = ScreenReaderService.formatForAI(screenText, appLabel);
+        final aiReply = await _aiService.sendMessage(
+          text,
+          userName: _userName,
+          assistantName: _assistantName,
+          history: await _memoryService.getHistory(),
+          screenContext: formatted,
+        );
+        final clean = aiReply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: clean, timestamp: DateTime.now()));
+        await _speak(clean);
+        return;
+      } else {
+        const noScreen = 'Не могу прочитать экран. Дай разрешение Accessibility для Айки в настройках.';
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: noScreen, timestamp: DateTime.now()));
+        await _speak(noScreen);
+        return;
+      }
+    }
+
     await _memoryService.addMessage('user', text);
 
     try {
@@ -1132,7 +1180,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         userName: context['userName'] ?? '',
         assistantName: context['assistantName'] ?? _assistantName,
         history: history,
-        memoryContext: memoryCtx + EmotionService.buildEmotionContext(EmotionService.lastEmotion),
+        memoryContext: memoryCtx,
         screenContext: screenCtx,
         openAiKey: _openAiKey,
       );
