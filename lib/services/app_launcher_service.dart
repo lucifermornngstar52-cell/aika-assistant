@@ -123,7 +123,27 @@ class AppLauncherService {
       Map.fromEntries(_orderedCommands);
 
   /// Главный метод — разбираем фразу и запускаем приложение
+  static Future<String?> _tryUserVoiceAppCommand(String phrase) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('app_voice_commands') ?? '{}';
+      final Map<String, dynamic> commands = json.decode(raw);
+      final lower = phrase.toLowerCase().trim();
+      for (final entry in commands.entries) {
+        if (lower == entry.key || lower.contains(entry.key)) {
+          final pkg = entry.value.toString();
+          await _launch(pkg);
+          final appName = pkg.split('.').last;
+          return 'Открываю $appName 📱';
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<String?> tryLaunch(String phrase) async {
+    final userCmd = await _tryUserVoiceAppCommand(phrase);
+    if (userCmd != null) return userCmd;
     final normalized = _normalize(phrase);
 
     // 1. Пользовательские команды — приоритет
