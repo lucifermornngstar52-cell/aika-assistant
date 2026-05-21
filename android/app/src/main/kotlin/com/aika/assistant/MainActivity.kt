@@ -122,6 +122,61 @@ class MainActivity : FlutterActivity() {
                         svc?.performBack()
                         result.success(null)
                     }
+                    "tapAt" -> {
+                        val x = call.argument<Double>("x")?.toFloat() ?: 0f
+                        val y = call.argument<Double>("y")?.toFloat() ?: 0f
+                        AikaAccessibilityService.instance?.tapAt(x, y)
+                        result.success(null)
+                    }
+                    "longTapAt" -> {
+                        val x = call.argument<Double>("x")?.toFloat() ?: 0f
+                        val y = call.argument<Double>("y")?.toFloat() ?: 0f
+                        AikaAccessibilityService.instance?.longTapAt(x, y)
+                        result.success(null)
+                    }
+                    "swipe" -> {
+                        val x1 = call.argument<Double>("x1")?.toFloat() ?: 0f
+                        val y1 = call.argument<Double>("y1")?.toFloat() ?: 0f
+                        val x2 = call.argument<Double>("x2")?.toFloat() ?: 0f
+                        val y2 = call.argument<Double>("y2")?.toFloat() ?: 0f
+                        val dur = call.argument<Long>("duration") ?: 300L
+                        AikaAccessibilityService.instance?.swipe(x1, y1, x2, y2, dur)
+                        result.success(null)
+                    }
+                    "pressHome" -> {
+                        AikaAccessibilityService.instance?.pressHome()
+                        result.success(null)
+                    }
+                    "pressRecents" -> {
+                        AikaAccessibilityService.instance?.pressRecents()
+                        result.success(null)
+                    }
+                    "openNotifications" -> {
+                        AikaAccessibilityService.instance?.openNotifications()
+                        result.success(null)
+                    }
+                    "openQuickSettings" -> {
+                        AikaAccessibilityService.instance?.openQuickSettings()
+                        result.success(null)
+                    }
+                    "typeText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        val ok = AikaAccessibilityService.instance?.typeText(text) ?: false
+                        result.success(ok)
+                    }
+                    "clearText" -> {
+                        val ok = AikaAccessibilityService.instance?.clearText() ?: false
+                        result.success(ok)
+                    }
+                    "pressEnter" -> {
+                        val ok = AikaAccessibilityService.instance?.pressEnter() ?: false
+                        result.success(ok)
+                    }
+                    "getScreenSize" -> {
+                        val size = AikaAccessibilityService.instance?.getScreenSize()
+                            ?: mapOf("width" to 1080, "height" to 1920)
+                        result.success(size)
+                    }
                     else -> result.notImplemented()
                 }
             }
