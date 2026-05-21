@@ -25,6 +25,7 @@ class MainActivity : FlutterActivity() {
     private val MESSENGER_CHANNEL = "com.aika.assistant/messenger"
     private val URL_CHANNEL      = "com.aika.assistant/url"
     private val MEDIA_CHANNEL    = "com.aika.assistant/media"
+    private val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
 
     private var screenEventSink: EventChannel.EventSink? = null
@@ -89,6 +90,37 @@ class MainActivity : FlutterActivity() {
                             "package" to AikaAccessibilityService.currentPackage,
                             "label"   to AikaAccessibilityService.currentAppLabel
                         ))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        
+        // ── Screen Reader channel (read content via Accessibility) ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_READER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getScreenText" -> {
+                        val svc = AikaAccessibilityService.instance
+                        if (svc != null) result.success(svc.getAllScreenText())
+                        else result.success(null)
+                    }
+                    "clickElement" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        val svc = AikaAccessibilityService.instance
+                        if (svc != null) result.success(svc.clickByText(text))
+                        else result.success(false)
+                    }
+                    "scroll" -> {
+                        val direction = call.argument<String>("direction") ?: "down"
+                        val svc = AikaAccessibilityService.instance
+                        svc?.scroll(direction)
+                        result.success(null)
+                    }
+                    "performBack" -> {
+                        val svc = AikaAccessibilityService.instance
+                        svc?.performBack()
+                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }
@@ -352,3 +384,4 @@ class MainActivity : FlutterActivity() {
         return enabledServices.split(":").any { it.equals(serviceName, ignoreCase = true) }
     }
 }
+
