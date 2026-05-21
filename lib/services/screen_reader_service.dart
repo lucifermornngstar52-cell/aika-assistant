@@ -2,12 +2,12 @@ import 'package:flutter/services.dart';
 
 /// Читает реальный текстовый контент с экрана через AccessibilityService
 class ScreenReaderService {
-  static const _channel = MethodChannel('com.aika.assistant/screen_reader');
+  static const channel = MethodChannel('com.aika.assistant/screen_reader');
 
   /// Получает весь текст с текущего экрана (через Accessibility)
   static Future<String?> getScreenText() async {
     try {
-      final result = await _channel.invokeMethod<String>('getScreenText');
+      final result = await channel.invokeMethod<String>('getScreenText');
       return result?.isNotEmpty == true ? result : null;
     } catch (_) {
       return null;
@@ -17,7 +17,7 @@ class ScreenReaderService {
   /// Получает структурированный контент — заголовки, кнопки, поля ввода
   static Future<Map<String, dynamic>?> getScreenStructure() async {
     try {
-      final result = await _channel.invokeMethod<Map>('getScreenStructure');
+      final result = await channel.invokeMethod<Map>('getScreenStructure');
       if (result == null) return null;
       return Map<String, dynamic>.from(result);
     } catch (_) {
@@ -28,7 +28,7 @@ class ScreenReaderService {
   /// Клик по элементу с текстом
   static Future<bool> clickElement(String text) async {
     try {
-      return await _channel.invokeMethod<bool>('clickElement', {'text': text}) ?? false;
+      return await channel.invokeMethod<bool>('clickElement', {'text': text}) ?? false;
     } catch (_) {
       return false;
     }
@@ -36,16 +36,16 @@ class ScreenReaderService {
 
   /// Прокрутка экрана
   static Future<void> scrollDown() async {
-    try { await _channel.invokeMethod('scroll', {'direction': 'down'}); } catch (_) {}
+    try { await channel.invokeMethod('scroll', {'direction': 'down'}); } catch (_) {}
   }
 
   static Future<void> scrollUp() async {
-    try { await _channel.invokeMethod('scroll', {'direction': 'up'}); } catch (_) {}
+    try { await channel.invokeMethod('scroll', {'direction': 'up'}); } catch (_) {}
   }
 
   /// Вернуться назад
   static Future<void> goBack() async {
-    try { await _channel.invokeMethod('performBack'); } catch (_) {}
+    try { await channel.invokeMethod('performBack'); } catch (_) {}
   }
 
   /// Форматирует текст экрана для отправки в AI
@@ -123,16 +123,16 @@ extension PhoneControl on ScreenReaderService {
   // ── Управление жестами ──────────────────────────────────────────────────
 
   static Future<void> tapAt(double x, double y) async {
-    try { await _channel.invokeMethod('tapAt', {'x': x, 'y': y}); } catch (_) {}
+    try { await channel.invokeMethod('tapAt', {'x': x, 'y': y}); } catch (_) {}
   }
 
   static Future<void> longTapAt(double x, double y) async {
-    try { await _channel.invokeMethod('longTapAt', {'x': x, 'y': y}); } catch (_) {}
+    try { await channel.invokeMethod('longTapAt', {'x': x, 'y': y}); } catch (_) {}
   }
 
   static Future<void> swipe(double x1, double y1, double x2, double y2, {int durationMs = 300}) async {
     try {
-      await _channel.invokeMethod('swipe', {
+      await channel.invokeMethod('swipe', {
         'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'duration': durationMs
       });
     } catch (_) {}
@@ -147,38 +147,38 @@ extension PhoneControl on ScreenReaderService {
   // ── Системные кнопки ─────────────────────────────────────────────────────
 
   static Future<void> pressHome()          async {
-    try { await _channel.invokeMethod('pressHome'); } catch (_) {}
+    try { await channel.invokeMethod('pressHome'); } catch (_) {}
   }
   static Future<void> pressRecents()       async {
-    try { await _channel.invokeMethod('pressRecents'); } catch (_) {}
+    try { await channel.invokeMethod('pressRecents'); } catch (_) {}
   }
   static Future<void> openNotifications()  async {
-    try { await _channel.invokeMethod('openNotifications'); } catch (_) {}
+    try { await channel.invokeMethod('openNotifications'); } catch (_) {}
   }
   static Future<void> openQuickSettings()  async {
-    try { await _channel.invokeMethod('openQuickSettings'); } catch (_) {}
+    try { await channel.invokeMethod('openQuickSettings'); } catch (_) {}
   }
 
   // ── Ввод текста ──────────────────────────────────────────────────────────
 
   static Future<bool> typeText(String text) async {
     try {
-      return await _channel.invokeMethod<bool>('typeText', {'text': text}) ?? false;
+      return await channel.invokeMethod<bool>('typeText', {'text': text}) ?? false;
     } catch (_) { return false; }
   }
 
   static Future<bool> clearText() async {
-    try { return await _channel.invokeMethod<bool>('clearText') ?? false; } catch (_) { return false; }
+    try { return await channel.invokeMethod<bool>('clearText') ?? false; } catch (_) { return false; }
   }
 
   static Future<bool> pressEnter() async {
-    try { return await _channel.invokeMethod<bool>('pressEnter') ?? false; } catch (_) { return false; }
+    try { return await channel.invokeMethod<bool>('pressEnter') ?? false; } catch (_) { return false; }
   }
 
   // ── Размер экрана ────────────────────────────────────────────────────────
   static Future<Map<String, int>> getScreenSize() async {
     try {
-      final r = await _channel.invokeMethod<Map>('getScreenSize');
+      final r = await channel.invokeMethod<Map>('getScreenSize');
       if (r != null) return {'width': r['width'] as int, 'height': r['height'] as int};
     } catch (_) {}
     return {'width': 1080, 'height': 1920};
