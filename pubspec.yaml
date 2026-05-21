@@ -37,6 +37,11 @@ dependencies:
   
   # HTTP
   http: ^1.2.1
+
+  # Audio playback (Edge TTS)
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.3
+
   
   # Notifications & Reminders
   flutter_local_notifications: ^17.2.2
@@ -87,6 +92,7 @@ flutter:
     - assets/images/aika_stretch13.png
     - assets/images/aika_stretch14.png
     - assets/images/aika_stretch15.png
+
 
 
 
