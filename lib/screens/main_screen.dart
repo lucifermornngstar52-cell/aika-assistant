@@ -36,6 +36,8 @@ import '../services/notification_reply_service.dart';
 import '../services/telegram_bot_service.dart';
 import 'mood_diary_screen.dart';
 import 'telegram_bot_screen.dart';
+import 'app_commands_screen.dart';
+import '../services/game_music_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -958,6 +960,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── Автомузыка команды голосом ──
+    final gameMusicResult = await GameMusicService.tryParseCommand(text);
+    if (gameMusicResult != null) {
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.user, content: text, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch + 1).toString(), role: MessageRole.aika, content: gameMusicResult, timestamp: DateTime.now()));
+      await _speak(gameMusicResult);
+      return;
+    }
+
     // ── Новости ──
     final newsResult = await _newsService.tryParseNews(text);
     if (newsResult != null) {
@@ -1196,11 +1207,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           if (value == 'settings') _openSettings();
                           if (value == 'mood') Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen()));
                           if (value == 'telegram') Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen()));
+                          if (value == 'appcommands') Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen()));
                         },
                         itemBuilder: (_) => [
                           const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings_outlined, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Настройки', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'telegram', child: Row(children: [Text('🤖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Telegram Бот', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'appcommands', child: Row(children: [Text('⚡', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Команды приложений', style: TextStyle(color: Colors.white70))])),
                         ],
                       ),
                     ],
