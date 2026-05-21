@@ -2,65 +2,54 @@ import 'package:flutter/services.dart';
 
 /// Читает реальный текстовый контент с экрана через AccessibilityService
 class ScreenReaderService {
-  static const channel = MethodChannel('com.aika.assistant/screen_reader');
+  static const _channel = MethodChannel('com.aika.assistant/screen_reader');
 
-  /// Получает весь текст с текущего экрана (через Accessibility)
+  // ── Базовые методы чтения экрана ─────────────────────────────────────────
+
   static Future<String?> getScreenText() async {
     try {
-      final result = await channel.invokeMethod<String>('getScreenText');
+      final result = await _channel.invokeMethod<String>('getScreenText');
       return result?.isNotEmpty == true ? result : null;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
-  /// Получает структурированный контент — заголовки, кнопки, поля ввода
   static Future<Map<String, dynamic>?> getScreenStructure() async {
     try {
-      final result = await channel.invokeMethod<Map>('getScreenStructure');
+      final result = await _channel.invokeMethod<Map>('getScreenStructure');
       if (result == null) return null;
       return Map<String, dynamic>.from(result);
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
-  /// Клик по элементу с текстом
   static Future<bool> clickElement(String text) async {
     try {
-      return await channel.invokeMethod<bool>('clickElement', {'text': text}) ?? false;
-    } catch (_) {
-      return false;
-    }
+      return await _channel.invokeMethod<bool>('clickElement', {'text': text}) ?? false;
+    } catch (_) { return false; }
   }
 
-  /// Прокрутка экрана
   static Future<void> scrollDown() async {
-    try { await channel.invokeMethod('scroll', {'direction': 'down'}); } catch (_) {}
+    try { await _channel.invokeMethod('scroll', {'direction': 'down'}); } catch (_) {}
   }
 
   static Future<void> scrollUp() async {
-    try { await channel.invokeMethod('scroll', {'direction': 'up'}); } catch (_) {}
+    try { await _channel.invokeMethod('scroll', {'direction': 'up'}); } catch (_) {}
   }
 
-  /// Вернуться назад
   static Future<void> goBack() async {
-    try { await channel.invokeMethod('performBack'); } catch (_) {}
+    try { await _channel.invokeMethod('performBack'); } catch (_) {}
   }
 
-  /// Форматирует текст экрана для отправки в AI
   static String formatForAI(String rawText, String appLabel) {
     final lines = rawText
         .split('\n')
         .map((l) => l.trim())
         .where((l) => l.length > 2)
-        .toSet() // убираем дубли
-        .take(40) // максимум 40 строк
+        .toSet()
+        .take(40)
         .join('\n');
     return '=== СОДЕРЖИМОЕ ЭКРАНА ($appLabel) ===\n$lines';
   }
 
-  /// Проверяем нужно ли читать экран для этого запроса
   static bool isScreenReadRequest(String text) {
     final t = text.toLowerCase();
     return t.contains('что на экране') ||
@@ -71,7 +60,7 @@ class ScreenReaderService {
         t.contains('что открыто') ||
         t.contains('прочитай страницу') ||
         t.contains('что в приложении') ||
-        t.contains('переведи') && t.contains('экран') ||
+        (t.contains('переведи') && t.contains('экран')) ||
         t.contains('суммаризируй') ||
         t.contains('кратко что') ||
         t.contains('о чём статья') ||
@@ -79,7 +68,6 @@ class ScreenReaderService {
         t.contains('что за видео');
   }
 
-  /// Команды действий на экране
   static bool isScreenActionRequest(String text) {
     final t = text.toLowerCase();
     return t.contains('нажми') ||
@@ -106,7 +94,6 @@ class ScreenReaderService {
       await goBack();
       return 'Вернулась назад ←';
     }
-    // Нажатие по тексту: "нажми на Отмена"
     final clickMatch = RegExp(r'нажми(?:\s+на)?\s+(.+)', caseSensitive: false).firstMatch(t);
     if (clickMatch != null) {
       final target = clickMatch.group(1)?.trim() ?? '';
@@ -117,28 +104,25 @@ class ScreenReaderService {
     }
     return null;
   }
-}
 
-extension PhoneControl on ScreenReaderService {
-  // ── Управление жестами ──────────────────────────────────────────────────
+  // ── Управление жестами ───────────────────────────────────────────────────
 
   static Future<void> tapAt(double x, double y) async {
-    try { await channel.invokeMethod('tapAt', {'x': x, 'y': y}); } catch (_) {}
+    try { await _channel.invokeMethod('tapAt', {'x': x, 'y': y}); } catch (_) {}
   }
 
   static Future<void> longTapAt(double x, double y) async {
-    try { await channel.invokeMethod('longTapAt', {'x': x, 'y': y}); } catch (_) {}
+    try { await _channel.invokeMethod('longTapAt', {'x': x, 'y': y}); } catch (_) {}
   }
 
   static Future<void> swipe(double x1, double y1, double x2, double y2, {int durationMs = 300}) async {
     try {
-      await channel.invokeMethod('swipe', {
+      await _channel.invokeMethod('swipe', {
         'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'duration': durationMs
       });
     } catch (_) {}
   }
 
-  // Стандартные свайпы по экрану
   static Future<void> swipeLeft()  async => swipe(800, 960, 280, 960);
   static Future<void> swipeRight() async => swipe(280, 960, 800, 960);
   static Future<void> swipeUp()    async => swipe(540, 1600, 540, 400);
@@ -146,45 +130,48 @@ extension PhoneControl on ScreenReaderService {
 
   // ── Системные кнопки ─────────────────────────────────────────────────────
 
-  static Future<void> pressHome()          async {
-    try { await channel.invokeMethod('pressHome'); } catch (_) {}
+  static Future<void> pressHome() async {
+    try { await _channel.invokeMethod('pressHome'); } catch (_) {}
   }
-  static Future<void> pressRecents()       async {
-    try { await channel.invokeMethod('pressRecents'); } catch (_) {}
+
+  static Future<void> pressRecents() async {
+    try { await _channel.invokeMethod('pressRecents'); } catch (_) {}
   }
-  static Future<void> openNotifications()  async {
-    try { await channel.invokeMethod('openNotifications'); } catch (_) {}
+
+  static Future<void> openNotifications() async {
+    try { await _channel.invokeMethod('openNotifications'); } catch (_) {}
   }
-  static Future<void> openQuickSettings()  async {
-    try { await channel.invokeMethod('openQuickSettings'); } catch (_) {}
+
+  static Future<void> openQuickSettings() async {
+    try { await _channel.invokeMethod('openQuickSettings'); } catch (_) {}
   }
 
   // ── Ввод текста ──────────────────────────────────────────────────────────
 
   static Future<bool> typeText(String text) async {
     try {
-      return await channel.invokeMethod<bool>('typeText', {'text': text}) ?? false;
+      return await _channel.invokeMethod<bool>('typeText', {'text': text}) ?? false;
     } catch (_) { return false; }
   }
 
   static Future<bool> clearText() async {
-    try { return await channel.invokeMethod<bool>('clearText') ?? false; } catch (_) { return false; }
+    try { return await _channel.invokeMethod<bool>('clearText') ?? false; } catch (_) { return false; }
   }
 
   static Future<bool> pressEnter() async {
-    try { return await channel.invokeMethod<bool>('pressEnter') ?? false; } catch (_) { return false; }
+    try { return await _channel.invokeMethod<bool>('pressEnter') ?? false; } catch (_) { return false; }
   }
 
-  // ── Размер экрана ────────────────────────────────────────────────────────
   static Future<Map<String, int>> getScreenSize() async {
     try {
-      final r = await channel.invokeMethod<Map>('getScreenSize');
+      final r = await _channel.invokeMethod<Map>('getScreenSize');
       if (r != null) return {'width': r['width'] as int, 'height': r['height'] as int};
     } catch (_) {}
     return {'width': 1080, 'height': 1920};
   }
 
   // ── Парсер голосовых команд управления ───────────────────────────────────
+
   static bool isPhoneControlRequest(String text) {
     final t = text.toLowerCase();
     return t.contains('нажми home') || t.contains('домой') ||
@@ -227,7 +214,6 @@ extension PhoneControl on ScreenReaderService {
     if (t.contains('нажми enter') || t.contains('подтверди') || t.contains('отправь')) {
       await pressEnter(); return 'Нажала Enter ✓';
     }
-    // Ввод текста: "напиши в поле Привет"
     final typeMatch = RegExp(r'(?:напиши в поле|введи текст|напечатай)\s+(.+)', caseSensitive: false).firstMatch(t);
     if (typeMatch != null) {
       final txt = typeMatch.group(1)?.trim() ?? '';
