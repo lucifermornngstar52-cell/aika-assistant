@@ -1,3 +1,4 @@
+import 'schedule_service.dart';
 
 class BriefingService {
 
@@ -26,7 +27,25 @@ class BriefingService {
     // Мотивация
     buf.writeln(_getMotivation(now.weekday));
 
+    // Расписание на сегодня
+    try {
+      final schedule = ScheduleService();
+      final events = await schedule.getEvents(date: _todayStr());
+      if (events.isNotEmpty) {
+        buf.writeln('');
+        buf.writeln('📅 Твой план на сегодня:');
+        for (final e in events) {
+          buf.writeln('  • \${e.timeStr} — \${e.title}');
+        }
+      }
+    } catch (_) {}
+
     return buf.toString().trim();
+  }
+
+  String _todayStr() {
+    final n = DateTime.now();
+    return '\${n.year}-\${n.month.toString().padLeft(2,'0')}-\${n.day.toString().padLeft(2,'0')}';
   }
 
   String _getGreeting(int hour) {
@@ -74,3 +93,4 @@ class BriefingService {
         t.contains('что нового сегодня');
   }
 }
+
