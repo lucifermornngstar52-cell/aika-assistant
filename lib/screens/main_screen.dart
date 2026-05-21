@@ -32,6 +32,10 @@ import '../services/news_service.dart';
 import '../services/mood_diary_service.dart';
 import '../services/focus_mode_service.dart';
 import '../services/custom_shortcuts_service.dart';
+import '../services/notification_reply_service.dart';
+import '../services/telegram_bot_service.dart';
+import 'mood_diary_screen.dart';
+import 'telegram_bot_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -53,6 +57,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final NewsService _newsService = NewsService();
   final MoodDiaryService _moodDiaryService = MoodDiaryService();
   final CustomShortcutsService _shortcutsService = CustomShortcutsService();
+
+  // Notification reply state
+  Map<String, String>? _pendingReplyNotif;
+  bool _awaitingReplyConfirm = false;
   final AlarmService _alarmService = AlarmService();
   final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
@@ -103,6 +111,29 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
+    // Init Telegram Bot
+    TelegramBotService.onMessage = (text, from) async {
+      const openAiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
+      final ctx = await _memoryService.getUserContext();
+      final history = await _memoryService.getHistory();
+      final memCtx = await _peopleMemory.buildMemoryContext();
+      try {
+        final reply = await _aiService.sendMessage(
+          text,
+          userName: from.isNotEmpty ? from : (ctx['userName'] ?? ''),
+          assistantName: ctx['assistantName'] ?? _assistantName,
+          history: history,
+          memoryContext: memCtx,
+          openAiKey: openAiKey,
+        );
+        return reply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
+      } catch (e) {
+        return 'Ошибка: $e';
+      }
+    };
+    final botEnabled = await TelegramBotService.isEnabled();
+    if (botEnabled) await TelegramBotService.start();
+
     FocusModeService.onMessage = (msg) {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -688,6 +719,63 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _stopDance();
     }
 
+    // ── Ответ на уведомления ──
+    if (_awaitingReplyConfirm && _pendingReplyNotif != null) {
+      if (NotificationReplyService.isConfirm(lower)) {
+        final notif = _pendingReplyNotif!;
+        _awaitingReplyConfirm = false;
+        _pendingReplyNotif = null;
+        // Генерируем ответ через AI
+        final ctx = await _memoryService.getUserContext();
+        final history = await _memoryService.getHistory();
+        const openAiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
+        final aiReply = await _aiService.sendMessage(
+          'Составь короткий вежливый ответ на сообщение: "${notif['title']}: ${notif['text']}"',
+          userName: ctx['userName'] ?? '',
+          assistantName: ctx['assistantName'] ?? _assistantName,
+          history: history,
+          openAiKey: openAiKey,
+        );
+        final cleanReply = aiReply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
+        final sent = await NotificationReplyService.replyToNotification(
+          packageName: notif['pkg'] ?? '',
+          text: cleanReply,
+        );
+        final result = sent ? 'Отправила ответ: "$cleanReply" ✓' : 'Не удалось отправить автоматически. Скопируй: "$cleanReply"';
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: result, timestamp: DateTime.now()));
+        await _speak(sent ? 'Отправила!' : 'Не смогла отправить автоматически');
+        return;
+      } else if (NotificationReplyService.isCancel(lower)) {
+        _awaitingReplyConfirm = false;
+        _pendingReplyNotif = null;
+        const msg = 'Хорошо, не отправляю.';
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: msg, timestamp: DateTime.now()));
+        await _speak(msg);
+        return;
+      }
+    }
+
+    // Проверка запроса ответить на уведомление
+    if (NotificationReplyService.isReplyRequest(lower)) {
+      final recent = NotificationService.recent;
+      final replyable = recent.where((n) => NotificationReplyService.canReply(n)).toList();
+      if (replyable.isEmpty) {
+        const msg = 'Нет недавних сообщений которые можно ответить.';
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: msg, timestamp: DateTime.now()));
+        await _speak(msg);
+        return;
+      }
+      final last = replyable.last;
+      final appName = NotificationReplyService.appNameFor(last);
+      _pendingReplyNotif = last;
+      _awaitingReplyConfirm = true;
+      final prompt = 'Ответить в $appName на сообщение от ${last['title']}: "${last['text']}"?\n\nСкажи "да" чтобы я придумала ответ, или "нет" чтобы отменить.';
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.user, content: text, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch + 1).toString(), role: MessageRole.aika, content: prompt, timestamp: DateTime.now()));
+      await _speak('Ответить в $appName на это сообщение?');
+      return;
+    }
+
     // ── Мини-игры голосом ──
     final gameResult = _gameService.tryHandleGame(text);
     if (gameResult != null) {
@@ -1100,9 +1188,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         icon: const Icon(Icons.currency_exchange, color: Colors.white54),
                         onPressed: _openCurrency,
                       ),
-                      IconButton(
+                      PopupMenuButton<String>(
                         icon: const Icon(Icons.settings_outlined, color: Colors.white54),
-                        onPressed: _openSettings,
+                        color: const Color(0xFF1A1A2E),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        onSelected: (value) {
+                          if (value == 'settings') _openSettings();
+                          if (value == 'mood') Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen()));
+                          if (value == 'telegram') Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen()));
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings_outlined, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Настройки', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'telegram', child: Row(children: [Text('🤖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Telegram Бот', style: TextStyle(color: Colors.white70))])),
+                        ],
                       ),
                     ],
                   ),
