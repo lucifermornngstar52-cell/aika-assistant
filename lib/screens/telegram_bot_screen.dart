@@ -84,9 +84,9 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AikaTheme.backgroundDark,
+      backgroundColor: AikaTheme.background,
       appBar: AppBar(
-        backgroundColor: AikaTheme.backgroundDark,
+        backgroundColor: AikaTheme.background,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white70),
@@ -159,7 +159,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
                 hintText: '1234567890:AAF...',
                 hintStyle: const TextStyle(color: Colors.white38),
                 filled: true,
-                fillColor: AikaTheme.cardDark,
+                fillColor: AikaTheme.card,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
@@ -242,7 +242,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: AikaTheme.cardDark,
+        backgroundColor: AikaTheme.card,
         title: const Text('Создание бота', style: TextStyle(color: Colors.white)),
         content: Text(
           '1. Открой Telegram и найди @BotFather\n'
