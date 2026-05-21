@@ -64,9 +64,9 @@ class _MoodDiaryScreenState extends State<MoodDiaryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AikaTheme.backgroundDark,
+      backgroundColor: AikaTheme.background,
       appBar: AppBar(
-        backgroundColor: AikaTheme.backgroundDark,
+        backgroundColor: AikaTheme.background,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white70),
@@ -158,7 +158,7 @@ class _MoodDiaryScreenState extends State<MoodDiaryScreen> {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: AikaTheme.cardDark,
+            color: AikaTheme.card,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _moodColor(score).withOpacity(0.3)),
           ),
