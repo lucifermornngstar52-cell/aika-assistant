@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Кастомные голосовые макросы
-/// Пример: "если скажу 'домой' — открой 2GIS с маршрутом домой"
 class CustomShortcutsService {
   static const _key = 'custom_shortcuts';
 
@@ -19,39 +17,44 @@ class CustomShortcutsService {
     await prefs.setString(_key, json.encode(all));
   }
 
-  Future<void> delete(String trigger) async {
+  Future<void> remove(String trigger) async {
     final prefs = await SharedPreferences.getInstance();
     final all = await getAll();
     all.remove(trigger.toLowerCase().trim());
     await prefs.setString(_key, json.encode(all));
   }
 
-  /// Попытка создать shortcut из фразы
-  /// "добавь команду: скажу 'домой' — открой карты"
   Future<String?> tryAddShortcut(String text) async {
+    // Pattern: "добавь команду: скажу X — сделай Y"
     final addMatch = RegExp(
-      r"(?:добавь|создай|запомни)\s+команд[уыа][:\s]+(?:скажу|если скажу|когда скажу)?\s*['\"](.+?)['\"]\s*[—\-–]\s*(.+)",
+      r'(?:добавь|создай|запомни)\s+команд[уыа]',
       caseSensitive: false,
-    ).firstMatch(text);
+    ).hasMatch(text);
 
-    if (addMatch != null) {
-      final trigger = addMatch.group(1)!.trim();
-      final action = addMatch.group(2)!.trim();
-      await save(trigger, action);
-      return '✅ Команда добавлена!\n\n🗣 Фраза: "$trigger"\n⚡ Действие: $action\n\nТеперь просто скажи "$trigger" и я всё сделаю!';
-    }
-    return null;
+    if (!addMatch) return null;
+
+    // Find trigger between quotes
+    final triggerMatch = RegExp(r"['\u2018\u2019\u201c\u201d]([^'\"]+)['\u2018\u2019\u201c\u201d]").firstMatch(text);
+    if (triggerMatch == null) return null;
+
+    final dashMatch = RegExp(r'[—\-\u2013]\s*(.+)$').firstMatch(text);
+    if (dashMatch == null) return null;
+
+    final trigger = triggerMatch.group(1)!.trim();
+    final action = dashMatch.group(1)!.trim();
+
+    await save(trigger, action);
+    return 'Команда добавлена!\n\nФраза: "$trigger"\nДействие: $action\n\nТеперь просто скажи "$trigger"!';
   }
 
-  /// Показать все команды
   Future<String> listShortcuts() async {
     final all = await getAll();
     if (all.isEmpty) {
-      return '⚡ У тебя пока нет кастомных команд.\n\nДобавь так:\n"Добавь команду: скажу \'домой\' — открой карты"';
+      return 'У тебя пока нет кастомных команд.\n\nДобавь так:\n"Добавь команду: скажу домой — открой карты"';
     }
-    final buf = StringBuffer('⚡ Твои команды:\n\n');
+    final buf = StringBuffer('Твои команды:\n\n');
     all.forEach((trigger, action) {
-      buf.writeln('🗣 "$trigger" → $action');
+      buf.writeln('"$trigger" → $action');
     });
     return buf.toString().trim();
   }
@@ -59,29 +62,27 @@ class CustomShortcutsService {
   Future<String?> tryHandle(String text) async {
     final t = text.toLowerCase();
 
-    // Показать список
     if (t.contains('мои команды') || t.contains('список команд') || t.contains('все команды')) {
       return await listShortcuts();
     }
 
-    // Добавить команду
     final addResult = await tryAddShortcut(text);
     if (addResult != null) return addResult;
 
-    // Удалить команду
-    final delMatch = RegExp(r"удали команду[:\s]+['\"]?(.+?)['\"]?$", caseSensitive: false).firstMatch(text);
+    final delMatch = RegExp(r'удали команду[:\s]+(.+)$', caseSensitive: false).firstMatch(text);
     if (delMatch != null) {
-      final trigger = delMatch.group(1)!.trim().toLowerCase();
-      await delete(trigger);
-      return '🗑 Команда "$trigger" удалена.';
+      final trigger = delMatch.group(1)!.trim().toLowerCase()
+          .replaceAll(RegExp(r"['\u2018\u2019\u201c\u201d]"), '');
+      await remove(trigger);
+      return 'Команда "$trigger" удалена.';
     }
 
-    // Проверить совпадение с существующими shortcuts
+    // Match existing shortcuts
     final all = await getAll();
     final lower = text.toLowerCase().trim();
     for (final entry in all.entries) {
       if (lower.contains(entry.key) || lower == entry.key) {
-        return '⚡ Выполняю: ${entry.value}';
+        return 'Выполняю: ${entry.value}';
       }
     }
 
