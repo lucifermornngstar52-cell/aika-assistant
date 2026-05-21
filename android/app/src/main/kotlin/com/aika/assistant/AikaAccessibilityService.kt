@@ -321,4 +321,66 @@ class AikaAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
+    // ── Screen Reader методы ─────────────────────────────────────────────────
+
+    /** Собирает весь текст с текущего экрана */
+    fun getAllScreenText(): String {
+        val root = rootInActiveWindow ?: return ""
+        val sb = StringBuilder()
+        collectTextFromNode(root, sb, 0)
+        return sb.toString()
+    }
+
+    private fun collectTextFromNode(node: AccessibilityNodeInfo?, sb: StringBuilder, depth: Int) {
+        if (node == null || depth > 10) return
+        val text = node.text?.toString()?.trim()
+        val desc = node.contentDescription?.toString()?.trim()
+        when {
+            !text.isNullOrEmpty() -> sb.appendLine(text)
+            !desc.isNullOrEmpty() -> sb.appendLine(desc)
+        }
+        for (i in 0 until node.childCount) {
+            collectTextFromNode(node.getChild(i), sb, depth + 1)
+        }
+    }
+
+    /** Кликает по элементу с нужным текстом */
+    fun clickByText(targetText: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val nodes = root.findAccessibilityNodeInfosByText(targetText)
+        for (node in nodes ?: emptyList()) {
+            if (node.isClickable) {
+                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return true
+            }
+            val parent = node.parent
+            if (parent?.isClickable == true) {
+                parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return true
+            }
+        }
+        return false
+    }
+
+    /** Прокрутка */
+    fun scroll(direction: String) {
+        val root = rootInActiveWindow ?: return
+        val action = if (direction == "down")
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        else
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        scrollNodeRecursive(root, action)
+    }
+
+    private fun scrollNodeRecursive(node: AccessibilityNodeInfo?, action: Int) {
+        if (node == null) return
+        if (node.isScrollable) { node.performAction(action); return }
+        for (i in 0 until node.childCount) scrollNodeRecursive(node.getChild(i), action)
+    }
+
+    /** Кнопка Назад */
+    fun performBack() = performGlobalAction(GLOBAL_ACTION_BACK)
+
+
 }
+
