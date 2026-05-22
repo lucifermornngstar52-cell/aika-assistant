@@ -392,41 +392,6 @@ class MainActivity : FlutterActivity() {
     }
 
 
-        // ── Launcher channel — точный запуск приложений по package name ──
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LAUNCHER_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "launchApp" -> {
-                        val packageName = call.argument<String>("package") ?: ""
-                        try {
-                            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                            if (launchIntent != null) {
-                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                                startActivity(launchIntent)
-                                result.success(true)
-                            } else {
-                                val storeIntent = Intent(Intent.ACTION_VIEW,
-                                    Uri.parse("market://details?id=$packageName"))
-                                storeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                startActivity(storeIntent)
-                                result.success(false)
-                            }
-                        } catch (e: Exception) {
-                            result.error("LAUNCH_ERROR", e.message, null)
-                        }
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-    } // end configureFlutterEngine
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
-            startOverlayService(AikaOverlayService.ACTION_SHOW, "greeting")
-        }
-    }
-
 
     override fun onResume() {
         super.onResume()
