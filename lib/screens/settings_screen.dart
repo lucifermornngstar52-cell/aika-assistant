@@ -83,7 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setString('edge_voice', _selectedEdgeVoice);
     await prefs.setBool('use_edge_tts', _useEdgeTts);
     // Update wake word when assistant name changes
-    await WakeWordService().updateTriggers();
+    await WakeWordService.instance.updateTriggers();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
