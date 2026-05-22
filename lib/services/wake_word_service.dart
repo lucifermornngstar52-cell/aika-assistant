@@ -221,10 +221,11 @@ class WakeWordService {
     }
 
     try {
-      await _vadMethod.invokeMethod('pause');
+      // type=command — микрофон остаётся открытым, просто игнорируем результаты
+      await _vadMethod.invokeMethod('pause', {'type': 'command'});
     } catch (_) {}
 
-    debugPrint('[WakeWord] ⏸ пауза (микрофон открыт)');
+    debugPrint('[WakeWord] ⏸ пауза команда (микрофон открыт)');
   }
 
   Future<void> resume() async {
@@ -243,12 +244,22 @@ class WakeWordService {
   // ── Музыка ────────────────────────────────────────────────────────────
 
   void setMusicPlaying(bool playing) {
+    if (_musicPlaying == playing) return; // нет изменений
     _musicPlaying = playing;
-    // При музыке можно повысить VAD порог чтобы не реагировал на фон
+
     if (playing) {
-      try { _vadMethod.invokeMethod('setThreshold', {'value': 1500.0}); } catch (_) {}
+      // Медиа играет — полностью выключаем микрофон
+      debugPrint('[WakeWord] 🎵 медиа играет — микрофон ВЫКЛЮЧЕН');
+      _sttStopTimer?.cancel();
+      if (_sttListening) {
+        _stt.stop();
+        _sttListening = false;
+      }
+      try { _vadMethod.invokeMethod('pause', {'type': 'media'}); } catch (_) {}
     } else {
-      try { _vadMethod.invokeMethod('setThreshold', {'value': 600.0}); } catch (_) {}
+      // Медиа остановилась — включаем микрофон обратно
+      debugPrint('[WakeWord] 🎵 медиа остановилась — микрофон ВКЛЮЧЁН');
+      try { _vadMethod.invokeMethod('resume'); } catch (_) {}
     }
   }
 
