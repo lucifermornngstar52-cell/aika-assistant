@@ -125,19 +125,47 @@ class ContinuousVadService(private val eventSink: EventChannel.EventSink?) {
         }
     }
 
-    fun pause() {
+    // pauseType:
+    //   "command"  — пауза на время ответа Айки (микрофон остаётся открытым)
+    //   "media"    — играет музыка/видео (микрофон полностью закрывается)
+    private var pauseType: String = "command"
+
+    fun pause(type: String = "command") {
+        pauseType = type
         isPaused.set(true)
         speechActive = false
         activeChunks = 0
         silenceChunks = 0
-        Log.d(TAG, "⏸ VAD на паузе (микрофон открыт)")
-        sendEvent("status", "paused")
+
+        if (type == "media") {
+            // Полностью закрываем микрофон — экономим батарею и не реагируем на фон
+            Log.d(TAG, "⏸ VAD ОСТАНОВЛЕН (медиа) — микрофон закрыт")
+            audioRecord?.stop()
+            audioRecord?.release()
+            audioRecord = null
+            isRunning.set(false)
+            sendEvent("status", "mic_off")
+        } else {
+            // Просто игнорируем результаты — микрофон открыт
+            Log.d(TAG, "⏸ VAD пауза (команда) — микрофон открыт")
+            sendEvent("status", "paused")
+        }
     }
 
     fun resume() {
+        val wasMedia = pauseType == "media"
+        pauseType = "command"
         isPaused.set(false)
-        Log.d(TAG, "▶ VAD возобновлён")
-        sendEvent("status", "resumed")
+
+        if (wasMedia) {
+            // Нужно заново открыть микрофон
+            Log.d(TAG, "▶ VAD возобновление после медиа — перезапускаем микрофон")
+            sendEvent("status", "mic_on")
+            start() // полный перезапуск AudioRecord
+        } else {
+            Log.d(TAG, "▶ VAD возобновление после команды")
+            sendEvent("status", "resumed")
+        }
     }
 
     fun stop() {
