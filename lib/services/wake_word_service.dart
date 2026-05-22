@@ -73,7 +73,7 @@ class WakeWordService {
     final prefs = await SharedPreferences.getInstance();
     final name = (prefs.getString('assistant_name') ?? 'Aika').trim();
     final variants = _generateVariants(name);
-    _currentTriggers = {...variants, ...List.from(_defaultTriggers)}.toList();
+    _currentTriggers = <String>{...variants, ..._defaultTriggers}.toList();
     debugPrint('[WakeWord] 🔄 триггеры обновлены: $_currentTriggers');
   }
 
