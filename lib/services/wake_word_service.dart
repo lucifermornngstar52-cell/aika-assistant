@@ -128,7 +128,7 @@ class WakeWordService {
     if (!_isPaused) return;
     _isPaused = false;
     debugPrint('[WakeWord] ▶ возобновление');
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 300)); // быстрее resume
     await _startSttLoop();
   }
 
@@ -162,8 +162,8 @@ class WakeWordService {
         ? const Duration(seconds: 8)
         : const Duration(minutes: 5);
     final pauseDuration = _musicPlaying
-        ? const Duration(seconds: 3)
-        : const Duration(seconds: 30);
+        ? const Duration(seconds: 2)
+        : const Duration(seconds: 3); // было 30s — уменьшено для быстрого перезапуска
 
     try {
       _sttActive = true;
@@ -220,3 +220,4 @@ class WakeWordService {
     debugPrint('[WakeWord] ⏹ остановлен');
   }
 }
+
