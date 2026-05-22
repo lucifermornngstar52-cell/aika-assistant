@@ -540,7 +540,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _startMusicPolling() {
-    _musicTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _musicTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (_isListening || _isThinking) return;
       final playing = await MusicDetectorService.isMusicPlaying();
       if (playing) {
@@ -548,17 +548,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           if (mounted) setState(() => _isDancing = true);
           OverlayService.updateState('dance');
         }
-        // Не останавливаем wake word полностью — просто сообщаем что играет музыка
+        // Медиа играет — полностью выключаем микрофон (не реагируем на музыку/видео)
         _wakeWordService.setMusicPlaying(true);
       } else {
         if (_isDancing) {
           if (mounted) setState(() => _isDancing = false);
           OverlayService.updateState('idle');
         }
+        // Медиа остановилась — включаем микрофон обратно
         _wakeWordService.setMusicPlaying(false);
       }
     });
   }
+
 
   void _sendGreeting() {
     final greeting = _userName.isNotEmpty
