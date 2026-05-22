@@ -391,13 +391,6 @@ class MainActivity : FlutterActivity() {
             })
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
-            startOverlayService(AikaOverlayService.ACTION_SHOW, "greeting")
-        }
-    }
-
 
         // ── Launcher channel — точный запуск приложений по package name ──
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LAUNCHER_CHANNEL)
@@ -412,7 +405,6 @@ class MainActivity : FlutterActivity() {
                                 startActivity(launchIntent)
                                 result.success(true)
                             } else {
-                                // Приложение не установлено — открываем Play Store
                                 val storeIntent = Intent(Intent.ACTION_VIEW,
                                     Uri.parse("market://details?id=$packageName"))
                                 storeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -426,6 +418,15 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    } // end configureFlutterEngine
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (hasOverlayPermission() && !AikaOverlayService.isRunning) {
+            startOverlayService(AikaOverlayService.ACTION_SHOW, "greeting")
+        }
+    }
+
 
     override fun onResume() {
         super.onResume()
