@@ -464,47 +464,6 @@ class MainActivity : FlutterActivity() {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return enabledServices.split(":").any { it.equals(serviceName, ignoreCase = true) }
-
-        // ── VAD непрерывное прослушивание ────────────────────────────────────
-        // EventChannel — события (speech_start, speech_end, status)
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, VAD_EVENT_CHANNEL)
-            .setStreamHandler(object : StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    vadEventSink = events
-                    vadService = ContinuousVadService(events)
-                }
-                override fun onCancel(arguments: Any?) {
-                    vadService?.stop()
-                    vadService = null
-                    vadEventSink = null
-                }
-            })
-
-        // MethodChannel — управление (start/pause/resume/stop)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VAD_METHOD_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        vadService?.stop()
-                        vadService = ContinuousVadService(vadEventSink)
-                        vadService?.start()
-                        result.success(true)
-                    }
-                    "pause" -> {
-                        val type = call.argument<String>("type") ?: "command"
-                        vadService?.pause(type)
-                        result.success(true)
-                    }
-                    "resume" -> { vadService?.resume(); result.success(true) }
-                    "stop" -> { vadService?.stop(); result.success(true) }
-                    "setThreshold" -> {
-                        val v = call.argument<Double>("value") ?: 600.0
-                        vadService?.setThreshold(v)
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
     }
 }
 
