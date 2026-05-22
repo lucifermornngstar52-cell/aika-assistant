@@ -82,6 +82,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   List<ChatMessage> _messages = [];
   bool _isListening = false;
   bool _isThinking = false;
+  Completer<void>? _ttsCompleter;
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
@@ -587,25 +588,45 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _speak(String text) async {
-    final clean = text.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '');
+    final clean = text.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
     if (clean.isEmpty) return;
+
+    // Останавливаем предыдущий TTS
+    await _tts.stop();
+    _ttsCompleter?.complete();
+    _ttsCompleter = null;
+
     // Пауза wake word на время речи
     final wasEnabled = _wakeWordEnabled;
     if (wasEnabled) await _wakeWordService.pause();
+
+    final completer = Completer<void>();
+    _ttsCompleter = completer;
+
+    _tts.setCompletionHandler(() {
+      if (!completer.isCompleted) completer.complete();
+    });
+    _tts.setErrorHandler((e) {
+      debugPrint('[TTS] error: \$e');
+      if (!completer.isCompleted) completer.complete();
+    });
+
     try {
-      final completer = Completer<void>();
-      _tts.setCompletionHandler(() => { if (!completer.isCompleted) completer.complete() });
-      _tts.setErrorHandler((e) => { if (!completer.isCompleted) completer.complete() });
       await _tts.speak(clean);
-      // Ждём завершения с таймаутом
+      // Ждём завершения — таймаут: ~8 символов/сек + 3 сек запас
       await completer.future.timeout(
-        Duration(seconds: clean.length ~/ 8 + 5),
+        Duration(seconds: (clean.length / 8).ceil() + 3),
         onTimeout: () {},
       );
-    } catch (_) {}
-    // Возобновляем wake word ПОСЛЕ того как TTS закончил
-    if (wasEnabled && _wakeWordEnabled) {
-      await Future.delayed(const Duration(milliseconds: 400));
+    } catch (e) {
+      debugPrint('[_speak] error: \$e');
+    } finally {
+      _ttsCompleter = null;
+    }
+
+    // Возобновляем wake word после речи
+    if (wasEnabled && _wakeWordEnabled && !_isListening) {
+      await Future.delayed(const Duration(milliseconds: 300));
       await _wakeWordService.resume();
     }
   }
@@ -978,7 +999,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(reminderResult);
-      return; // ← фикс: выходим после reminder
       _moodService.onUserSpoke();
       return;
     }
@@ -1143,6 +1163,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final ctrlResult = await ScreenReaderService.tryHandlePhoneControl(text);
       if (ctrlResult != null) {
         _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: ctrlResult, timestamp: DateTime.now()));
+        setState(() => _isThinking = false);
         await _speak(ctrlResult);
         return;
       }
@@ -1153,6 +1174,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final actionResult = await ScreenReaderService.tryHandleAction(text);
       if (actionResult != null) {
         _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: actionResult, timestamp: DateTime.now()));
+        setState(() => _isThinking = false);
         await _speak(actionResult);
         return;
       }
@@ -1497,6 +1519,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
