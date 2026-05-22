@@ -490,7 +490,11 @@ class MainActivity : FlutterActivity() {
                         vadService?.start()
                         result.success(true)
                     }
-                    "pause" -> { vadService?.pause(); result.success(true) }
+                    "pause" -> {
+                        val type = call.argument<String>("type") ?: "command"
+                        vadService?.pause(type)
+                        result.success(true)
+                    }
                     "resume" -> { vadService?.resume(); result.success(true) }
                     "stop" -> { vadService?.stop(); result.success(true) }
                     "setThreshold" -> {
