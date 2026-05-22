@@ -90,6 +90,31 @@ class AppLauncherService {
   static Map<String, String> get builtinCommands =>
       Map.fromEntries(_orderedCommands);
 
+  /// Цепочка музыкальных плееров — пробует по очереди пока один не откроется
+  static const _musicPackages = [
+    'com.spotify.music',
+    'ru.yandex.music',
+    'com.google.android.apps.youtube.music',
+    'com.google.android.music',    // Google Play Music
+    'com.apple.android.music',     // Apple Music
+    'com.amazon.mp3',              // Amazon Music
+  ];
+
+  static Future<String?> tryLaunchFirstAvailableMusic() async {
+    for (final pkg in _musicPackages) {
+      try {
+        final result = await _channel.invokeMethod<bool>('launchApp', {'package': pkg});
+        if (result == true) {
+          final name = pkg.contains('spotify') ? 'Spotify' :
+                       pkg.contains('yandex')  ? 'Яндекс Музыку' :
+                       pkg.contains('youtube') ? 'YouTube Music' : 'Музыку';
+          return 'Открываю $name 🎵';
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   /// Главная точка входа — разбираем фразу и запускаем приложение
   static Future<String?> tryLaunch(String phrase) async {
     // 1. Пользовательские команды — высший приоритет
@@ -104,6 +129,12 @@ class AppLauncherService {
     // 2. Встроенные команды — строгое совпадение по словам
     for (final entry in _orderedCommands) {
       if (_matchesPhrase(normalized, _normalize(entry.key))) {
+        // Для музыки — пробуем все плееры по очереди
+        if (entry.value == 'com.spotify.music' &&
+            (entry.key == 'музыку' || entry.key == 'музыка')) {
+          final musicResult = await tryLaunchFirstAvailableMusic();
+          if (musicResult != null) return musicResult;
+        }
         return await _launch(entry.value);
       }
     }
@@ -122,10 +153,13 @@ class AppLauncherService {
   /// Защищает от "вк" внутри "включи" и т.п.
   static bool _matchesPhrase(String text, String key) {
     if (key.isEmpty) return false;
-    // Оборачиваем пробелами для единообразия
+    // Оборачиваем пробелами для точного совпадения слов
     final paddedText = ' $text ';
     final paddedKey  = ' $key ';
-    return paddedText.contains(paddedKey);
+    if (!paddedText.contains(paddedKey)) return false;
+    // Защита от коротких ключей (≤2 символа) — только точное совпадение всей фразы
+    if (key.length <= 2 && text != key) return false;
+    return true;
   }
 
   /// Запуск через нативный MethodChannel — getLaunchIntentForPackage
@@ -174,3 +208,4 @@ class AppLauncherService {
     return {...builtinCommands, ...custom};
   }
 }
+
