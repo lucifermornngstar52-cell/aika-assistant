@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
     private val MEDIA_CHANNEL    = "com.aika.assistant/media"
     private val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
+    private val LAUNCHER_CHANNEL  = "com.aika.assistant/launcher"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
@@ -396,6 +397,35 @@ class MainActivity : FlutterActivity() {
             startOverlayService(AikaOverlayService.ACTION_SHOW, "greeting")
         }
     }
+
+
+        // ── Launcher channel — точный запуск приложений по package name ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LAUNCHER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "launchApp" -> {
+                        val packageName = call.argument<String>("package") ?: ""
+                        try {
+                            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                            if (launchIntent != null) {
+                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                                startActivity(launchIntent)
+                                result.success(true)
+                            } else {
+                                // Приложение не установлено — открываем Play Store
+                                val storeIntent = Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("market://details?id=$packageName"))
+                                storeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(storeIntent)
+                                result.success(false)
+                            }
+                        } catch (e: Exception) {
+                            result.error("LAUNCH_ERROR", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
     override fun onResume() {
         super.onResume()
