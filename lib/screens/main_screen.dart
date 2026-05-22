@@ -588,7 +588,26 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _speak(String text) async {
     final clean = text.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '');
-    await _tts.speak(clean);
+    if (clean.isEmpty) return;
+    // Пауза wake word на время речи
+    final wasEnabled = _wakeWordEnabled;
+    if (wasEnabled) await _wakeWordService.pause();
+    try {
+      final completer = Completer<void>();
+      _tts.setCompletionHandler(() => { if (!completer.isCompleted) completer.complete() });
+      _tts.setErrorHandler((e) => { if (!completer.isCompleted) completer.complete() });
+      await _tts.speak(clean);
+      // Ждём завершения с таймаутом
+      await completer.future.timeout(
+        Duration(seconds: clean.length ~/ 8 + 5),
+        onTimeout: () {},
+      );
+    } catch (_) {}
+    // Возобновляем wake word ПОСЛЕ того как TTS закончил
+    if (wasEnabled && _wakeWordEnabled) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      await _wakeWordService.resume();
+    }
   }
 
   void _showSnack(String msg) {
@@ -959,6 +978,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(reminderResult);
+      return; // ← фикс: выходим после reminder
       _moodService.onUserSpoke();
       return;
     }
@@ -1477,6 +1497,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
