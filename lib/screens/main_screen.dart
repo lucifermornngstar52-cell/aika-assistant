@@ -437,7 +437,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (!_isListening && !_isThinking) _onWakeWordDetected();
       });
       setState(() => _wakeWordEnabled = true);
-      _showSnack('Скажи "Айка" чтобы активировать');
+      _showSnack('Скажи "$_assistantName" чтобы активировать');
     }
   }
 
@@ -1393,7 +1393,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   children: [
                     Icon(Icons.hearing, size: 12, color: AikaTheme.neonBlue.withOpacity(0.7)),
                     const SizedBox(width: 6),
-                    Text('Жду: "Айка"',
+                    Text('Жду: "$_assistantName"',
                         style: TextStyle(
                           color: AikaTheme.neonBlue.withOpacity(0.7),
                           fontSize: 11,
