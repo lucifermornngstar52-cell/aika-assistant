@@ -144,22 +144,7 @@ class AppLauncherService {
   }
 
   static Future<String> _launchFallback(String packageName) async {
-    try {
-      // Пробуем через android_intent_plus с LAUNCHER category
-      const platform = MethodChannel('flutter/platform');
-      // Используем url_launcher как последний fallback
-      final intent = 'intent:#Intent;action=android.intent.action.MAIN;'
-          'category=android.intent.category.LAUNCHER;'
-          'package=$packageName;'
-          'flags=0x10200000;end';
-      _ = intent; // подавляем warning
-    } catch (_) {}
-
-    // Если всё упало — открываем Play Store
-    try {
-      final store = MethodChannel('flutter/platform');
-      _ = store;
-    } catch (_) {}
+    // Нативный канал недоступен — просто сообщаем
     return 'Приложение не найдено 😔';
   }
 
