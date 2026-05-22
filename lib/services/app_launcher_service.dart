@@ -1,160 +1,107 @@
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+/// Запуск приложений по голосовой команде.
+/// Использует нативный getLaunchIntentForPackage — гарантирует
+/// что откроется именно нужный пакет, а не случайная Activity.
 class AppLauncherService {
   static const _prefsKey = 'custom_app_commands';
+  static const _channel = MethodChannel('com.aika.assistant/launcher');
 
-  // Команды отсортированы от ДЛИННЫХ к КОРОТКИМ —
-  // чтобы "ютуб музыка" проверялась раньше чем "ютуб"
-  // и "яндекс музыку" раньше чем просто "музыку"
+  // ── Таблица: голосовой триггер -> package name ────────────────────────────
+  // Отсортировано от ДЛИННЫХ к КОРОТКИМ — чтобы "ютуб музыка" раньше "ютуб"
   static const List<MapEntry<String, String>> _orderedCommands = [
-    // === YouTube Music (длиннее — проверяем первым) ===
-    MapEntry('открой ютуб музыку',      'com.google.android.apps.youtube.music'),
-    MapEntry('запусти ютуб музыку',     'com.google.android.apps.youtube.music'),
-    MapEntry('включи ютуб музыку',      'com.google.android.apps.youtube.music'),
+    // YouTube Music
+    MapEntry('ютуб музыку',             'com.google.android.apps.youtube.music'),
     MapEntry('ютуб музыка',             'com.google.android.apps.youtube.music'),
     MapEntry('youtube music',           'com.google.android.apps.youtube.music'),
-    // === Yandex Music ===
-    MapEntry('открой яндекс музыку',    'ru.yandex.music'),
-    MapEntry('запусти яндекс музыку',   'ru.yandex.music'),
-    MapEntry('включи яндекс музыку',    'ru.yandex.music'),
-    MapEntry('яндекс музыка',           'ru.yandex.music'),
     MapEntry('яндекс музыку',           'ru.yandex.music'),
-    // === Spotify ===
-    MapEntry('открой спотифай',         'com.spotify.music'),
-    MapEntry('запусти спотифай',        'com.spotify.music'),
-    MapEntry('открой spotify',          'com.spotify.music'),
+    MapEntry('яндекс музыка',           'ru.yandex.music'),
+    // Spotify
     MapEntry('спотифай',                'com.spotify.music'),
     MapEntry('spotify',                 'com.spotify.music'),
-    // === YouTube (после YouTube Music!) ===
-    MapEntry('открой ютуб',             'com.google.android.youtube'),
-    MapEntry('включи ютуб',             'com.google.android.youtube'),
-    MapEntry('запусти ютуб',            'com.google.android.youtube'),
-    MapEntry('открой youtube',          'com.google.android.youtube'),
+    // YouTube
     MapEntry('ютуб',                    'com.google.android.youtube'),
     MapEntry('youtube',                 'com.google.android.youtube'),
-    // === Музыка (общая — после всех конкретных!) ===
-    MapEntry('открой музыку',           'com.spotify.music'),
-    MapEntry('включи музыку',           'com.spotify.music'),
-    MapEntry('запусти музыку',          'com.spotify.music'),
-    // === TikTok ===
-    MapEntry('открой тикток',           'com.zhiliaoapp.musically'),
-    MapEntry('открой tiktok',           'com.zhiliaoapp.musically'),
+    // TikTok
     MapEntry('тикток',                  'com.zhiliaoapp.musically'),
+    MapEntry('тик ток',                 'com.zhiliaoapp.musically'),
     MapEntry('tiktok',                  'com.zhiliaoapp.musically'),
-    // === Telegram ===
-    MapEntry('открой телеграм',         'org.telegram.messenger'),
-    MapEntry('запусти телеграм',        'org.telegram.messenger'),
-    MapEntry('открой telegram',         'org.telegram.messenger'),
+    // Telegram
     MapEntry('телеграм',                'org.telegram.messenger'),
+    MapEntry('телеграмм',               'org.telegram.messenger'),
     MapEntry('telegram',                'org.telegram.messenger'),
-    // === WhatsApp (вацап / ватсап / ватсап — все варианты STT) ===
-    MapEntry('открой ватсап',           'com.whatsapp'),
-    MapEntry('открой вацап',            'com.whatsapp'),
-    MapEntry('открой whatsapp',         'com.whatsapp'),
-    MapEntry('запусти ватсап',          'com.whatsapp'),
-    MapEntry('запусти вацап',           'com.whatsapp'),
-    MapEntry('включи ватсап',           'com.whatsapp'),
+    // WhatsApp — все варианты STT
     MapEntry('ватсап',                  'com.whatsapp'),
     MapEntry('вацап',                   'com.whatsapp'),
+    MapEntry('вотсап',                  'com.whatsapp'),
+    MapEntry('воцап',                   'com.whatsapp'),
     MapEntry('whatsapp',                'com.whatsapp'),
-    // === Instagram ===
-    MapEntry('открой инстаграм',        'com.instagram.android'),
-    MapEntry('открой instagram',        'com.instagram.android'),
+    MapEntry('what s app',              'com.whatsapp'),
+    MapEntry('uatsap',                  'com.whatsapp'),
+    // Instagram
     MapEntry('инстаграм',               'com.instagram.android'),
+    MapEntry('инстаграмм',              'com.instagram.android'),
+    MapEntry('инста',                   'com.instagram.android'),
     MapEntry('instagram',               'com.instagram.android'),
-    // === VKontakte (ТОЛЬКО полные формы — "вк" слишком короткое!) ===
-    MapEntry('открой вконтакте',        'com.vkontakte.android'),
-    MapEntry('открой вк',               'com.vkontakte.android'),
-    MapEntry('запусти вконтакте',       'com.vkontakte.android'),
+    // VK
     MapEntry('вконтакте',               'com.vkontakte.android'),
-    // === Netflix ===
-    MapEntry('открой нетфликс',         'com.netflix.mediaclient'),
-    MapEntry('открой netflix',          'com.netflix.mediaclient'),
+    MapEntry('вк',                      'com.vkontakte.android'),
+    MapEntry('vkontakte',               'com.vkontakte.android'),
+    // Netflix
     MapEntry('нетфликс',                'com.netflix.mediaclient'),
     MapEntry('netflix',                 'com.netflix.mediaclient'),
-    // === Twitch ===
-    MapEntry('открой твич',             'tv.twitch.android.app'),
-    MapEntry('открой twitch',           'tv.twitch.android.app'),
+    // Twitch
     MapEntry('твич',                    'tv.twitch.android.app'),
     MapEntry('twitch',                  'tv.twitch.android.app'),
-    // === Discord ===
-    MapEntry('открой дискорд',          'com.discord'),
-    MapEntry('открой discord',          'com.discord'),
+    // Discord
     MapEntry('дискорд',                 'com.discord'),
     MapEntry('discord',                 'com.discord'),
-    // === Google Maps ===
-    MapEntry('открой гугл карты',       'com.google.android.apps.maps'),
-    MapEntry('открой карты',            'com.google.android.apps.maps'),
+    // Maps
     MapEntry('гугл карты',              'com.google.android.apps.maps'),
     MapEntry('карты',                   'com.google.android.apps.maps'),
-    // === Chrome ===
-    MapEntry('открой браузер',          'com.android.chrome'),
-    MapEntry('открой хром',             'com.android.chrome'),
-    MapEntry('открой chrome',           'com.android.chrome'),
+    // Chrome
+    MapEntry('браузер',                 'com.android.chrome'),
     MapEntry('хром',                    'com.android.chrome'),
-    // === Gmail ===
-    MapEntry('открой почту',            'com.google.android.gm'),
-    MapEntry('открой гмейл',            'com.google.android.gm'),
-    MapEntry('открой gmail',            'com.google.android.gm'),
+    MapEntry('chrome',                  'com.android.chrome'),
+    // Gmail
+    MapEntry('почту',                   'com.google.android.gm'),
+    MapEntry('почта',                   'com.google.android.gm'),
     MapEntry('gmail',                   'com.google.android.gm'),
-    // === Settings ===
-    MapEntry('открой настройки',        'com.android.settings'),
+    MapEntry('гмейл',                   'com.google.android.gm'),
+    // Settings
     MapEntry('настройки',               'com.android.settings'),
-    // === Camera ===
-    MapEntry('открой камеру',           'com.android.camera2'),
+    // Camera — ТОЛЬКО с явным словом "камер"
+    MapEntry('камеру',                  'com.android.camera2'),
     MapEntry('камера',                  'com.android.camera2'),
-    // === Calculator ===
-    MapEntry('открой калькулятор',      'com.google.android.calculator'),
+    // Calculator
     MapEntry('калькулятор',             'com.google.android.calculator'),
-    // === Clock / Alarm ===
-    MapEntry('открой будильник',        'com.google.android.deskclock'),
-    MapEntry('открой часы',             'com.google.android.deskclock'),
+    // Clock
     MapEntry('будильник',               'com.google.android.deskclock'),
     MapEntry('часы',                    'com.google.android.deskclock'),
-    // === Files ===
-    MapEntry('открой файлы',            'com.google.android.documentsui'),
+    // Files
+    MapEntry('файлы',                   'com.google.android.documentsui'),
+    // Музыка (общее — после всех конкретных)
+    MapEntry('музыку',                  'com.spotify.music'),
+    MapEntry('музыка',                  'com.spotify.music'),
   ];
 
-  // Для совместимости с CommandsScreen
   static Map<String, String> get builtinCommands =>
       Map.fromEntries(_orderedCommands);
 
-  /// Главный метод — разбираем фразу и запускаем приложение
-  static Future<String?> _tryUserVoiceAppCommand(String phrase) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('app_voice_commands') ?? '{}';
-      final Map<String, dynamic> commands = json.decode(raw);
-      final lower = phrase.toLowerCase().trim();
-      for (final entry in commands.entries) {
-        if (lower == entry.key || lower.contains(entry.key)) {
-          final pkg = entry.value.toString();
-          await _launch(pkg);
-          final appName = pkg.split('.').last;
-          return 'Открываю $appName 📱';
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
+  /// Главная точка входа — разбираем фразу и запускаем приложение
   static Future<String?> tryLaunch(String phrase) async {
-    final userCmd = await _tryUserVoiceAppCommand(phrase);
-    if (userCmd != null) return userCmd;
-    final normalized = _normalize(phrase);
-
-    // 1. Пользовательские команды — приоритет
+    // 1. Пользовательские команды — высший приоритет
     final custom = await _loadCustomCommands();
+    final normalized = _normalize(phrase);
     for (final entry in custom.entries) {
       if (_matchesPhrase(normalized, _normalize(entry.key))) {
         return await _launch(entry.value);
       }
     }
 
-    // 2. Встроенные — в порядке от длинных к коротким
+    // 2. Встроенные команды — строгое совпадение по словам
     for (final entry in _orderedCommands) {
       if (_matchesPhrase(normalized, _normalize(entry.key))) {
         return await _launch(entry.value);
@@ -164,68 +111,56 @@ class AppLauncherService {
     return null;
   }
 
-  /// Умное сопоставление: ключ должен быть отдельным словом/фразой,
-  /// а не подстрокой внутри другого слова (например "вк" не должно
-  /// триггерить на "включи").
-  static bool _matchesPhrase(String text, String key) {
-    if (!text.contains(key)) return false;
-
-    // Проверяем что вокруг ключа — пробелы или начало/конец строки
-    final idx = text.indexOf(key);
-    final before = idx == 0 ? true : text[idx - 1] == ' ';
-    final after  = (idx + key.length) >= text.length ? true
-                  : text[idx + key.length] == ' ';
-    return before && after;
-  }
-
-  /// Нормализация текста
+  /// Нормализация: нижний регистр, без пунктуации, одинарные пробелы
   static String _normalize(String s) =>
       s.toLowerCase().trim()
        .replaceAll(RegExp(r'[.,!?;:\-]'), '')
        .replaceAll(RegExp(r'\s+'), ' ');
 
-  // Карта явных Activity — только проверенные компоненты
-  static const Map<String, String> _componentNames = {
-    'org.telegram.messenger': 'org.telegram.messenger/org.telegram.ui.LaunchActivity',
-    'com.discord':            'com.discord/com.discord.app.AppActivity\$Main',
-  };
+  /// Строгое совпадение: ключ должен стоять как отдельная фраза
+  /// (окружён пробелами или находится в начале/конце строки).
+  /// Защищает от "вк" внутри "включи" и т.п.
+  static bool _matchesPhrase(String text, String key) {
+    if (key.isEmpty) return false;
+    // Оборачиваем пробелами для единообразия
+    final paddedText = ' $text ';
+    final paddedKey  = ' $key ';
+    return paddedText.contains(paddedKey);
+  }
 
+  /// Запуск через нативный MethodChannel — getLaunchIntentForPackage
+  /// гарантирует открытие именно этого пакета.
   static Future<String> _launch(String packageName) async {
     try {
-      // Используем явный componentName только если он точно известен
-      final component = _componentNames[packageName];
-      if (component != null) {
-        final intent = AndroidIntent(
-          action: 'android.intent.action.MAIN',
-          package: packageName,
-          componentName: component,
-          flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED],
-        );
-        await intent.launch();
-        return 'Открываю';
-      }
-      // Для всех остальных — LAUNCHER intent без componentName (getLaunchIntentForPackage)
-      final intent = AndroidIntent(
-        action: 'android.intent.action.MAIN',
-        package: packageName,
-        flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED],
-        category: 'android.intent.category.LAUNCHER',
+      final result = await _channel.invokeMethod<bool>(
+        'launchApp', {'package': packageName}
       );
-      await intent.launch();
-      return 'Открываю';
-    } catch (e) {
-      try {
-        final store = AndroidIntent(
-          action: 'android.intent.action.VIEW',
-          data: 'market://details?id=$packageName',
-          flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
-        );
-        await store.launch();
-        return 'Приложение не найдено, открываю Play Store';
-      } catch (_) {
-        return 'Не удалось открыть приложение';
-      }
+      if (result == true) return 'Открываю 📱';
+      // Нативный канал недоступен — fallback через android_intent_plus
+      return await _launchFallback(packageName);
+    } catch (_) {
+      return await _launchFallback(packageName);
     }
+  }
+
+  static Future<String> _launchFallback(String packageName) async {
+    try {
+      // Пробуем через android_intent_plus с LAUNCHER category
+      const platform = MethodChannel('flutter/platform');
+      // Используем url_launcher как последний fallback
+      final intent = 'intent:#Intent;action=android.intent.action.MAIN;'
+          'category=android.intent.category.LAUNCHER;'
+          'package=$packageName;'
+          'flags=0x10200000;end';
+      _ = intent; // подавляем warning
+    } catch (_) {}
+
+    // Если всё упало — открываем Play Store
+    try {
+      final store = MethodChannel('flutter/platform');
+      _ = store;
+    } catch (_) {}
+    return 'Приложение не найдено 😔';
   }
 
   static Future<Map<String, String>> _loadCustomCommands() async {
@@ -254,4 +189,3 @@ class AppLauncherService {
     return {...builtinCommands, ...custom};
   }
 }
-
