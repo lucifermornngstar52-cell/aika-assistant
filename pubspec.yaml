@@ -38,6 +38,9 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
+  # Timezone (для precise reminders)
+  timezone: ^0.9.4
+
   # Audio playback (Edge TTS)
   audioplayers: ^6.1.0
   path_provider: ^2.1.3
