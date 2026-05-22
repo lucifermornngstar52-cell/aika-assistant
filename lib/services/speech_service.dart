@@ -119,10 +119,10 @@ class SpeechService extends ChangeNotifier {
     await _stt.listen(
       localeId: _ruLocaleId,
       listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 4),
+      pauseFor: const Duration(milliseconds: 1500), // было 4s — уменьшено для скорости
       cancelOnError: false,
       partialResults: true,
-      listenMode: ListenMode.dictation,
+      listenMode: ListenMode.search, // search быстрее фиксирует конец фразы
       onResult: (result) {
         _lastWords = result.recognizedWords;
         _soundLevel = 0;
@@ -165,3 +165,4 @@ class SpeechService extends ChangeNotifier {
     super.dispose();
   }
 }
+
