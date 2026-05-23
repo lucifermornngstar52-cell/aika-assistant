@@ -19,7 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _assistantNameController = TextEditingController();
-    _customWakeWordController = TextEditingController();
+  final TextEditingController _customWakeWordController = TextEditingController();
   final TextEditingController _openAiKeyController = TextEditingController();
 
   List<dynamic> _voices = [];
