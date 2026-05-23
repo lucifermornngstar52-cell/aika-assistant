@@ -13,6 +13,7 @@ import '../services/smart_notifications_service.dart';
 import '../services/habit_memory_service.dart';
 import '../services/relationship_service.dart';
 import '../services/personality_service.dart';
+import '../services/assistant_mood_service.dart';
 import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_bubble.dart';
@@ -134,6 +135,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _loadPrefs();
     await HabitMemoryService.load();
     await RelationshipService.load();
+    await AssistantMoodService.load();
     _sendGreeting();
     // Init Telegram Bot
     TelegramBotService.onMessage = (text, from) async {
@@ -1256,6 +1258,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           : '';
       final _prefs = await SharedPreferences.getInstance();
       final _openAiKey = _prefs.getString('openai_api_key') ?? '';
+      // Проверяем настроение ассистента — может не хотеть отвечать
+      final moodRefusal = await AssistantMoodService.checkWillRespond(
+          PersonalityService.current.name);
+      if (moodRefusal != null && mounted) {
+        _addMessage(ChatMessage(
+          id: 'mood_\${DateTime.now().millisecondsSinceEpoch}',
+          role: MessageRole.aika,
+          content: moodRefusal,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(moodRefusal);
+        _moodService.setIdle();
+        setState(() => _isThinking = false);
+        return;
+      }
+
       // Анализируем отношение пользователя — получаем возможную реакцию
       final relationReaction = await RelationshipService.analyzeMessage(
           text, PersonalityService.current.name);
