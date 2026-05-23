@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'assistant_mood_service.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -112,6 +113,7 @@ class RelationshipService {
   }
 
   static String? _getKindReaction(String personality) {
+    AssistantMoodService.boostFromKindness();
     // Реагируем не на каждое доброе слово — рандом 40%
     if (_rng.nextDouble() > 0.4) return null;
 
