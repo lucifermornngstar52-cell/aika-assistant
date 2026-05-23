@@ -162,6 +162,9 @@ class AppLauncherService {
     return true;
   }
 
+  /// Публичный метод запуска по имени пакета (для кастомных команд)
+  static Future<String> launchPackage(String packageName) => _launch(packageName);
+
   /// Запуск через нативный MethodChannel — getLaunchIntentForPackage
   /// гарантирует открытие именно этого пакета.
   static Future<String> _launch(String packageName) async {
