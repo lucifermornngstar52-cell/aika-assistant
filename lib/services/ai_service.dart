@@ -1,5 +1,6 @@
 import 'personality_service.dart';
 import 'habit_memory_service.dart';
+import 'assistant_mood_service.dart';
 import 'relationship_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -78,7 +79,8 @@ class AiService {
     final personalityPrompt = PersonalityService.systemPromptAddition;
     final habitContext = HabitMemoryService.getContextForAI();
     final relationshipMod = RelationshipService.getPromptModifier(PersonalityService.current.name);
-    return "Ты $assistantName — аниме AI-ассистент для Android$userPart. Говоришь кратко, умно. Отвечаешь по-русски.$personalityPrompt$relationshipMod\n\n"
+    final internalMoodMod = AssistantMoodService.getPromptModifier();
+    return "Ты $assistantName — аниме AI-ассистент для Android$userPart. Говоришь кратко, умно. Отвечаешь по-русски.$personalityPrompt$relationshipMod$internalMoodMod\n\n"
         "${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}"
         "[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]\n"
         "[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]\n"
