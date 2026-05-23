@@ -76,6 +76,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final ScheduleService _scheduleService = ScheduleService();
   final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
+  final EdgeTtsService _edgeTts = EdgeTtsService();
+  bool _useEdgeTts = true; // Microsoft Neural Voice by default
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
 
@@ -510,6 +512,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _applyTtsSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await _tts.setSpeechRate(prefs.getDouble('tts_rate') ?? 0.5);
+
+    // Initialize EdgeTTS (Microsoft Neural Voices)
+    await _edgeTts.initialize();
+    final savedVoice = prefs.getString('edge_tts_voice');
+    if (savedVoice != null) _edgeTts.setVoice(savedVoice);
     await _tts.setPitch(prefs.getDouble('tts_pitch') ?? 1.0);
     await _tts.setVolume(prefs.getDouble('tts_volume') ?? 1.0);
     final voice = prefs.getString('tts_voice');
@@ -595,6 +602,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // Останавливаем предыдущий TTS
     await _tts.stop();
+    await _edgeTts.stop();
     _ttsCompleter?.complete();
     _ttsCompleter = null;
 
@@ -602,6 +610,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final wasEnabled = _wakeWordEnabled;
     if (wasEnabled) await _wakeWordService.pause();
 
+    // ── Пробуем EdgeTTS (Microsoft Neural Voice) ──
+    if (_useEdgeTts) {
+      try {
+        await _edgeTts.speak(clean);
+        // Ждём завершения EdgeTTS
+        while (_edgeTts.isSpeaking) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+        if (wasEnabled) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          await _wakeWordService.resume();
+        }
+        return;
+      } catch (e) {
+        debugPrint('[_speak] EdgeTTS failed: \$e — fallback system TTS');
+      }
+    }
+
+    // ── Fallback: системный TTS ──
     final completer = Completer<void>();
     _ttsCompleter = completer;
 
