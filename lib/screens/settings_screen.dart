@@ -19,13 +19,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _assistantNameController = TextEditingController();
-  final TextEditingController _customWakeWordController = TextEditingController();
   final TextEditingController _openAiKeyController = TextEditingController();
 
   List<dynamic> _voices = [];
   String? _selectedVoice;
   String _selectedEdgeVoice = 'ru-RU-DariyaNeural';
   bool _useEdgeTts = true;
+  double _edgeTtsRate = 0.0;
+  double _edgeTtsPitch = 0.0;
   double _speechRate = 0.5;
   double _pitch = 1.0;
   double _volume = 1.0;
@@ -44,7 +45,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _nameController.text = prefs.getString('user_name') ?? '';
       _assistantNameController.text = prefs.getString('assistant_name') ?? 'Aika';
-      _customWakeWordController.text = prefs.getString('custom_wake_word') ?? '';
       _openAiKeyController.text = prefs.getString('openai_api_key') ?? '';
       _speechRate = prefs.getDouble('tts_rate') ?? 0.5;
       _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
@@ -52,6 +52,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _selectedVoice = prefs.getString('tts_voice');
       _selectedEdgeVoice = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
       _useEdgeTts = prefs.getBool('use_edge_tts') ?? true;
+      _edgeTtsRate = prefs.getDouble('edge_tts_rate') ?? 0.0;
+      _edgeTtsPitch = prefs.getDouble('edge_tts_pitch') ?? 0.0;
       _showAvatar = prefs.getBool('show_avatar') ?? true;
       _isLoading = false;
     });
@@ -75,7 +77,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setString('openai_api_key', _openAiKeyController.text.trim());
     await prefs.setString('assistant_name',
         _assistantNameController.text.trim().isEmpty ? 'Aika' : _assistantNameController.text.trim());
-    await prefs.setString('custom_wake_word', _customWakeWordController.text.trim().toLowerCase());
     await prefs.setDouble('tts_rate', _speechRate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
@@ -85,6 +86,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     await prefs.setString('edge_voice', _selectedEdgeVoice);
     await prefs.setBool('use_edge_tts', _useEdgeTts);
+    await prefs.setDouble('edge_tts_rate', _edgeTtsRate);
+    await prefs.setDouble('edge_tts_pitch', _edgeTtsPitch);
     // Update wake word when assistant name changes
     await WakeWordService.instance.updateTriggers();
     if (mounted) {
@@ -102,6 +105,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Используем синглтон — уже прогрет, нет задержки инициализации
     final svc = EdgeTtsService();
     svc.setVoice(_selectedEdgeVoice);
+    svc.setRate(_edgeTtsRate);
+    svc.setPitch(_edgeTtsPitch);
     await svc.speak('Привет! Я Айка, ваш голосовой ассистент');
   }
 
@@ -122,7 +127,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _tts.stop();
     _nameController.dispose();
     _assistantNameController.dispose();
-    _customWakeWordController.dispose();
     _openAiKeyController.dispose();
     super.dispose();
   }
@@ -266,8 +270,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionTitle('АССИСТЕНТ'),
             _buildCard([
               _buildTextField(_assistantNameController, 'Имя ассистента', 'Aika'),
-              const Divider(color: Colors.white10, height: 1),
-              _buildTextField(_customWakeWordController, 'Кастомное слово-активатор', 'например: привет, слушай...'),
+
               const Divider(color: Colors.white10, height: 1),
               SwitchListTile(
                 title: const Text('Показывать аватар', style: TextStyle(color: Colors.white)),
@@ -377,6 +380,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       onPressed: _testEdgeVoice,
                     ),
+                  ),
+                ),
+                // ── Edge TTS настройки скорости и питча ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.speed_rounded, size: 16, color: AikaTheme.neonBlue.withOpacity(0.7)),
+                      const SizedBox(width: 6),
+                      Text('Скорость Edge TTS', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Slider(
+                    value: _edgeTtsRate,
+                    min: -50, max: 50,
+                    divisions: 10,
+                    activeColor: AikaTheme.neonBlue,
+                    inactiveColor: AikaTheme.neonBlue.withOpacity(0.2),
+                    label: _edgeTtsRate >= 0 ? '+${_edgeTtsRate.toInt()}%' : '${_edgeTtsRate.toInt()}%',
+                    onChanged: (v) => setState(() => _edgeTtsRate = v),
+                    onChangeEnd: (_) => _saveSettings(),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.music_note_rounded, size: 16, color: AikaTheme.neonBlue.withOpacity(0.7)),
+                      const SizedBox(width: 6),
+                      Text('Питч Edge TTS', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Slider(
+                    value: _edgeTtsPitch,
+                    min: -20, max: 20,
+                    divisions: 8,
+                    activeColor: AikaTheme.neonBlue,
+                    inactiveColor: AikaTheme.neonBlue.withOpacity(0.2),
+                    label: _edgeTtsPitch >= 0 ? '+${_edgeTtsPitch.toInt()}Hz' : '${_edgeTtsPitch.toInt()}Hz',
+                    onChanged: (v) => setState(() => _edgeTtsPitch = v),
+                    onChangeEnd: (_) => _saveSettings(),
                   ),
                 ),
               ],
