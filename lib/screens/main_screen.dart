@@ -1405,9 +1405,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         isListening: _isListening,
         isThinking: _isThinking,
         lastResponse: _messages.isNotEmpty
-            ? _messages.last.text
+            ? _messages.last.content
             : '',
-        onMicTap: _isListening ? _stopListening : _startListening,
+        onMicTap: _toggleListening,
       );
     }
     return Scaffold(
