@@ -45,7 +45,13 @@ class WakeWordService {
   Function()? onWakeWord;
 
   static const List<String> _defaultTriggers = [
-    'айка', 'aika', 'aica', 'эйка', 'ayka', 'ай ка', 'ай-ка',
+    // Русские варианты (Google STT может возвращать по-разному)
+    'айка', 'ай-ка', 'ай ка', 'аика', 'айко', 'айк',
+    'эйка', 'эй-ка', 'эй ка',
+    // Латинские транслиты
+    'aika', 'aica', 'ayka', 'eika', 'aica',
+    // Частичные совпадения (STT иногда добавляет окончания)
+    'айкa', 'ayка',
   ];
   List<String> _currentTriggers = List.from(_defaultTriggers);
 
@@ -312,8 +318,9 @@ class WakeWordService {
       await _stt.listen(
         localeId: 'ru-RU',
         listenFor: const Duration(minutes: 5),
-        pauseFor: const Duration(seconds: 3),
+        pauseFor: const Duration(seconds: 2),
         listenMode: ListenMode.dictation,
+        partialResults: true,
         cancelOnError: false,
         onResult: (result) {
           if (!_isRunning || _isPaused) return;
