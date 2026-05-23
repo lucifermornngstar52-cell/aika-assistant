@@ -1492,15 +1492,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         },
                         itemBuilder: (_) => [
                           const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings_outlined, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Настройки', style: TextStyle(color: Colors.white70))])),
-                          const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)),
-                        const PopupMenuItem(
-                          value: 'schedule',
-                          child: Row(children: [
-                            Icon(Icons.calendar_today, color: Colors.white70, size: 18),
-                            SizedBox(width: 8),
-                            Text('Расписание', style: TextStyle(color: Colors.white)),
-                          ]),
-                        ), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'schedule', child: Row(children: [Icon(Icons.calendar_today, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Расписание', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'telegram', child: Row(children: [Text('🤖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Telegram Бот', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'appcommands', child: Row(children: [Text('⚡', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Команды приложений', style: TextStyle(color: Colors.white70))])),
                         ],
@@ -1610,6 +1603,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
