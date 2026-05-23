@@ -19,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _assistantNameController = TextEditingController();
+    _customWakeWordController = TextEditingController();
   final TextEditingController _openAiKeyController = TextEditingController();
 
   List<dynamic> _voices = [];
@@ -265,6 +266,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionTitle('АССИСТЕНТ'),
             _buildCard([
               _buildTextField(_assistantNameController, 'Имя ассистента', 'Aika'),
+              const Divider(color: Colors.white10, height: 1),
+              _buildTextField(_customWakeWordController, 'Кастомное слово-активатор', 'например: привет, слушай...'),
               const Divider(color: Colors.white10, height: 1),
               SwitchListTile(
                 title: const Text('Показывать аватар', style: TextStyle(color: Colors.white)),
