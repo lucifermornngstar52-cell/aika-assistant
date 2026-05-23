@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'smart_notifications_service.dart';
 
 /// Сервис чтения уведомлений вслух.
 /// Когда приходит уведомление — Айка озвучивает кто написал и что.
@@ -85,10 +86,20 @@ class NotificationReaderService {
 
     final appName = appNames[pkg] ?? _extractAppName(pkg);
 
+    // ── Умная фильтрация уведомлений ─────────────────────────────────────
+    final important = SmartNotificationsService.isImportant(
+      packageName: pkg, title: title, text: text);
+
+    if (!important) {
+      // Неважное — копим в буфер для брифинга, не читаем вслух
+      await SmartNotificationsService.addToBuffer(
+        appName: appName, title: title, text: text);
+      return;
+    }
+
     // Формируем фразу для озвучки
     String phrase;
     if (title.isNotEmpty && title != appName) {
-      // Есть имя отправителя
       phrase = '$appName: $title написал: $text';
     } else {
       phrase = '$appName: $text';
@@ -96,7 +107,7 @@ class NotificationReaderService {
 
     // Обрезаем длинные сообщения
     if (phrase.length > 200) {
-      phrase = '${phrase.substring(0, 197)}...';
+      phrase = '\${phrase.substring(0, 197)}...';
     }
 
     await onSpeak?.call(phrase);
