@@ -9,6 +9,12 @@ import 'package:audioplayers/audioplayers.dart';
 /// Edge TTS — Microsoft Neural Voices
 /// Стриминг: начинает воспроизводить сразу как получает первые чанки аудио
 class EdgeTtsService extends ChangeNotifier {
+  // ── Синглтон — один экземпляр на всё приложение ──────────────────────
+  static EdgeTtsService? _instance;
+  factory EdgeTtsService() => _instance ??= EdgeTtsService._internal();
+  EdgeTtsService._internal();
+  // ─────────────────────────────────────────────────────────────────────
+
   static const _defaultVoice = 'ru-RU-DariyaNeural';
   static const _trustedToken = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
   static const _wsUrl =
@@ -108,6 +114,7 @@ class EdgeTtsService extends ChangeNotifier {
     if (_edgeEnabled) {
       try {
         await _speakEdgeStreaming(text);
+        // _isSpeaking уже сброшен внутри _speakEdgeStreaming
         return;
       } catch (e) {
         debugPrint('[EdgeTTS] ошибка: $e → системный TTS');
@@ -116,7 +123,23 @@ class EdgeTtsService extends ChangeNotifier {
       }
     }
 
+    // Системный TTS — ждём завершения
+    final sysDone = Completer<void>();
+    _systemTts.setCompletionHandler(() {
+      _isSpeaking = false;
+      notifyListeners();
+      if (!sysDone.isCompleted) sysDone.complete();
+    });
+    _systemTts.setErrorHandler((_) {
+      _isSpeaking = false;
+      notifyListeners();
+      if (!sysDone.isCompleted) sysDone.complete();
+    });
     await _systemTts.speak(text);
+    await sysDone.future.timeout(
+      Duration(seconds: (text.length / 8).ceil() + 5),
+      onTimeout: () { _isSpeaking = false; notifyListeners(); },
+    );
   }
 
   Future<void> stop() async {
@@ -211,10 +234,29 @@ class EdgeTtsService extends ChangeNotifier {
     if (!playbackStarted && audioBytes.isNotEmpty) {
       await sink.close();
       await _player.play(DeviceFileSource(filePath));
+      playbackStarted = true;
     }
 
+    // ── ФИКС: ждём завершения воспроизведения ──────────────────────────
+    // speak() не должен возвращаться пока плеер играет — иначе isSpeaking
+    // сбрасывается раньше времени и wake word стартует поверх речи
+    if (playbackStarted) {
+      final playDone = Completer<void>();
+      late StreamSubscription playSub;
+      playSub = _player.onPlayerComplete.listen((_) {
+        if (!playDone.isCompleted) playDone.complete();
+        playSub.cancel();
+      });
+      // Таймаут: длина текста / 8 символов в секунду + 5 сек запас
+      final timeoutSec = (text.length / 8).ceil() + 5;
+      await playDone.future.timeout(Duration(seconds: timeoutSec), onTimeout: () {});
+    }
+
+    _isSpeaking = false;
+    notifyListeners();
+
     // После завершения — прогреваем новое соединение для следующего запроса
-    Future.delayed(const Duration(milliseconds: 500), _warmupConnection);
+    Future.delayed(const Duration(milliseconds: 300), _warmupConnection);
   }
 
   // ── Утилиты ─────────────────────────────────────────────────────────────
@@ -253,3 +295,4 @@ class EdgeTtsService extends ChangeNotifier {
     super.dispose();
   }
 }
+
