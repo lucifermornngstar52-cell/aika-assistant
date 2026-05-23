@@ -28,15 +28,11 @@ class MainActivity : FlutterActivity() {
     private val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
     private val LAUNCHER_CHANNEL  = "com.aika.assistant/launcher"
-    private val VAD_EVENT_CHANNEL  = "com.aika.assistant/vad_events"
-    private val VAD_METHOD_CHANNEL = "com.aika.assistant/vad"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
     private var notifEventSink: EventChannel.EventSink? = null
     private var notifReceiver: BroadcastReceiver? = null
-    private var vadService: ContinuousVadService? = null
-    private var vadEventSink: EventChannel.EventSink? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -363,48 +359,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // ── VAD Event channel ────────────────────────────────────────────
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, VAD_EVENT_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    vadService?.stop()
-                    vadService = ContinuousVadService(events)
-                    vadService?.start()
-                }
-                override fun onCancel(arguments: Any?) {
-                    vadService?.stop()
-                    vadService = null
-                }
-            })
-
-        // ── VAD Method channel ────────────────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VAD_METHOD_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        // Не создаём новый сервис — EventChannel уже создал vadService с eventSink
-                        // Просто убеждаемся что он запущен
-                        if (vadService == null) {
-                            // EventChannel ещё не подписан — ждём (Flutter подпишется сам)
-                            result.success(false)
-                        } else {
-                            vadService?.start()
-                            result.success(true)
-                        }
-                    }
-                    "pause" -> { vadService?.pause(); result.success(true) }
-                    "resume" -> { vadService?.resume(); result.success(true) }
-                    "stop" -> { vadService?.stop(); result.success(true) }
-                    "isRunning" -> { result.success(vadService != null) }
-                    "setThreshold" -> {
-                        val v = call.argument<Double>("value") ?: 600.0
-                        vadService?.setThreshold(v)
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
         // ── Screen event channel (поток событий смены приложения) ─
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS)
             .setStreamHandler(object : EventChannel.StreamHandler {
@@ -508,5 +462,4 @@ class MainActivity : FlutterActivity() {
         return enabledServices.split(":").any { it.equals(serviceName, ignoreCase = true) }
     }
 }
-
 
