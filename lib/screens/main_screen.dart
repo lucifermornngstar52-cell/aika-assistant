@@ -1010,17 +1010,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Расписание дня ────────────────────────────────────────────
     final addEventResult = await _scheduleService.tryParseAddEvent(text);
     if (addEventResult != null) {
-      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: addEventResult, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.user, content: text, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch+1).toString(), role: MessageRole.aika, content: addEventResult, timestamp: DateTime.now()));
       await _speak(addEventResult);
+      _moodService.onUserSpoke();
       return;
     }
     if (_scheduleService.isScheduleRequest(text)) {
       final tl = text.toLowerCase();
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.user, content: text, timestamp: DateTime.now()));
       final schedule = tl.contains('завтра')
           ? await _scheduleService.getTomorrowSchedule()
           : await _scheduleService.getTodaySchedule();
-      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: schedule, timestamp: DateTime.now()));
+      _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch+1).toString(), role: MessageRole.aika, content: schedule, timestamp: DateTime.now()));
       await _speak(schedule);
+      _moodService.onUserSpoke();
       return;
     }
 
