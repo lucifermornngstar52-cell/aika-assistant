@@ -190,12 +190,18 @@ class WakeWordService {
           if (words.isEmpty) return;
           debugPrint('[WakeWord] STT слышу: "$words"');
 
-          // Проверяем wake word сразу на partial results — мгновенная реакция
-          if (_currentTriggers.any((t) => words.contains(t))) {
-            debugPrint('[WakeWord] ✅ WAKE WORD! "$words"');
+          // Проверяем и partial и final — что придёт первым
+          final matched = _currentTriggers.any((t) => words.contains(t));
+          if (matched) {
+            debugPrint('[WakeWord] ✅ WAKE WORD! "$words" (final=\${result.finalResult})');
             _stt.stop();
             _sttListening = false;
             onWakeWord?.call();
+            return;
+          }
+          if (result.finalResult) {
+            _sttListening = false;
+            debugPrint('[WakeWord] финал без wake word: "$words"');
           }
         },
       );
