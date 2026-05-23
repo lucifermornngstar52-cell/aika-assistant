@@ -1256,23 +1256,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final _prefs = await SharedPreferences.getInstance();
       final _openAiKey = _prefs.getString('openai_api_key') ?? '';
       // Анализируем отношение пользователя — получаем возможную реакцию
-    final relationReaction = await RelationshipService.analyzeMessage(
-      message, PersonalityService.current.name);
-    if (relationReaction != null && mounted) {
-      // Вставляем реакцию как отдельное сообщение ассистента
-      _addMessage(ChatMessage(
-        id: 'rel_${DateTime.now().millisecondsSinceEpoch}',
-        role: MessageRole.aika,
-        content: relationReaction,
-        timestamp: DateTime.now(),
-      ));
-      await _speak(relationReaction);
-    }
+      final relationReaction = await RelationshipService.analyzeMessage(
+          text, PersonalityService.current.name);
+      if (relationReaction != null && mounted) {
+        _addMessage(ChatMessage(
+          id: 'rel_\${DateTime.now().millisecondsSinceEpoch}',
+          role: MessageRole.aika,
+          content: relationReaction,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(relationReaction);
+      }
 
-    // Записываем привычки
-    await HabitMemoryService.recordRequest(message);
+      // Записываем привычки
+      await HabitMemoryService.recordRequest(text);
 
-    final response = await _aiService.sendMessage(
+      final response = await _aiService.sendMessage(
         text,
         userName: context['userName'] ?? '',
         assistantName: context['assistantName'] ?? _assistantName,
