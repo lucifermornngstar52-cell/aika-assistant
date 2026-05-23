@@ -1531,11 +1531,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
             // ── Chat ───────────────────────────────────────────────
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                itemCount: _messages.length,
-                itemBuilder: (ctx, i) => ChatBubble(message: _messages[i]),
+              child: Container(
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/images/chat_wallpaper.jpg'),
+                    fit: BoxFit.cover,
+                    opacity: 0.18,
+                  ),
+                ),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: _messages.length,
+                  itemBuilder: (ctx, i) => ChatBubble(message: _messages[i]),
+                ),
               ),
             ),
 
@@ -1603,6 +1612,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
