@@ -43,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _nameController.text = prefs.getString('user_name') ?? '';
       _assistantNameController.text = prefs.getString('assistant_name') ?? 'Aika';
+      _customWakeWordController.text = prefs.getString('custom_wake_word') ?? '';
       _openAiKeyController.text = prefs.getString('openai_api_key') ?? '';
       _speechRate = prefs.getDouble('tts_rate') ?? 0.5;
       _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
@@ -73,6 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setString('openai_api_key', _openAiKeyController.text.trim());
     await prefs.setString('assistant_name',
         _assistantNameController.text.trim().isEmpty ? 'Aika' : _assistantNameController.text.trim());
+    await prefs.setString('custom_wake_word', _customWakeWordController.text.trim().toLowerCase());
     await prefs.setDouble('tts_rate', _speechRate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
@@ -119,6 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _tts.stop();
     _nameController.dispose();
     _assistantNameController.dispose();
+    _customWakeWordController.dispose();
     _openAiKeyController.dispose();
     super.dispose();
   }
