@@ -34,8 +34,8 @@ class ContinuousVadService(private val eventSink: EventChannel.EventSink?) {
         private const val BUFFER_SIZE_CHUNKS = 50 // буфер 1 секунда
 
         // Порог RMS — речь vs тишина (0..32768)
-        // ~500 = очень тихая комната, ~1200 = нормальный разговор
-        private const val RMS_THRESHOLD = 600.0
+        // ~300 = тихая речь, ~600 = нормальный разговор, ~1200 = громко
+        private const val RMS_THRESHOLD = 400.0
 
         // Сколько активных чанков подряд = начало речи (3 * 20ms = 60ms)
         private const val SPEECH_START_CHUNKS = 3
