@@ -382,10 +382,15 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
-                        vadService?.stop()
-                        vadService = ContinuousVadService(null)
-                        vadService?.start()
-                        result.success(true)
+                        // Не создаём новый сервис — EventChannel уже создал vadService с eventSink
+                        // Просто убеждаемся что он запущен
+                        if (vadService == null) {
+                            // EventChannel ещё не подписан — ждём (Flutter подпишется сам)
+                            result.success(false)
+                        } else {
+                            vadService?.start()
+                            result.success(true)
+                        }
                     }
                     "pause" -> { vadService?.pause(); result.success(true) }
                     "resume" -> { vadService?.resume(); result.success(true) }
