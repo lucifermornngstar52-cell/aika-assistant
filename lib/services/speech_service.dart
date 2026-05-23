@@ -116,17 +116,20 @@ class SpeechService extends ChangeNotifier {
     _isListening = true;
     notifyListeners();
 
+    String _partialText = '';
     await _stt.listen(
       localeId: _ruLocaleId,
       listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(milliseconds: 1500), // было 4s — уменьшено для скорости
+      pauseFor: const Duration(milliseconds: 600), // 600ms — быстрый отклик
       cancelOnError: false,
       partialResults: true,
-      listenMode: ListenMode.search, // search быстрее фиксирует конец фразы
+      listenMode: ListenMode.search,
       onResult: (result) {
         _lastWords = result.recognizedWords;
+        _partialText = _lastWords;
         _soundLevel = 0;
         notifyListeners();
+        // Срабатываем сразу на finalResult
         if (result.finalResult && _lastWords.isNotEmpty) {
           _isListening = false;
           notifyListeners();
