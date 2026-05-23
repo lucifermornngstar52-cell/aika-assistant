@@ -12,6 +12,7 @@ import '../services/wake_word_service.dart';
 import '../services/smart_notifications_service.dart';
 import '../services/habit_memory_service.dart';
 import '../services/relationship_service.dart';
+import '../services/personality_service.dart';
 import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_bubble.dart';
