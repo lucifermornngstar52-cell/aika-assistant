@@ -126,25 +126,24 @@ class WakeWordService {
 
     if (!_sttInitialized) await initialize();
 
-    // Запускаем нативный VAD
+    // Подписываемся на EventChannel — это АВТОМАТИЧЕСКИ запускает VAD в Kotlin
+    // (onListen создаёт ContinuousVadService с правильным eventSink)
+    // НЕ вызываем MethodChannel 'start' отдельно — это создавало второй экземпляр без sink
+    _vadSub?.cancel();
     try {
-      await _vadMethod.invokeMethod('start');
-      debugPrint('[WakeWord] ▶ нативный VAD запущен');
+      _vadSub = _vadEvent.receiveBroadcastStream().listen(
+        _onVadEvent,
+        onError: (e) {
+          debugPrint('[WakeWord] VAD stream error: $e — fallback');
+          _startFallbackLoop();
+        },
+      );
+      debugPrint('[WakeWord] ▶ EventChannel подписан — VAD запущен');
     } catch (e) {
       debugPrint('[WakeWord] VAD недоступен — fallback STT loop: $e');
       _startFallbackLoop();
       return;
     }
-
-    // Подписываемся на события VAD
-    _vadSub?.cancel();
-    _vadSub = _vadEvent.receiveBroadcastStream().listen(
-      _onVadEvent,
-      onError: (e) {
-        debugPrint('[WakeWord] VAD stream error: $e');
-        _startFallbackLoop();
-      },
-    );
 
     _startWatchdog();
   }
