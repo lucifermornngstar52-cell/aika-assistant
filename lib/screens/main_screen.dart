@@ -518,8 +518,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // Initialize EdgeTTS (Microsoft Neural Voices)
     await _edgeTts.initialize();
-    final savedVoice = prefs.getString('edge_voice'); // settings saves as 'edge_voice'
+    final savedVoice = prefs.getString('edge_voice');
     if (savedVoice != null) _edgeTts.setVoice(savedVoice);
+    // Читаем флаг use_edge_tts из настроек
+    _useEdgeTts = prefs.getBool('use_edge_tts') ?? true;
     await _tts.setPitch(prefs.getDouble('tts_pitch') ?? 1.0);
     await _tts.setVolume(prefs.getDouble('tts_volume') ?? 1.0);
     final voice = prefs.getString('tts_voice');
@@ -616,13 +618,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Пробуем EdgeTTS (Microsoft Neural Voice) ──
     if (_useEdgeTts) {
       try {
+        // speak() блокируется до конца воспроизведения — не нужен busy-loop
         await _edgeTts.speak(clean);
-        // Ждём завершения EdgeTTS
-        while (_edgeTts.isSpeaking) {
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-        if (wasEnabled) {
-          await Future.delayed(const Duration(milliseconds: 300));
+        if (wasEnabled && !_isListening) {
+          await Future.delayed(const Duration(milliseconds: 200));
           await _wakeWordService.resume();
         }
         return;
@@ -1551,6 +1550,7 @@ class _SendCommand {
   final String message;
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
+
 
 
 
