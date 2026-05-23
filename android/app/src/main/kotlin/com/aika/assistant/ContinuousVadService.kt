@@ -37,10 +37,10 @@ class ContinuousVadService(private val eventSink: EventChannel.EventSink?) {
         // ~500 = очень тихая комната, ~1200 = нормальный разговор
         private const val RMS_THRESHOLD = 600.0
 
-        // Сколько активных чанков подряд = начало речи (5 * 20ms = 100ms)
-        private const val SPEECH_START_CHUNKS = 5
-        // Сколько тихих чанков подряд = конец речи (40 * 20ms = 800ms)
-        private const val SPEECH_END_CHUNKS = 40
+        // Сколько активных чанков подряд = начало речи (3 * 20ms = 60ms)
+        private const val SPEECH_START_CHUNKS = 3
+        // Сколько тихих чанков подряд = конец речи (25 * 20ms = 500ms)
+        private const val SPEECH_END_CHUNKS = 25
     }
 
     private var audioRecord: AudioRecord? = null
@@ -91,12 +91,8 @@ class ContinuousVadService(private val eventSink: EventChannel.EventSink?) {
                 if (read <= 0) continue
 
                 // Если на паузе — читаем буфер но не обрабатываем (микрофон остаётся открытым!)
-                if (isPaused.get()) {
-                    speechActive = false
-                    activeChunks = 0
-                    silenceChunks = 0
-                    continue
-                }
+                // НЕ сбрасываем счётчики — это вызывало ложные события при возобновлении
+                if (isPaused.get()) continue
 
                 val rms = calculateRms(buffer, read)
 
