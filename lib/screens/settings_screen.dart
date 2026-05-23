@@ -99,10 +99,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _testEdgeVoice() async {
+    // Используем синглтон — уже прогрет, нет задержки инициализации
     final svc = EdgeTtsService();
-    await svc.initialize();
     svc.setVoice(_selectedEdgeVoice);
-    await svc.speak('Привет! Я Айка, ваш голосовой ассистент 🌸');
+    await svc.speak('Привет! Я Айка, ваш голосовой ассистент');
   }
 
   Future<void> _testVoice() async {
@@ -447,6 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
 
 
 
