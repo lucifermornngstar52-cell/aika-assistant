@@ -363,6 +363,43 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // ── VAD Event channel ────────────────────────────────────────────
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, VAD_EVENT_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    vadService?.stop()
+                    vadService = ContinuousVadService(events)
+                    vadService?.start()
+                }
+                override fun onCancel(arguments: Any?) {
+                    vadService?.stop()
+                    vadService = null
+                }
+            })
+
+        // ── VAD Method channel ────────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VAD_METHOD_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        vadService?.stop()
+                        vadService = ContinuousVadService(null)
+                        vadService?.start()
+                        result.success(true)
+                    }
+                    "pause" -> { vadService?.pause(); result.success(true) }
+                    "resume" -> { vadService?.resume(); result.success(true) }
+                    "stop" -> { vadService?.stop(); result.success(true) }
+                    "isRunning" -> { result.success(vadService != null) }
+                    "setThreshold" -> {
+                        val v = call.argument<Double>("value") ?: 600.0
+                        vadService?.setThreshold(v)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // ── Screen event channel (поток событий смены приложения) ─
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS)
             .setStreamHandler(object : EventChannel.StreamHandler {
