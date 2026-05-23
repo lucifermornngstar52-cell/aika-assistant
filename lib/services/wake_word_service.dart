@@ -79,10 +79,23 @@ class WakeWordService {
 
   Future<void> updateTriggers() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Основное имя ассистента
     final name = (prefs.getString('assistant_name') ?? 'Aika').trim();
     final variants = _generateVariants(name);
-    _currentTriggers = <String>{...variants, ..._defaultTriggers}.toList();
-    debugPrint('[WakeWord] триггеры: $_currentTriggers');
+
+    // Кастомный wake word (если задан отдельно)
+    final customWord = (prefs.getString('custom_wake_word') ?? '').trim().toLowerCase();
+    final customVariants = customWord.isNotEmpty ? _generateVariants(customWord) : <String>[];
+
+    _currentTriggers = <String>{
+      ...variants,
+      ..._defaultTriggers,
+      ...customVariants,
+      if (customWord.isNotEmpty) customWord,
+    }.toList();
+
+    debugPrint('[WakeWord] триггеры: \$_currentTriggers');
   }
 
   void initWithSharedStt(SpeechToText stt) {}
