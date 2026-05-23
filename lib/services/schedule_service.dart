@@ -107,14 +107,22 @@ class ScheduleService {
     final t = text.toLowerCase();
     return t.contains('расписание') || t.contains('план на') ||
         t.contains('что сегодня') || t.contains('что завтра') ||
-        t.contains('мои события') || t.contains('мой день');
+        t.contains('мои события') || t.contains('мой день') ||
+        t.contains('покажи события') || t.contains('мои дела') ||
+        t.contains('что у меня') || t.contains('планы на') ||
+        (t.contains('события') && (t.contains('сегодня') || t.contains('завтра')));
   }
 
   bool isAddEventRequest(String text) {
     final t = text.toLowerCase();
-    return (t.contains('добавь') || t.contains('запомни') || t.contains('поставь') || t.contains('занеси')) &&
-        (t.contains('событие') || t.contains('встреч') || t.contains('в ') && RegExp(r'\d{1,2}:\d{2}').hasMatch(t) ||
-        t.contains('в ') && RegExp(r'в \d{1,2}').hasMatch(t));
+    final hasAddVerb = t.contains('добавь') || t.contains('запомни') ||
+        t.contains('поставь') || t.contains('занеси') || t.contains('запиши') ||
+        t.contains('создай') || t.contains('напомни') || t.contains('запланируй');
+    final hasTimeOrEvent = t.contains('событие') || t.contains('встреч') ||
+        t.contains('дело') || t.contains('задач') || t.contains('занятие') ||
+        RegExp(r'\d{1,2}[:\.]\d{2}').hasMatch(t) ||
+        RegExp(r'в \d{1,2}(?!\d)').hasMatch(t);
+    return hasAddVerb && hasTimeOrEvent;
   }
 
   Future<String?> tryParseAddEvent(String text) async {
