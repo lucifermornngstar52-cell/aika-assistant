@@ -4,6 +4,7 @@ import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'services/personality_service.dart';
 import 'services/wardrobe_service.dart';
+import 'services/theme_switcher_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ void main() async {
   ));
 
   await PersonalityService.load();
+  await ThemeSwitcherService().load();
   await WardrobeService.load();
   runApp(const AikaApp());
 }
