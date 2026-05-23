@@ -9,6 +9,9 @@ import '../services/device_service.dart';
 import '../services/memory_service.dart';
 import '../services/speech_service.dart';
 import '../services/wake_word_service.dart';
+import '../services/smart_notifications_service.dart';
+import '../services/habit_memory_service.dart';
+import '../services/relationship_service.dart';
 import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_bubble.dart';
@@ -128,6 +131,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // initWithSharedStt больше не нужен — WakeWordService имеет свой STT
     await _applyTtsSettings();
     await _loadPrefs();
+    await HabitMemoryService.load();
+    await RelationshipService.load();
     _sendGreeting();
     // Init Telegram Bot
     TelegramBotService.onMessage = (text, from) async {
@@ -221,6 +226,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _autoStartWakeWord() async {
     if (_wakeWordEnabled) return;
+    // Запускаем проактивные подсказки раз в 5 минут
+    Future.delayed(const Duration(minutes: 5), _checkProactiveSuggestions);
     await _wakeWordService.startListening(() {
       if (!_isListening && !_isThinking) _onWakeWordDetected();
     });
@@ -1248,7 +1255,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           : '';
       final _prefs = await SharedPreferences.getInstance();
       final _openAiKey = _prefs.getString('openai_api_key') ?? '';
-      final response = await _aiService.sendMessage(
+      // Анализируем отношение пользователя — получаем возможную реакцию
+    final relationReaction = await RelationshipService.analyzeMessage(
+      message, PersonalityService.current.name);
+    if (relationReaction != null && mounted) {
+      // Вставляем реакцию как отдельное сообщение ассистента
+      _addMessage(ChatMessage(
+        id: 'rel_${DateTime.now().millisecondsSinceEpoch}',
+        role: MessageRole.aika,
+        content: relationReaction,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(relationReaction);
+    }
+
+    // Записываем привычки
+    await HabitMemoryService.recordRequest(message);
+
+    final response = await _aiService.sendMessage(
         text,
         userName: context['userName'] ?? '',
         assistantName: context['assistantName'] ?? _assistantName,
@@ -1312,6 +1336,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _applyTtsSettings();
     await _wakeWordService.updateTriggers();
     await _recheckOverlayPermission();
+  }
+
+  Future<void> _checkProactiveSuggestions() async {
+    if (!mounted) return;
+    final suggestion = await HabitMemoryService.getProactiveSuggestion();
+    if (suggestion != null && mounted && !_isListening && !_isThinking) {
+      _addMessage(ChatMessage(
+        id: 'habit_${DateTime.now().millisecondsSinceEpoch}',
+        role: MessageRole.aika,
+        content: suggestion,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(suggestion);
+    }
+    // Перезапускаем через 5 минут
+    if (mounted) {
+      Future.delayed(const Duration(minutes: 5), _checkProactiveSuggestions);
+    }
   }
 
   @override
