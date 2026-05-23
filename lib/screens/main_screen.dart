@@ -116,6 +116,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _recheckOverlayPermission();
+      // Перечитываем настройки голоса при возврате из Settings
+      _applyTtsSettings();
+      _loadPrefs();
     }
   }
 
@@ -515,7 +518,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // Initialize EdgeTTS (Microsoft Neural Voices)
     await _edgeTts.initialize();
-    final savedVoice = prefs.getString('edge_tts_voice');
+    final savedVoice = prefs.getString('edge_voice'); // settings saves as 'edge_voice'
     if (savedVoice != null) _edgeTts.setVoice(savedVoice);
     await _tts.setPitch(prefs.getDouble('tts_pitch') ?? 1.0);
     await _tts.setVolume(prefs.getDouble('tts_volume') ?? 1.0);
