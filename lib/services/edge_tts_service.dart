@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -65,6 +66,17 @@ class EdgeTtsService extends ChangeNotifier {
   void setRate(double rate) => _rate = rate;
   void setPitch(double pitch) => _pitch = pitch;
 
+  /// Load rate and pitch from SharedPreferences (called automatically before each speak)
+  Future<void> _loadEdgeSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _rate = prefs.getDouble('edge_tts_rate') ?? 0.0;
+      _pitch = prefs.getDouble('edge_tts_pitch') ?? 0.0;
+      final voice = prefs.getString('edge_voice');
+      if (voice != null && voice.isNotEmpty) _voice = voice;
+    } catch (_) {}
+  }
+
   /// Прогрев WS соединения — вызывается при инициализации
   Future<void> _warmupConnection() async {
     try {
@@ -106,6 +118,7 @@ class EdgeTtsService extends ChangeNotifier {
   }
 
   Future<void> speak(String text) async {
+    await _loadEdgeSettings();
     if (text.isEmpty) return;
     await stop();
     _isSpeaking = true;
