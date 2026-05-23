@@ -28,6 +28,7 @@ class MainActivity : FlutterActivity() {
     private val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
     private val LAUNCHER_CHANNEL  = "com.aika.assistant/launcher"
+    private val ALARM_CHANNEL     = "com.aika.assistant/alarm"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
@@ -412,6 +413,26 @@ class MainActivity : FlutterActivity() {
                         } catch (e: Exception) {
                             result.error("LAUNCH_ERROR", e.message, null)
                         }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Alarm MethodChannel ──────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scheduleAlarm" -> {
+                        val id       = call.argument<String>("id") ?: run { result.error("INVALID","No id",null); return@setMethodCallHandler }
+                        val millis   = call.argument<Long>("triggerMillis") ?: run { result.error("INVALID","No triggerMillis",null); return@setMethodCallHandler }
+                        val label    = call.argument<String>("label") ?: ""
+                        AikaAlarmReceiver.schedule(this, id, millis, label)
+                        result.success(true)
+                    }
+                    "cancelAlarm" -> {
+                        val id = call.argument<String>("id") ?: run { result.error("INVALID","No id",null); return@setMethodCallHandler }
+                        AikaAlarmReceiver.cancel(this, id)
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
