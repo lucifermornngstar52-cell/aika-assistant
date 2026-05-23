@@ -1,3 +1,4 @@
+import 'app_launcher_service.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,8 +7,14 @@ class CustomShortcutsService {
 
   Future<Map<String, String>> getAll() async {
     final prefs = await SharedPreferences.getInstance();
+    // Load text-action shortcuts
     final raw = prefs.getString(_key) ?? '{}';
-    return Map<String, String>.from(json.decode(raw));
+    final textShortcuts = Map<String, String>.from(json.decode(raw));
+    // Also load app-launch commands from AppLauncher storage (unified)
+    final appRaw = prefs.getString('custom_app_commands') ?? '{}';
+    final appCommands = Map<String, String>.from(json.decode(appRaw));
+    // Merge: text shortcuts + app commands, text shortcuts take priority
+    return {...appCommands, ...textShortcuts};
   }
 
   Future<void> save(String trigger, String action) async {
@@ -87,7 +94,13 @@ class CustomShortcutsService {
     final lower = text.toLowerCase().trim();
     for (final entry in all.entries) {
       if (lower == entry.key || lower.contains(entry.key)) {
-        return 'Выполняю: ${entry.value}';
+        final action = entry.value;
+        // If action looks like an app package name — launch it
+        if (action.contains('.') && !action.contains(' ') && action.length > 5) {
+          final result = await AppLauncherService.launchPackage(action);
+          return result;
+        }
+        return 'Выполняю: $action';
       }
     }
 
