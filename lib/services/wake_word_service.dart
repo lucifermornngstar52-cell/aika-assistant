@@ -174,7 +174,7 @@ class WakeWordService {
       await _stt.listen(
         localeId: 'ru-RU',
         listenFor: const Duration(seconds: 10),
-        pauseFor: const Duration(milliseconds: 800), // очень короткая пауза
+        pauseFor: const Duration(milliseconds: 500), // 500ms пауза для wake word
         partialResults: true,
         listenMode: ListenMode.search,
         cancelOnError: false,
@@ -270,15 +270,23 @@ class WakeWordService {
 
   void _startWatchdog() {
     _watchdog?.cancel();
-    _watchdog = Timer.periodic(const Duration(seconds: 30), (_) async {
+    // Watchdog запускается раз в 60 сек — только проверяет что VAD жив
+    // НЕ вызывает resume() без необходимости (это сбрасывало состояние VAD)
+    _watchdog = Timer.periodic(const Duration(seconds: 60), (_) async {
       if (!_isRunning || _isPaused) return;
-      // Просто проверяем что VAD жив — если нет, перезапускаем
       try {
-        await _vadMethod.invokeMethod('resume');
+        // Вместо blindly resume — просто проверяем статус
+        final ok = await _vadMethod.invokeMethod<bool>('isRunning') ?? false;
+        if (!ok) {
+          debugPrint('[WakeWord] watchdog: VAD не запущен, перезапуск...');
+          try { await _vadMethod.invokeMethod('start'); } catch (_) {}
+        }
       } catch (e) {
-        debugPrint('[WakeWord] watchdog: VAD недоступен, перезапуск');
-        await stop();
-        if (onWakeWord != null) await startListening(onWakeWord!);
+        // VAD недоступен совсем — переходим на fallback
+        if (_isRunning && !_isPaused && !_fallbackActive) {
+          debugPrint('[WakeWord] watchdog: VAD недоступен → fallback STT');
+          _startFallbackLoop();
+        }
       }
     });
   }
