@@ -52,6 +52,8 @@ import '../services/emotion_service.dart';
 import '../services/screen_reader_service.dart';
 import '../services/screen_reader_service.dart';
 import '../services/edge_tts_service.dart';
+import '../widgets/jarvis_hud.dart';
+import '../services/theme_switcher_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -77,6 +79,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Notification reply state
   Map<String, String>? _pendingReplyNotif;
   bool _awaitingReplyConfirm = false;
+  final ThemeSwitcherService _themeSwitcher = ThemeSwitcherService();
   final AlarmService _alarmService = AlarmService();
   final ScheduleService _scheduleService = ScheduleService();
   final BriefingService _briefingService = BriefingService();
@@ -112,6 +115,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   void initState() {
+    _themeSwitcher.load();
+    _themeSwitcher.addListener(() { if (mounted) setState(() {}); });
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initServices();
@@ -1395,6 +1400,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_themeSwitcher.isJarvis) {
+      return JarvisHud(
+        isListening: _isListening,
+        isThinking: _isThinking,
+        lastResponse: _messages.isNotEmpty
+            ? _messages.last.text
+            : '',
+        onMicTap: _isListening ? _stopListening : _startListening,
+      );
+    }
     return Scaffold(
       backgroundColor: AikaTheme.background,
       body: SafeArea(
@@ -1489,12 +1504,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         onSelected: (value) {
                           if (value == 'settings') _openSettings();
+                          if (value == 'switchtheme') _themeSwitcher.toggle();
                           if (value == 'mood') Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen()));
                           if (value == 'schedule') Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduleScreen()));
                           if (value == 'telegram') Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen()));
                           if (value == 'appcommands') Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen()));
                         },
                         itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'switchtheme', child: Row(children: [Text('🤖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Переключить тему', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings_outlined, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Настройки', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'schedule', child: Row(children: [Icon(Icons.calendar_today, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Расписание', style: TextStyle(color: Colors.white70))])),
