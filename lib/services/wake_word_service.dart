@@ -1,384 +1,222 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-/// Непрерывный детектор wake-word на базе нативного AudioRecord VAD.
-///
-/// Архитектура:
-///   ┌─────────────────────────────────────────────────┐
-///   │  AudioRecord (Kotlin) — микрофон ВСЕГДА открыт  │
-///   │  VAD → speech_start / speech_end события        │
-///   └──────────────┬──────────────────────────────────┘
-///                  │ EventChannel
-///   ┌──────────────▼──────────────────────────────────┐
-///   │  speech_to_text.listen() — только когда нужно   │
-///   │  Запускается на speech_start (есть голос)        │
-///   │  Останавливается и проверяет wake-word           │
-///   └─────────────────────────────────────────────────┘
-///
-/// Преимущества:
-///  • Нет "мёртвых зон" — VAD слушает непрерывно
-///  • STT запускается только когда есть речь → экономия батареи
-///  • Нет циклических перезапусков STT
+/// Фоновое прослушивание wake word — чистый STT без нативного VAD.
+/// Синглтон. Триггеры горячо обновляются при смене имени ассистента.
 class WakeWordService {
   WakeWordService._internal();
   static final WakeWordService instance = WakeWordService._internal();
   factory WakeWordService() => instance;
 
-  static const _vadEvent  = EventChannel('com.aika.assistant/vad_events');
-  static const _vadMethod = MethodChannel('com.aika.assistant/vad');
-
   final SpeechToText _stt = SpeechToText();
 
-  bool _sttInitialized = false;
+  bool _initialized = false;
   bool _isRunning = false;
   bool _isPaused = false;
   bool _musicPlaying = false;
-  bool _sttListening = false;
+  bool _sttActive = false;
 
-  StreamSubscription? _vadSub;
-  Timer? _sttStopTimer;
-  Timer? _watchdog;
+  Timer? _watchdogTimer;
+  Timer? _restartTimer;
+  Timer? _sttTimeoutTimer;
 
   Function()? onWakeWord;
 
   static const List<String> _defaultTriggers = [
-    // Русские варианты (Google STT может возвращать по-разному)
-    'айка', 'ай-ка', 'ай ка', 'аика', 'айко', 'айк',
-    'эйка', 'эй-ка', 'эй ка',
-    // Латинские транслиты
-    'aika', 'aica', 'ayka', 'eika', 'aica',
-    // Частичные совпадения (STT иногда добавляет окончания)
-    'айкa', 'ayка',
+    'айка', 'aika', 'aica', 'эйка', 'ayka', 'ай ка', 'ай-ка',
   ];
   List<String> _currentTriggers = List.from(_defaultTriggers);
 
   bool get isRunning => _isRunning;
   bool get isPaused => _isPaused;
 
-  // ── Генерация вариантов имени ──────────────────────────────────────────
-
   static List<String> _generateVariants(String name) {
     final n = name.toLowerCase().trim();
     if (n.isEmpty) return [];
     final variants = <String>{n};
     const ruToEn = {
-      'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh',
-      'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
-      'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',
-      'ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+      'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
+      'е': 'e', 'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i',
+      'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+      'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
+      'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch',
+      'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '',
+      'э': 'e', 'ю': 'yu', 'я': 'ya',
     };
     String translit = '';
-    for (final ch in n.split('')) translit += ruToEn[ch] ?? ch;
+    for (final ch in n.split('')) {
+      translit += ruToEn[ch] ?? ch;
+    }
     if (translit != n) variants.add(translit);
-    if (n == 'айка' || translit == 'aika') variants.addAll(_defaultTriggers);
+    if (n == 'айка' || translit == 'aika') {
+      variants.addAll(_defaultTriggers);
+    }
     return variants.toList();
   }
 
   Future<void> updateTriggers() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // Основное имя ассистента
     final name = (prefs.getString('assistant_name') ?? 'Aika').trim();
-    final variants = _generateVariants(name);
-
-    // Кастомный wake word (если задан отдельно)
     final customWord = (prefs.getString('custom_wake_word') ?? '').trim().toLowerCase();
-    final customVariants = customWord.isNotEmpty ? _generateVariants(customWord) : <String>[];
-
+    final variants = _generateVariants(name);
     _currentTriggers = <String>{
       ...variants,
       ..._defaultTriggers,
-      ...customVariants,
       if (customWord.isNotEmpty) customWord,
     }.toList();
-
-    debugPrint('[WakeWord] триггеры: \$_currentTriggers');
+    debugPrint('[WakeWord] триггеры: $_currentTriggers');
   }
 
+  // Совместимость со старым кодом
   void initWithSharedStt(SpeechToText stt) {}
 
-  // ── Инициализация ──────────────────────────────────────────────────────
-
   Future<void> initialize() async {
+    if (_initialized) return;
     await updateTriggers();
-    _sttInitialized = await _stt.initialize(
-      onError: (e) => debugPrint('[WakeWord] STT error: $e'),
-      onStatus: (s) {
-        debugPrint('[WakeWord] STT status: $s');
-        if (s == 'done' || s == 'notListening') {
-          _sttListening = false;
+    _initialized = await _stt.initialize(
+      onError: (e) {
+        debugPrint('[WakeWord] STT ошибка: $e');
+        _sttActive = false;
+        if (_isRunning && !_isPaused) {
+          _scheduleRestart(const Duration(seconds: 2));
+        }
+      },
+      onStatus: (status) {
+        debugPrint('[WakeWord] STT статус: $status');
+        if (status == 'done' || status == 'notListening') {
+          _sttActive = false;
+          _sttTimeoutTimer?.cancel();
+          if (_isRunning && !_isPaused) {
+            _scheduleRestart(const Duration(milliseconds: 600));
+          }
         }
       },
     );
-    debugPrint('[WakeWord] STT initialized: $_sttInitialized');
+    debugPrint('[WakeWord] initialized: $_initialized');
   }
 
-  // ── Запуск ─────────────────────────────────────────────────────────────
-
   Future<void> startListening(Function() callback) async {
-    if (_isRunning) return;
+    if (!_initialized) await initialize();
+    if (!_initialized || _isRunning) return;
     onWakeWord = callback;
     _isRunning = true;
     _isPaused = false;
-
-    if (!_sttInitialized) await initialize();
-
-    // Подписываемся на EventChannel — это АВТОМАТИЧЕСКИ запускает VAD в Kotlin
-    // (onListen создаёт ContinuousVadService с правильным eventSink)
-    // НЕ вызываем MethodChannel 'start' отдельно — это создавало второй экземпляр без sink
-    _vadSub?.cancel();
-    try {
-      _vadSub = _vadEvent.receiveBroadcastStream().listen(
-        _onVadEvent,
-        onError: (e) {
-          debugPrint('[WakeWord] VAD stream error: $e — fallback');
-          _startFallbackLoop();
-        },
-      );
-      debugPrint('[WakeWord] ▶ EventChannel подписан — VAD запущен');
-    } catch (e) {
-      debugPrint('[WakeWord] VAD недоступен — fallback STT loop: $e');
-      _startFallbackLoop();
-      return;
-    }
-
+    await updateTriggers();
+    debugPrint('[WakeWord] ▶ запуск');
+    await _startSttLoop();
     _startWatchdog();
   }
-
-  // ── Обработка VAD событий ──────────────────────────────────────────────
-
-  void _onVadEvent(dynamic event) {
-    if (!_isRunning || _isPaused) return;
-    final type = event['type'] as String? ?? '';
-    final data = event['data'] as String? ?? '';
-
-    switch (type) {
-      case 'speech_start':
-        debugPrint('[WakeWord] 🎤 VAD: голос обнаружен (RMS=$data)');
-        // Если STT уже слушает — ничего не делаем
-        if (_sttListening) return;
-        // Запускаем STT распознавание
-        _startSttRecognition();
-        break;
-
-      case 'speech_end':
-        // VAD сообщает что тишина — STT сам завершится по pauseFor
-        debugPrint('[WakeWord] 🔇 VAD: тишина');
-        break;
-
-      case 'status':
-        debugPrint('[WakeWord] VAD status: $data');
-        break;
-
-      case 'error':
-        debugPrint('[WakeWord] VAD ошибка: $data');
-        // Fallback на старый STT loop
-        if (_isRunning && !_isPaused) _startFallbackLoop();
-        break;
-    }
-  }
-
-  // ── STT распознавание (только когда VAD слышит речь) ──────────────────
-
-  Future<void> _startSttRecognition() async {
-    if (!_sttInitialized || _sttListening) return;
-    _sttListening = true;
-    _sttStopTimer?.cancel();
-
-    try {
-      await _stt.listen(
-        localeId: 'ru-RU',
-        listenFor: const Duration(seconds: 10),
-        pauseFor: const Duration(milliseconds: 500), // 500ms пауза для wake word
-        partialResults: true,
-        listenMode: ListenMode.search,
-        cancelOnError: false,
-        onResult: (result) {
-          if (!_isRunning || _isPaused) return;
-          final words = result.recognizedWords.toLowerCase().trim();
-          if (words.isEmpty) return;
-          debugPrint('[WakeWord] STT слышу: "$words"');
-
-          // Проверяем и partial и final — что придёт первым
-          final matched = _currentTriggers.any((t) => words.contains(t));
-          if (matched) {
-            debugPrint('[WakeWord] ✅ WAKE WORD! "$words" (final=\${result.finalResult})');
-            _stt.stop();
-            _sttListening = false;
-            onWakeWord?.call();
-            return;
-          }
-          if (result.finalResult) {
-            _sttListening = false;
-            debugPrint('[WakeWord] финал без wake word: "$words"');
-          }
-        },
-      );
-
-      // Страховочный таймер — 12 секунд максимум
-      _sttStopTimer = Timer(const Duration(seconds: 12), () {
-        if (_sttListening) {
-          _stt.stop();
-          _sttListening = false;
-        }
-      });
-    } catch (e) {
-      debugPrint('[WakeWord] STT ошибка: $e');
-      _sttListening = false;
-    }
-  }
-
-  // ── Пауза / Возобновление ──────────────────────────────────────────────
 
   Future<void> pause() async {
     if (_isPaused) return;
     _isPaused = true;
-    _sttStopTimer?.cancel();
-
-    // Останавливаем STT но НЕ останавливаем VAD — микрофон остаётся открытым
-    if (_sttListening) {
-      await _stt.stop();
-      _sttListening = false;
-    }
-
-    try {
-      // type=command — микрофон остаётся открытым, просто игнорируем результаты
-      await _vadMethod.invokeMethod('pause', {'type': 'command'});
-    } catch (_) {}
-
-    debugPrint('[WakeWord] ⏸ пауза команда (микрофон открыт)');
+    _sttTimeoutTimer?.cancel();
+    _restartTimer?.cancel();
+    if (_stt.isListening) await _stt.stop();
+    _sttActive = false;
+    debugPrint('[WakeWord] ⏸ пауза');
   }
 
   Future<void> resume() async {
     if (!_isPaused) return;
     _isPaused = false;
-
-    try {
-      await _vadMethod.invokeMethod('resume');
-    } catch (_) {}
-
-    // Небольшая задержка чтобы TTS успел замолчать
-    await Future.delayed(const Duration(milliseconds: 200));
     debugPrint('[WakeWord] ▶ возобновление');
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (_isRunning && !_sttActive) await _startSttLoop();
   }
 
-  // ── Музыка ────────────────────────────────────────────────────────────
-
+  /// При медиа: просто останавливаем STT — он перезапустится когда музыка стихнет.
+  /// Никакого нативного канала — всё через флаг.
   void setMusicPlaying(bool playing) {
-    if (_musicPlaying == playing) return; // нет изменений
+    if (_musicPlaying == playing) return;
     _musicPlaying = playing;
 
     if (playing) {
-      // Медиа играет — полностью выключаем микрофон
-      debugPrint('[WakeWord] 🎵 медиа играет — микрофон ВЫКЛЮЧЕН');
-      _sttStopTimer?.cancel();
-      if (_sttListening) {
-        _stt.stop();
-        _sttListening = false;
-      }
-      try { _vadMethod.invokeMethod('pause', {'type': 'media'}); } catch (_) {}
+      debugPrint('[WakeWord] 🎵 медиа — STT остановлен');
+      _restartTimer?.cancel();
+      _sttTimeoutTimer?.cancel();
+      if (_stt.isListening) _stt.stop();
+      _sttActive = false;
     } else {
-      // Медиа остановилась — включаем микрофон обратно
-      debugPrint('[WakeWord] 🎵 медиа остановилась — микрофон ВКЛЮЧЁН');
-      try { _vadMethod.invokeMethod('resume'); } catch (_) {}
+      debugPrint('[WakeWord] 🎵 медиа остановилась — перезапуск STT');
+      if (_isRunning && !_isPaused) {
+        _scheduleRestart(const Duration(seconds: 1));
+      }
     }
   }
 
   Future<void> pauseForMusic() async => setMusicPlaying(true);
   Future<void> resumeAfterMusic() async => setMusicPlaying(false);
 
-  // ── Watchdog ──────────────────────────────────────────────────────────
-
-  void _startWatchdog() {
-    _watchdog?.cancel();
-    // Watchdog запускается раз в 60 сек — только проверяет что VAD жив
-    // НЕ вызывает resume() без необходимости (это сбрасывало состояние VAD)
-    _watchdog = Timer.periodic(const Duration(seconds: 60), (_) async {
-      if (!_isRunning || _isPaused) return;
-      try {
-        // Вместо blindly resume — просто проверяем статус
-        final ok = await _vadMethod.invokeMethod<bool>('isRunning') ?? false;
-        if (!ok) {
-          debugPrint('[WakeWord] watchdog: VAD не запущен, перезапуск...');
-          try { await _vadMethod.invokeMethod('start'); } catch (_) {}
-        }
-      } catch (e) {
-        // VAD недоступен совсем — переходим на fallback
-        if (_isRunning && !_isPaused && !_fallbackActive) {
-          debugPrint('[WakeWord] watchdog: VAD недоступен → fallback STT');
-          _startFallbackLoop();
-        }
+  void _scheduleRestart(Duration delay) {
+    _restartTimer?.cancel();
+    _restartTimer = Timer(delay, () async {
+      if (_isRunning && !_isPaused && !_musicPlaying && !_sttActive) {
+        await _startSttLoop();
       }
     });
   }
 
-  // ── Fallback: старый STT цикл (если нет нативного VAD) ────────────────
-
-  bool _fallbackActive = false;
-  Timer? _fallbackTimer;
-
-  void _startFallbackLoop() {
-    if (_fallbackActive) return;
-    _fallbackActive = true;
-    debugPrint('[WakeWord] ⚠️ Fallback STT loop активирован');
-    _runFallbackCycle();
-  }
-
-  Future<void> _runFallbackCycle() async {
-    if (!_isRunning || _isPaused || !_fallbackActive) return;
-    if (_sttListening || _stt.isListening) return;
+  Future<void> _startSttLoop() async {
+    if (!_isRunning || _isPaused || _musicPlaying || !_initialized) return;
+    if (_stt.isListening || _sttActive) return;
 
     try {
-      _sttListening = true;
+      _sttActive = true;
       await _stt.listen(
         localeId: 'ru-RU',
         listenFor: const Duration(minutes: 5),
-        pauseFor: const Duration(seconds: 2),
-        listenMode: ListenMode.dictation,
-        partialResults: true,
-        cancelOnError: false,
+        pauseFor: const Duration(seconds: 3),
         onResult: (result) {
           if (!_isRunning || _isPaused) return;
           final words = result.recognizedWords.toLowerCase().trim();
           if (words.isEmpty) return;
-          debugPrint('[WakeWord/fb] слышу: "$words"');
+          debugPrint('[WakeWord] слышу: "$words"');
           if (_currentTriggers.any((t) => words.contains(t))) {
-            debugPrint('[WakeWord/fb] ✅ WAKE WORD!');
+            debugPrint('[WakeWord] ✅ WAKE WORD!');
             onWakeWord?.call();
           }
         },
+        listenMode: ListenMode.dictation,
+        cancelOnError: false,
       );
+
+      _sttTimeoutTimer?.cancel();
+      _sttTimeoutTimer = Timer(const Duration(minutes: 6), () {
+        if (_sttActive && _stt.isListening) {
+          debugPrint('[WakeWord] ⚠️ таймаут — перезапуск');
+          _stt.stop();
+        }
+      });
     } catch (e) {
-      debugPrint('[WakeWord/fb] ошибка: $e');
-      _sttListening = false;
-      _fallbackTimer = Timer(const Duration(seconds: 2), _runFallbackCycle);
+      debugPrint('[WakeWord] ошибка listen: $e');
+      _sttActive = false;
+      _scheduleRestart(const Duration(seconds: 3));
     }
   }
 
-  // ── Остановка ─────────────────────────────────────────────────────────
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+      if (!_isRunning || _isPaused || _musicPlaying) return;
+      if (!_stt.isListening && !_sttActive) {
+        debugPrint('[WakeWord] 🐕 watchdog: перезапуск');
+        await _startSttLoop();
+      }
+    });
+  }
 
   Future<void> stop() async {
     _isRunning = false;
     _isPaused = false;
-    _fallbackActive = false;
-    _sttStopTimer?.cancel();
-    _watchdog?.cancel();
-    _fallbackTimer?.cancel();
-    _vadSub?.cancel();
-    _vadSub = null;
-
-    if (_sttListening) {
-      await _stt.stop();
-      _sttListening = false;
-    }
-
-    try {
-      await _vadMethod.invokeMethod('stop');
-    } catch (_) {}
-
+    _sttActive = false;
+    _musicPlaying = false;
+    _watchdogTimer?.cancel();
+    _restartTimer?.cancel();
+    _sttTimeoutTimer?.cancel();
+    if (_stt.isListening) await _stt.stop();
     debugPrint('[WakeWord] ⏹ остановлен');
   }
 }
