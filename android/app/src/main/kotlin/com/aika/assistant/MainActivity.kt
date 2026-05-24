@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import android.view.WindowManager
 import android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -29,9 +30,11 @@ class MainActivity : FlutterActivity() {
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
     private val LAUNCHER_CHANNEL  = "com.aika.assistant/launcher"
     private val ALARM_CHANNEL     = "com.aika.assistant/alarm"
+    private val WAKELOCK_CHANNEL  = "com.aika.assistant/wakelock"
     private val SECURITY_CHANNEL  = "com.aika.assistant/security"
     private val PHONE_CONTROL_CHANNEL = "aika/phone_control"
 
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
     private var notifEventSink: EventChannel.EventSink? = null
@@ -495,6 +498,49 @@ class MainActivity : FlutterActivity() {
     }
 
 
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+    }
+
+
+        // ── WakeLock MethodChannel ────────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WAKELOCK_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "acquire" -> {
+                        try {
+                            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                            if (wakeLock == null || !wakeLock!!.isHeld) {
+                                wakeLock = pm.newWakeLock(
+                                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                                    "aika:wakeword"
+                                )
+                                wakeLock!!.acquire(3600000L) // 1 час
+                            }
+                            result.success(true)
+                        } catch (e: Exception) { result.error("WL", e.message, null) }
+                    }
+                    "release" -> {
+                        try {
+                            if (wakeLock?.isHeld == true) wakeLock!!.release()
+                            wakeLock = null
+                            result.success(true)
+                        } catch (e: Exception) { result.error("WL", e.message, null) }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
     override fun onResume() {
         super.onResume()
