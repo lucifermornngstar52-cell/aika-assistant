@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import '../services/edge_tts_service.dart';
 import '../theme/app_theme.dart';
 import '../services/wake_word_service.dart';
@@ -16,20 +15,15 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final FlutterTts _tts = FlutterTts();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _assistantNameController = TextEditingController();
-  final TextEditingController _openAiKeyController = TextEditingController();
 
-  List<dynamic> _voices = [];
-  String? _selectedVoice;
+  // Edge TTS settings only
   String _selectedEdgeVoice = 'ru-RU-DariyaNeural';
-  bool _useEdgeTts = true;
-  double _edgeTtsRate = 0.0;
-  double _edgeTtsPitch = 0.0;
-  double _speechRate = 0.5;
-  double _pitch = 1.0;
-  double _volume = 1.0;
+  double _edgeTtsRate  = 0.0;   // -50 .. +50 %
+  double _edgeTtsPitch = 0.0;   // -50 .. +50 Hz
+  // volume not needed for EdgeTTS
+
   bool _showAvatar = true;
   bool _isLoading = true;
 
@@ -37,111 +31,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadSettings();
-    _loadVoices();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _nameController.text = prefs.getString('user_name') ?? '';
-      _assistantNameController.text = prefs.getString('assistant_name') ?? 'Aika';
-      _openAiKeyController.text = prefs.getString('openai_api_key') ?? '';
-      _speechRate = prefs.getDouble('tts_rate') ?? 0.5;
-      _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
-      _volume = prefs.getDouble('tts_volume') ?? 1.0;
-      _selectedVoice = prefs.getString('tts_voice');
-      _selectedEdgeVoice = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
-      _useEdgeTts = prefs.getBool('use_edge_tts') ?? true;
-      _edgeTtsRate = prefs.getDouble('edge_tts_rate') ?? 0.0;
-      _edgeTtsPitch = prefs.getDouble('edge_tts_pitch') ?? 0.0;
-      _showAvatar = prefs.getBool('show_avatar') ?? true;
+      _nameController.text           = prefs.getString('user_name') ?? '';
+      _assistantNameController.text  = prefs.getString('assistant_name') ?? 'Aika';
+      _selectedEdgeVoice             = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
+      _edgeTtsRate                   = prefs.getDouble('edge_tts_rate')   ?? 0.0;
+      _edgeTtsPitch                  = prefs.getDouble('edge_tts_pitch')  ?? 0.0;
+      _edgeTtsVolume                 = prefs.getDouble('edge_tts_volume') ?? 0.0;
+      _showAvatar                    = prefs.getBool('show_avatar') ?? true;
       _isLoading = false;
     });
-  }
-
-  Future<void> _loadVoices() async {
-    final voices = await _tts.getVoices;
-    if (voices != null) {
-      setState(() {
-        _voices = (voices as List).where((v) {
-          final locale = v['locale']?.toString() ?? '';
-          return locale.startsWith('ru') || locale.startsWith('en');
-        }).toList();
-      });
-    }
   }
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_name', _nameController.text.trim());
-    await prefs.setString('openai_api_key', _openAiKeyController.text.trim());
     await prefs.setString('assistant_name',
-        _assistantNameController.text.trim().isEmpty ? 'Aika' : _assistantNameController.text.trim());
-    await prefs.setDouble('tts_rate', _speechRate);
-    await prefs.setDouble('tts_pitch', _pitch);
-    await prefs.setDouble('tts_volume', _volume);
+        _assistantNameController.text.trim().isEmpty
+            ? 'Aika'
+            : _assistantNameController.text.trim());
+    await prefs.setString('edge_voice',       _selectedEdgeVoice);
+    await prefs.setBool('use_edge_tts',       true);
+    await prefs.setDouble('edge_tts_rate',    _edgeTtsRate);
+    await prefs.setDouble('edge_tts_pitch',   _edgeTtsPitch);
+    await prefs.setDouble('edge_tts_volume',  _edgeTtsVolume);
     await prefs.setBool('show_avatar', _showAvatar);
-    if (_selectedVoice != null) {
-      await prefs.setString('tts_voice', _selectedVoice!);
-    }
-    await prefs.setString('edge_voice', _selectedEdgeVoice);
-    await prefs.setBool('use_edge_tts', _useEdgeTts);
-    await prefs.setDouble('edge_tts_rate', _edgeTtsRate);
-    await prefs.setDouble('edge_tts_pitch', _edgeTtsPitch);
-    // Update wake word when assistant name changes
+
+    // Apply to running EdgeTTS singleton immediately
+    final svc = EdgeTtsService();
+    svc.setVoice(_selectedEdgeVoice);
+    svc.setRate(_edgeTtsRate);
+    svc.setPitch(_edgeTtsPitch);
+
     await WakeWordService.instance.updateTriggers();
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Настройки сохранены ✓'),
-          backgroundColor: AikaTheme.neonBlue.withOpacity(0.8),
+          backgroundColor: AikaTheme.neonBlue.withOpacity(0.85),
           behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
   }
 
-  Future<void> _testEdgeVoice() async {
-    // Используем синглтон — уже прогрет, нет задержки инициализации
+  Future<void> _testVoice() async {
     final svc = EdgeTtsService();
     svc.setVoice(_selectedEdgeVoice);
     svc.setRate(_edgeTtsRate);
     svc.setPitch(_edgeTtsPitch);
-    await svc.speak('Привет! Я Айка, ваш голосовой ассистент');
-  }
-
-  Future<void> _testVoice() async {
     final name = _assistantNameController.text.trim().isEmpty
-        ? 'Aika' : _assistantNameController.text.trim();
-    await _tts.setVolume(_volume);
-    await _tts.setSpeechRate(_speechRate);
-    await _tts.setPitch(_pitch);
-    if (_selectedVoice != null) {
-      await _tts.setVoice({'name': _selectedVoice!, 'locale': 'ru-RU'});
-    }
-    await _tts.speak('Привет! Я $name, ваш личный ассистент.');
+        ? 'Айка'
+        : _assistantNameController.text.trim();
+    await svc.speak('Привет! Я $name. Проверка голоса.');
   }
 
-  @override
-  void dispose() {
-    _tts.stop();
-    _nameController.dispose();
-    _assistantNameController.dispose();
-    _openAiKeyController.dispose();
-    super.dispose();
-  }
+  // ── UI helpers ──────────────────────────────────────────────────────────
 
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 24, bottom: 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: AikaTheme.neonBlue,
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 3, height: 16,
+            decoration: BoxDecoration(
+              color: AikaTheme.neonBlue,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(
+              color: AikaTheme.neonBlue,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -151,7 +126,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: AikaTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.15)),
+        border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: AikaTheme.neonBlue.withOpacity(0.04),
+            blurRadius: 12,
+            spreadRadius: 1,
+          ),
+        ],
       ),
       child: Column(children: children),
     );
@@ -168,9 +150,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           hintText: hint,
           labelStyle: TextStyle(color: AikaTheme.neonBlue.withOpacity(0.8)),
           hintStyle: const TextStyle(color: Colors.white30),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.04),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
+            borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.25)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -181,44 +165,212 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max,
-      int divisions, Function(double) onChanged) {
+  Widget _buildSlider({
+    required String label,
+    required String unit,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required Function(double) onChanged,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 90,
-            child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AikaTheme.neonBlue.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${value >= 0 ? '+' : ''}${value.round()}$unit',
+                  style: TextStyle(
+                    color: AikaTheme.neonBlue,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: SliderTheme(
-              data: SliderThemeData(
-                activeTrackColor: AikaTheme.neonBlue,
-                inactiveTrackColor: AikaTheme.neonBlue.withOpacity(0.2),
-                thumbColor: AikaTheme.neonBlue,
-                overlayColor: AikaTheme.neonBlue.withOpacity(0.2),
-              ),
-              child: Slider(
-                value: value,
-                min: min,
-                max: max,
-                divisions: divisions,
-                onChanged: onChanged,
-              ),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: AikaTheme.neonBlue,
+              inactiveTrackColor: AikaTheme.neonBlue.withOpacity(0.15),
+              thumbColor: AikaTheme.neonBlue,
+              overlayColor: AikaTheme.neonBlue.withOpacity(0.15),
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
             ),
-          ),
-          SizedBox(
-            width: 36,
-            child: Text(
-              value.toStringAsFixed(1),
-              style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12),
-              textAlign: TextAlign.right,
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: (v) {
+                onChanged(v);
+                // Live preview: apply immediately to EdgeTTS singleton
+                final svc = EdgeTtsService();
+                svc.setVoice(_selectedEdgeVoice);
+                svc.setRate(_edgeTtsRate);
+                svc.setPitch(_edgeTtsPitch);
+              },
             ),
           ),
         ],
       ),
     );
+  }
+
+  // ── Voice card ───────────────────────────────────────────────────────────
+
+  Widget _buildVoiceCard() {
+    return _buildCard([
+      // Voice selector header
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0078D4).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.graphic_eq, color: Color(0xFF0078D4), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Microsoft Edge TTS',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                Text('Нейронный голос от Microsoft',
+                    style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ],
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.withOpacity(0.4)),
+              ),
+              child: const Text('ACTIVE',
+                  style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+
+      const Divider(color: Colors.white10, height: 1),
+
+      // Voice dropdown
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Голос', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.25)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  dropdownColor: const Color(0xFF0D1120),
+                  value: _selectedEdgeVoice,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  icon: Icon(Icons.expand_more, color: AikaTheme.neonBlue),
+                  items: EdgeTtsService.voices.map((v) {
+                    return DropdownMenuItem<String>(
+                      value: v['id']!,
+                      child: Text(v['label']!, style: const TextStyle(color: Colors.white)),
+                    );
+                  }).toList(),
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => _selectedEdgeVoice = v);
+                      // Preview new voice immediately
+                      final svc = EdgeTtsService();
+                      svc.setVoice(v);
+                      svc.setRate(_edgeTtsRate);
+                      svc.setPitch(_edgeTtsPitch);
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      const Divider(color: Colors.white10, height: 1),
+
+      // Sliders
+      const SizedBox(height: 8),
+      _buildSlider(
+        label: 'Скорость речи',
+        unit: '%',
+        value: _edgeTtsRate,
+        min: -50,
+        max: 50,
+        divisions: 20,
+        onChanged: (v) => setState(() => _edgeTtsRate = v),
+      ),
+      _buildSlider(
+        label: 'Высота тона',
+        unit: 'Hz',
+        value: _edgeTtsPitch,
+        min: -50,
+        max: 50,
+        divisions: 20,
+        onChanged: (v) => setState(() => _edgeTtsPitch = v),
+      ),
+      _buildSlider(
+        label: 'Громкость',
+        unit: '%',
+        value: _edgeTtsVolume,
+        min: -50,
+        max: 50,
+        divisions: 20,
+        onChanged: (v) => setState(() => _edgeTtsVolume = v),
+      ),
+
+      const SizedBox(height: 8),
+
+      // Test button
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _testVoice,
+            icon: Icon(Icons.play_circle_outline, color: AikaTheme.neonBlue, size: 20),
+            label: Text('Проверить голос',
+                style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.5)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ),
+    ]);
   }
 
   @override
@@ -239,7 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'НАСТРОЙКИ',
           style: TextStyle(
             color: AikaTheme.neonBlue,
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
             letterSpacing: 3,
           ),
@@ -250,7 +402,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: _saveSettings,
             child: Text('СОХРАНИТЬ',
-                style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12, letterSpacing: 1)),
+                style: TextStyle(
+                    color: AikaTheme.neonBlue, fontSize: 12, letterSpacing: 1)),
           ),
         ],
       ),
@@ -259,21 +412,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Profile ──────────────────────────────────────────────
             _buildSectionTitle('ПРОФИЛЬ'),
             _buildCard([
               _buildTextField(_nameController, 'Ваше имя', 'Как вас зовут?'),
             ]),
-            _buildSectionTitle('API КЛЮЧИ'),
-            _buildCard([
-              _buildTextField(_openAiKeyController, 'OpenAI API Key', 'sk-...'),
-            ]),
+
+            // ── Assistant ────────────────────────────────────────────
             _buildSectionTitle('АССИСТЕНТ'),
             _buildCard([
               _buildTextField(_assistantNameController, 'Имя ассистента', 'Aika'),
-
               const Divider(color: Colors.white10, height: 1),
               SwitchListTile(
-                title: const Text('Показывать аватар', style: TextStyle(color: Colors.white)),
+                title: const Text('Показывать аватар',
+                    style: TextStyle(color: Colors.white)),
                 subtitle: const Text('3D аватар на главном экране',
                     style: TextStyle(color: Colors.white38, fontSize: 12)),
                 value: _showAvatar,
@@ -281,223 +433,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: (v) => setState(() => _showAvatar = v),
               ),
             ]),
-            _buildSectionTitle('ПЕРСОНАЖ'),
+
+            // ── Voice ────────────────────────────────────────────────
+            _buildSectionTitle('ГОЛОС'),
+            _buildVoiceCard(),
+
+            // ── Navigation ───────────────────────────────────────────
+            _buildSectionTitle('РАЗДЕЛЫ'),
             _buildCard([
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: Icon(Icons.face_retouching_natural_rounded, color: AikaTheme.neonBlue),
-                title: const Text('Характер ассистента', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Милая, цундере, Габимару и другие',
+                leading: Icon(Icons.terminal_rounded, color: AikaTheme.neonBlue),
+                title: const Text('Команды', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Голосовые команды и триггеры',
                     style: TextStyle(color: Colors.white38, fontSize: 12)),
-                trailing: Icon(Icons.arrow_forward_ios_rounded,
-                    color: AikaTheme.neonBlue.withOpacity(0.6), size: 16),
+                trailing: Icon(Icons.chevron_right, color: Colors.white24),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CommandsScreen())),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Icon(Icons.face_retouching_natural, color: AikaTheme.neonPurple),
+                title: const Text('Личность', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Характер и стиль общения',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: Icon(Icons.chevron_right, color: Colors.white24),
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const PersonalityScreen())),
               ),
               const Divider(color: Colors.white10, height: 1),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: Icon(Icons.checkroom_rounded, color: AikaTheme.neonBlue),
+                leading: Icon(Icons.checkroom_rounded, color: AikaTheme.neonPink),
                 title: const Text('Гардероб', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Одежда и аксессуары для Айки',
+                subtitle: const Text('Внешний вид ассистента',
                     style: TextStyle(color: Colors.white38, fontSize: 12)),
-                trailing: Icon(Icons.arrow_forward_ios_rounded,
-                    color: AikaTheme.neonBlue.withOpacity(0.6), size: 16),
+                trailing: Icon(Icons.chevron_right, color: Colors.white24),
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const WardrobeScreen())),
               ),
             ]),
-            _buildSectionTitle('ГОЛОСОВЫЕ КОМАНДЫ'),
-            _buildCard([
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: Icon(Icons.record_voice_over_rounded, color: AikaTheme.neonBlue),
-                title: const Text('Мои команды', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Привязать фразы к приложениям',
-                    style: TextStyle(color: Colors.white38, fontSize: 12)),
-                trailing: Icon(Icons.arrow_forward_ios_rounded,
-                    color: AikaTheme.neonBlue.withOpacity(0.6), size: 16),
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const CommandsScreen())),
-              ),
-            ]),
-            _buildSectionTitle('ГОЛОС АССИСТЕНТА'),
-            _buildCard([
-              // ── Edge TTS переключатель ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.graphic_eq, color: AikaTheme.neonBlue, size: 20),
-                    const SizedBox(width: 8),
-                    const Text('Microsoft Edge TTS (нейросеть)', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    const Spacer(),
-                    Switch(
-                      value: _useEdgeTts,
-                      activeColor: AikaTheme.neonBlue,
-                      onChanged: (v) => setState(() => _useEdgeTts = v),
-                    ),
-                  ],
-                ),
-              ),
-              if (_useEdgeTts) ...[
-                // ── Выбор Edge голоса ──
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedEdgeVoice,
-                    dropdownColor: AikaTheme.surface,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                    decoration: InputDecoration(
-                      labelText: '🎙 Нейронный голос',
-                      labelStyle: TextStyle(color: AikaTheme.neonBlue.withOpacity(0.8)),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: AikaTheme.neonBlue),
-                      ),
-                    ),
-                    items: EdgeTtsService.voices.map((v) => DropdownMenuItem(
-                      value: v['id'],
-                      child: Text(v['label'] ?? v['id']!),
-                    )).toList(),
-                    onChanged: (v) => setState(() => _selectedEdgeVoice = v ?? _selectedEdgeVoice),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.play_arrow, size: 16),
-                      label: const Text('Тест нейронного голоса'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AikaTheme.neonBlue,
-                        side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.5)),
-                      ),
-                      onPressed: _testEdgeVoice,
-                    ),
-                  ),
-                ),
-                // ── Edge TTS настройки скорости и питча ──
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.speed_rounded, size: 16, color: AikaTheme.neonBlue.withOpacity(0.7)),
-                      const SizedBox(width: 6),
-                      Text('Скорость Edge TTS', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Slider(
-                    value: _edgeTtsRate,
-                    min: -50, max: 50,
-                    divisions: 10,
-                    activeColor: AikaTheme.neonBlue,
-                    inactiveColor: AikaTheme.neonBlue.withOpacity(0.2),
-                    label: _edgeTtsRate >= 0 ? '+${_edgeTtsRate.toInt()}%' : '${_edgeTtsRate.toInt()}%',
-                    onChanged: (v) => setState(() => _edgeTtsRate = v),
-                    onChangeEnd: (_) => _saveSettings(),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.music_note_rounded, size: 16, color: AikaTheme.neonBlue.withOpacity(0.7)),
-                      const SizedBox(width: 6),
-                      Text('Питч Edge TTS', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Slider(
-                    value: _edgeTtsPitch,
-                    min: -20, max: 20,
-                    divisions: 8,
-                    activeColor: AikaTheme.neonBlue,
-                    inactiveColor: AikaTheme.neonBlue.withOpacity(0.2),
-                    label: _edgeTtsPitch >= 0 ? '+${_edgeTtsPitch.toInt()}Hz' : '${_edgeTtsPitch.toInt()}Hz',
-                    onChanged: (v) => setState(() => _edgeTtsPitch = v),
-                    onChangeEnd: (_) => _saveSettings(),
-                  ),
-                ),
-              ],
-              if (!_useEdgeTts && _voices.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedVoice,
-                    dropdownColor: AikaTheme.surface,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                    decoration: InputDecoration(
-                      labelText: 'Голос',
-                      labelStyle: TextStyle(color: AikaTheme.neonBlue.withOpacity(0.8)),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.3)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AikaTheme.neonBlue),
-                      ),
-                    ),
-                    hint: const Text('Выберите голос', style: TextStyle(color: Colors.white38)),
-                    items: _voices.map<DropdownMenuItem<String>>((v) {
-                      final name = v['name']?.toString() ?? '';
-                      final locale = v['locale']?.toString() ?? '';
-                      return DropdownMenuItem(
-                        value: name,
-                        child: Text('$name ($locale)',
-                            style: const TextStyle(fontSize: 12),
-                            overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (v) => setState(() => _selectedVoice = v),
-                  ),
-                ),
-                const Divider(color: Colors.white10, height: 1),
-              ],
-              const SizedBox(height: 8),
-              _buildSlider('Скорость', _speechRate, 0.1, 1.0, 9,
-                  (v) => setState(() => _speechRate = v)),
-              _buildSlider('Высота', _pitch, 0.5, 2.0, 15,
-                  (v) => setState(() => _pitch = v)),
-              _buildSlider('Громкость', _volume, 0.0, 1.0, 10,
-                  (v) => setState(() => _volume = v)),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _testVoice,
-                    icon: Icon(Icons.play_arrow, color: AikaTheme.neonBlue),
-                    label: Text('Тест голоса', style: TextStyle(color: AikaTheme.neonBlue)),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.5)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 40),
+
+            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _assistantNameController.dispose();
+    super.dispose();
+  }
 }
-
-
-
-
