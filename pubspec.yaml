@@ -28,7 +28,6 @@ dependencies:
   
   # Utils
   permission_handler: ^11.3.1
-  geolocator: ^10.1.0
   battery_plus: ^6.0.2
   connectivity_plus: ^6.0.5
   url_launcher: ^6.3.0
