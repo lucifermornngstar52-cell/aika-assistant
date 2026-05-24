@@ -21,7 +21,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Edge TTS settings only
   String _selectedEdgeVoice = 'ru-RU-DariyaNeural';
   double _edgeTtsRate  = 0.0;   // -50 .. +50 %
-  double _edgeTtsPitch = 0.0;   // -50 .. +50 Hz
+  double _edgeTtsPitch  = 0.0;   // -50 .. +50 Hz
+  double _edgeTtsVolume = 0.0;  // -50 .. +50 %
   // volume not needed for EdgeTTS
 
   bool _showAvatar = true;
