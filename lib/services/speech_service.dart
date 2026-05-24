@@ -117,31 +117,26 @@ class SpeechService extends ChangeNotifier {
     notifyListeners();
 
     String _partialText = '';
+    String _partialAccum = '';
+
     await _stt.listen(
       localeId: _ruLocaleId,
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(milliseconds: 1800), // 1800ms — достаточно для речи
+      listenFor: const Duration(seconds: 60),   // максимум 60 секунд
+      pauseFor: const Duration(milliseconds: 3500), // 3.5с тишины → финал
       cancelOnError: false,
       partialResults: true,
       listenMode: ListenMode.dictation,
       onResult: (result) {
         _lastWords = result.recognizedWords;
-        _partialText = _lastWords;
+        if (_lastWords.isNotEmpty) _partialAccum = _lastWords;
         _soundLevel = 0;
         notifyListeners();
-        // Срабатываем на finalResult или если есть текст при остановке
         if (result.finalResult) {
-          final words = _lastWords.isNotEmpty ? _lastWords : _partialText;
-          if (words.isNotEmpty) {
-            _isListening = false;
-            notifyListeners();
-            onResult(words);
-            onDone();
-          } else {
-            _isListening = false;
-            notifyListeners();
-            onDone();
-          }
+          final words = _partialAccum.isNotEmpty ? _partialAccum : _lastWords;
+          _isListening = false;
+          notifyListeners();
+          if (words.isNotEmpty) onResult(words);
+          onDone();
         }
       },
       onSoundLevelChange: (level) {
