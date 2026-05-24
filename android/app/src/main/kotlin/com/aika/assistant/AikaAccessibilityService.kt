@@ -190,28 +190,51 @@ class AikaAccessibilityService : AccessibilityService() {
     private fun waitForChatAndType() {
         if (sendStep == SendStep.IDLE) return
         stepRetry++
-        if (stepRetry > 15) { resetSend("error", "Чат не открылся"); return }
+        if (stepRetry > 20) { resetSend("error", "Чат не открылся"); return }
 
         val root = rootInActiveWindow ?: run {
             handler.postDelayed({ waitForChatAndType() }, 800); return
         }
 
-        val inputField = findMessageInput(root)
-        if (inputField != null) {
+        // Убеждаемся что поисковая строка уже НЕ видна — мы в чате
+        val searchBar = findSearchBar(root)
+        if (searchBar != null) {
+            // Ещё на экране поиска — ждём
+            handler.postDelayed({ waitForChatAndType() }, 800)
+            return
+        }
+
+        // Ищем поле ввода сообщений (исключая search-поля)
+        val inputField = findMessageInputStrict(root)
+        if (inputField != null && inputField.isEditable) {
             sendStep = SendStep.TYPING
             inputField.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeMessage(inputField) }, 500)
+            handler.postDelayed({ typeMessageFresh() }, 700)
         } else {
             handler.postDelayed({ waitForChatAndType() }, 800)
         }
     }
 
-    private fun typeMessage(node: AccessibilityNodeInfo) {
+    // Вводим сообщение — берём свежую ноду чтобы не держать устаревшую
+    private fun typeMessageFresh() {
+        val root = rootInActiveWindow ?: return
+        val inputField = findMessageInputStrict(root) ?: return
         val args = Bundle().apply {
             putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pendingMessage)
         }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        handler.postDelayed({ clickSendButton() }, 600)
+        inputField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        handler.postDelayed({ clickSendButton() }, 700)
+    }
+
+    private fun typeMessage(node: AccessibilityNodeInfo) {
+        // Prefer fresh strict lookup over cached node
+        val root = rootInActiveWindow
+        val target = if (root != null) findMessageInputStrict(root) ?: node else node
+        val args = Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pendingMessage)
+        }
+        target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        handler.postDelayed({ clickSendButton() }, 700)
     }
 
     private fun clickSendButton() {
@@ -258,12 +281,46 @@ class AikaAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** Строгий поиск поля ввода сообщения — исключает строки поиска и заголовки */
+    private fun findMessageInputStrict(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // Известные resource-id полей сообщения
+        val msgRids = listOf("entry", "message_et", "chat_message_text", "chat_input",
+                             "compose_text", "text_input", "msg_input", "message_input",
+                             "input_text", "compose_box")
+        // Явные исключения — поисковые поля
+        val searchRids = listOf("search", "поиск", "find", "query", "filter")
+        val searchDescs = listOf("search", "поиск", "найти")
+
+        // 1) Сначала ищем по известным resource-id
+        val byRid = findNodeByCondition(root) { node ->
+            val rid = (node.viewIdResourceName ?: "").lowercase()
+            val cls = (node.className ?: "").toString()
+            cls.contains("EditText") && msgRids.any { rid.contains(it) }
+        }
+        if (byRid != null) return byRid
+
+        // 2) Fallback: любой editable EditText, не являющийся поиском
+        return findNodeByCondition(root) { node ->
+            val rid  = (node.viewIdResourceName ?: "").lowercase()
+            val cls  = (node.className ?: "").toString()
+            val desc = (node.contentDescription ?: "").toString().lowercase()
+            val hint = (node.hintText ?: "").toString().lowercase()
+            val isEditText = cls.contains("EditText")
+            val isSearch   = searchRids.any { rid.contains(it) } ||
+                             searchDescs.any { desc.contains(it) || hint.contains(it) }
+            isEditText && node.isEditable && !isSearch
+        }
+    }
+
     private fun findSendButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val keywords = listOf("send", "отправить", "submit")
+        // WhatsApp: send, conversation_send; Telegram: chat_send_button, btn_send
+        val descKeys = listOf("send", "отправить", "submit", "send message")
+        val ridKeys  = listOf("send", "btn_send", "chat_send", "conversation_send",
+                              "action_send", "send_button", "mic_send")
         return findNodeByCondition(root) { node ->
             val desc = (node.contentDescription ?: "").toString().lowercase()
             val rid  = (node.viewIdResourceName ?: "").lowercase()
-            keywords.any { desc.contains(it) || rid.contains(it) }
+            (descKeys.any { desc.contains(it) } || ridKeys.any { rid.contains(it) }) && node.isClickable
         }
     }
 
