@@ -77,8 +77,6 @@ class UrlLauncherService {
       'озон': 'https://ozon.ru',
       'wildberries': 'https://wildberries.ru',
       'вайлдберис': 'https://wildberries.ru',
-      'weather': 'https://yandex.ru/weather',
-      'погода': 'https://yandex.ru/weather',
       'карты': 'https://maps.google.com',
       'maps': 'https://maps.google.com',
     };
