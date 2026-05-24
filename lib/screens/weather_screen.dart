@@ -133,7 +133,7 @@ class _WeatherScreenState extends State<WeatherScreen> with SingleTickerProvider
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AikaTheme.neonBlue))
                 : _error != null
-                    ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red70)))
+                    ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
                     : FadeTransition(
                         opacity: _fadeAnim,
                         child: SingleChildScrollView(
