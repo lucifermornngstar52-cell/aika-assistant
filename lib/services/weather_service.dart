@@ -1,46 +1,109 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+
+class WeatherData {
+  final String city;
+  final String country;
+  final double temp;
+  final double feelsLike;
+  final double tempMin;
+  final double tempMax;
+  final String description;
+  final int humidity;
+  final double windSpeed;
+  final int weatherId;
+  final int sunrise;
+  final int sunset;
+  final int pressure;
+  final double? visibility;
+
+  WeatherData({
+    required this.city,
+    required this.country,
+    required this.temp,
+    required this.feelsLike,
+    required this.tempMin,
+    required this.tempMax,
+    required this.description,
+    required this.humidity,
+    required this.windSpeed,
+    required this.weatherId,
+    required this.sunrise,
+    required this.sunset,
+    required this.pressure,
+    this.visibility,
+  });
+}
+
+class ForecastDay {
+  final DateTime date;
+  final double tempMin;
+  final double tempMax;
+  final String description;
+  final int weatherId;
+  final double windSpeed;
+  final int humidity;
+
+  ForecastDay({
+    required this.date,
+    required this.tempMin,
+    required this.tempMax,
+    required this.description,
+    required this.weatherId,
+    required this.windSpeed,
+    required this.humidity,
+  });
+}
 
 class WeatherService {
-  // OpenWeatherMap — бесплатный ключ
-  static const String _owmKey = '30b398816f9dc8ec92454b67c2172c31';
+  static const String _owmKey  = '30b398816f9dc8ec92454b67c2172c31';
   static const String _owmBase = 'https://api.openweathermap.org/data/2.5';
 
-  /// Погода по городу (или авто по IP)
-  Future<String> getWeather({String city = ''}) async {
+  // ── GPS → город ──────────────────────────────────────────────────────────
+  Future<String> _resolveCity(String city) async {
+    if (city.isNotEmpty) return city;
+    // 1. Попробуем GPS
     try {
-      final resolvedCity = city.isNotEmpty ? city : await _cityByIp();
-      final url = '$_owmBase/weather?q=${Uri.encodeComponent(resolvedCity)}'
-          '&appid=$_owmKey&units=metric&lang=ru';
-
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
-      if (resp.statusCode != 200) return 'Не удалось получить погоду';
-      return _formatWeather(jsonDecode(utf8.decode(resp.bodyBytes)));
-    } catch (e) {
-      return 'Ошибка погоды: $e';
-    }
+      final gpsCity = await _cityByGps();
+      if (gpsCity.isNotEmpty) return gpsCity;
+    } catch (_) {}
+    // 2. Fallback по IP
+    return await _cityByIp();
   }
 
-  /// Прогноз на 5 дней
-  Future<String> getForecast({String city = ''}) async {
-    try {
-      final resolvedCity = city.isNotEmpty ? city : await _cityByIp();
-      final url = '$_owmBase/forecast?q=${Uri.encodeComponent(resolvedCity)}'
-          '&appid=$_owmKey&units=metric&lang=ru&cnt=40';
+  Future<String> _cityByGps() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return '';
 
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
-      if (resp.statusCode != 200) return 'Не удалось получить прогноз';
-      return _formatForecast(jsonDecode(utf8.decode(resp.bodyBytes)), resolvedCity);
-    } catch (e) {
-      return 'Ошибка прогноза: $e';
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return '';
     }
+    if (permission == LocationPermission.deniedForever) return '';
+
+    final pos = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.low,
+      timeLimit: const Duration(seconds: 8),
+    );
+
+    // Reverse geocode через OWM
+    final url = '$_owmBase/weather?lat=${pos.latitude}&lon=${pos.longitude}'
+        '&appid=$_owmKey&units=metric&lang=ru';
+    final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+    if (resp.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(resp.bodyBytes));
+      return data['name'] ?? '';
+    }
+    return '';
   }
 
-  /// Определяем город по IP
   Future<String> _cityByIp() async {
     try {
       final resp = await http
-          .get(Uri.parse('http://ip-api.com/json/?fields=city,regionName,country'))
+          .get(Uri.parse('http://ip-api.com/json/?fields=city'))
           .timeout(const Duration(seconds: 5));
       final data = jsonDecode(resp.body);
       return data['city'] ?? 'Almaty';
@@ -49,50 +112,116 @@ class WeatherService {
     }
   }
 
-  String _formatWeather(Map<String, dynamic> data) {
-    final city    = data['name'] ?? '';
-    final temp    = (data['main']?['temp'] as num?)?.round() ?? 0;
-    final feels   = (data['main']?['feels_like'] as num?)?.round() ?? 0;
-    final desc    = data['weather']?[0]?['description'] ?? '';
-    final humidity= data['main']?['humidity'] ?? 0;
-    final wind    = (data['wind']?['speed'] as num?)?.toStringAsFixed(1) ?? '0';
-    final emoji   = _weatherEmoji(data['weather']?[0]?['id'] ?? 0);
-
-    return '$emoji $city\n'
-        '🌡 $temp°C (ощущается $feels°C)\n'
-        '☁️ ${_cap(desc)}\n'
-        '💧 Влажность: $humidity%\n'
-        '💨 Ветер: $wind м/с';
+  // ── Текущая погода (WeatherData объект) ──────────────────────────────────
+  Future<WeatherData?> getCurrentWeatherData({String city = ''}) async {
+    try {
+      final resolved = await _resolveCity(city);
+      final url = '$_owmBase/weather?q=${Uri.encodeComponent(resolved)}'
+          '&appid=$_owmKey&units=metric&lang=ru';
+      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return null;
+      final d = jsonDecode(utf8.decode(resp.bodyBytes));
+      return WeatherData(
+        city:        d['name'] ?? resolved,
+        country:     d['sys']?['country'] ?? '',
+        temp:        (d['main']?['temp'] as num?)?.toDouble() ?? 0,
+        feelsLike:   (d['main']?['feels_like'] as num?)?.toDouble() ?? 0,
+        tempMin:     (d['main']?['temp_min'] as num?)?.toDouble() ?? 0,
+        tempMax:     (d['main']?['temp_max'] as num?)?.toDouble() ?? 0,
+        description: d['weather']?[0]?['description'] ?? '',
+        humidity:    d['main']?['humidity'] ?? 0,
+        windSpeed:   (d['wind']?['speed'] as num?)?.toDouble() ?? 0,
+        weatherId:   d['weather']?[0]?['id'] ?? 800,
+        sunrise:     d['sys']?['sunrise'] ?? 0,
+        sunset:      d['sys']?['sunset'] ?? 0,
+        pressure:    d['main']?['pressure'] ?? 0,
+        visibility:  (d['visibility'] as num?)?.toDouble(),
+      );
+    } catch (e) {
+      debugPrint('[Weather] error: $e');
+      return null;
+    }
   }
 
-  String _formatForecast(Map<String, dynamic> data, String city) {
-    final list = data['list'] as List<dynamic>;
-    final buf  = StringBuffer('📅 Прогноз для $city:\n');
-    final Map<String, dynamic> byDay = {};
+  // ── Прогноз 5 дней (список ForecastDay) ──────────────────────────────────
+  Future<List<ForecastDay>> getForecastData({String city = ''}) async {
+    try {
+      final resolved = await _resolveCity(city);
+      final url = '$_owmBase/forecast?q=${Uri.encodeComponent(resolved)}'
+          '&appid=$_owmKey&units=metric&lang=ru&cnt=40';
+      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return [];
+      final data = jsonDecode(utf8.decode(resp.bodyBytes));
+      final list = data['list'] as List<dynamic>;
 
-    for (final item in list) {
-      final dt  = DateTime.fromMillisecondsSinceEpoch((item['dt'] as int) * 1000);
-      final key = '${dt.day}.${dt.month.toString().padLeft(2, '0')}';
-      if (!byDay.containsKey(key) || (dt.hour >= 11 && dt.hour <= 14)) {
-        byDay[key] = item;
+      final Map<String, List<dynamic>> byDay = {};
+      for (final item in list) {
+        final dt  = DateTime.fromMillisecondsSinceEpoch((item['dt'] as int) * 1000);
+        final key = '${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
+        byDay.putIfAbsent(key, () => []).add(item);
       }
-    }
 
+      final result = <ForecastDay>[];
+      for (final entry in byDay.entries.take(5)) {
+        final items   = entry.value;
+        final temps   = items.map((i) => (i['main']?['temp'] as num?)?.toDouble() ?? 0).toList();
+        final mid     = items.length ~/ 2;
+        final midItem = items[mid];
+        result.add(ForecastDay(
+          date:        DateTime.parse(entry.key),
+          tempMin:     temps.reduce((a, b) => a < b ? a : b),
+          tempMax:     temps.reduce((a, b) => a > b ? a : b),
+          description: midItem['weather']?[0]?['description'] ?? '',
+          weatherId:   midItem['weather']?[0]?['id'] ?? 800,
+          windSpeed:   (midItem['wind']?['speed'] as num?)?.toDouble() ?? 0,
+          humidity:    midItem['main']?['humidity'] ?? 0,
+        ));
+      }
+      return result;
+    } catch (e) {
+      debugPrint('[Weather] forecast error: $e');
+      return [];
+    }
+  }
+
+  // ── Текстовый ответ для чата ─────────────────────────────────────────────
+  Future<String> getWeather({String city = ''}) async {
+    final data = await getCurrentWeatherData(city: city);
+    if (data == null) return '❌ Не удалось получить погоду. Проверь интернет.';
+    final emoji = weatherEmoji(data.weatherId);
+    return '$emoji ${data.city}\n'
+        '🌡 ${data.temp.round()}°C (ощущается ${data.feelsLike.round()}°C)\n'
+        '☁️ ${_cap(data.description)}\n'
+        '💧 Влажность: ${data.humidity}%\n'
+        '💨 Ветер: ${data.windSpeed.toStringAsFixed(1)} м/с';
+  }
+
+  Future<String> getForecast({String city = ''}) async {
+    final days = await getForecastData(city: city);
+    if (days.isEmpty) return '❌ Не удалось получить прогноз.';
+    final resolved = days.isNotEmpty ? '' : city;
+    final buf = StringBuffer('📅 Прогноз:\n');
     final weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-    for (final entry in byDay.entries.take(5)) {
-      final item  = entry.value;
-      final dt    = DateTime.fromMillisecondsSinceEpoch((item['dt'] as int) * 1000);
-      final temp  = (item['main']?['temp'] as num?)?.round() ?? 0;
-      final desc  = item['weather']?[0]?['description'] ?? '';
-      final emoji = _weatherEmoji(item['weather']?[0]?['id'] ?? 0);
-      final wd    = weekdays[dt.weekday % 7];
-      buf.writeln('$emoji ${entry.key} ($wd): $temp°C, $desc');
+    for (final d in days) {
+      final wd = weekdays[d.date.weekday % 7];
+      final emoji = weatherEmoji(d.weatherId);
+      buf.writeln('$emoji $wd ${d.date.day}.${d.date.month.toString().padLeft(2,'0')}: '
+          '${d.tempMin.round()}…${d.tempMax.round()}°C, ${d.description}');
     }
-
     return buf.toString().trim();
   }
 
-  String _weatherEmoji(int id) {
+  // ── Определяем является ли запрос погодным ────────────────────────────────
+  static bool isWeatherRequest(String text) {
+    final t = text.toLowerCase();
+    return t.contains('погод') || t.contains('weather') ||
+        t.contains('температур') || t.contains('прогноз') ||
+        t.contains('дождь') || t.contains('снег') || t.contains('жарк') ||
+        t.contains('холодно') || t.contains('как на улице') ||
+        t.contains('что с погодой') || t.contains('тепло ли');
+  }
+
+  static String weatherEmoji(int id) {
     if (id >= 200 && id < 300) return '⛈';
     if (id >= 300 && id < 400) return '🌦';
     if (id >= 500 && id < 600) return '🌧';
