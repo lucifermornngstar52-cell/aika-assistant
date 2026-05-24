@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
     private val LAUNCHER_CHANNEL  = "com.aika.assistant/launcher"
     private val ALARM_CHANNEL     = "com.aika.assistant/alarm"
+    private val SECURITY_CHANNEL  = "com.aika.assistant/security"
     private val PHONE_CONTROL_CHANNEL = "aika/phone_control"
 
     private var screenEventSink: EventChannel.EventSink? = null
@@ -58,6 +59,59 @@ class MainActivity : FlutterActivity() {
                     "hideOverlay"        -> {
                         startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Security MethodChannel ──────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SECURITY_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "lockScreen" -> {
+                        try {
+                            val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                            val componentName = android.content.ComponentName(this, AikaDeviceAdminReceiver::class.java)
+                            if (dpm.isAdminActive(componentName)) {
+                                dpm.lockNow()
+                                result.success(true)
+                            } else {
+                                // Fallback: попробуем через accessibility
+                                performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                                result.success(true)
+                            }
+                        } catch (e: Exception) {
+                            result.error("LOCK_FAILED", e.message, null)
+                        }
+                    }
+                    "lockScreenAccessibility" -> {
+                        try {
+                            performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("LOCK_FAILED", e.message, null)
+                        }
+                    }
+                    "triggerAlarm" -> {
+                        try {
+                            val ringtone = android.media.RingtoneManager.getRingtone(
+                                this,
+                                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                                    ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                            )
+                            ringtone?.play()
+                            val vibrator = getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                vibrator.vibrate(android.os.VibrationEffect.createWaveform(
+                                    longArrayOf(0, 500, 200, 500, 200, 500), 0))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator.vibrate(longArrayOf(0, 500, 200, 500, 200, 500), 0)
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("ALARM_FAILED", e.message, null)
+                        }
                     }
                     else -> result.notImplemented()
                 }
