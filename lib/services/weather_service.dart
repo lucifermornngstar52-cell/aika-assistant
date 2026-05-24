@@ -60,7 +60,6 @@ class WeatherService {
   static const String _owmKey  = '30b398816f9dc8ec92454b67c2172c31';
   static const String _owmBase = 'https://api.openweathermap.org/data/2.5';
 
-  // ── Определяем город по IP (без geolocator, без разрешений GPS) ──────────
   Future<String> _resolveCity(String city) async {
     if (city.isNotEmpty) return city;
     return await _cityByIp();
@@ -72,35 +71,34 @@ class WeatherService {
           .get(Uri.parse('http://ip-api.com/json/?fields=city'))
           .timeout(const Duration(seconds: 5));
       final data = jsonDecode(resp.body);
-      return data['city'] ?? 'Almaty';
+      return (data['city'] as String?) ?? 'Almaty';
     } catch (_) {
       return 'Almaty';
     }
   }
 
-  // ── Текущая погода ────────────────────────────────────────────────────────
   Future<WeatherData?> getCurrentWeatherData({String city = ''}) async {
     try {
       final resolved = await _resolveCity(city);
-      final url = '$_owmBase/weather?q=\${Uri.encodeComponent(resolved)}'
+      final url = '$_owmBase/weather?q=${Uri.encodeComponent(resolved)}'
           '&appid=$_owmKey&units=metric&lang=ru';
       final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return null;
       final d = jsonDecode(utf8.decode(resp.bodyBytes));
       return WeatherData(
-        city:        d['name'] ?? resolved,
-        country:     d['sys']?['country'] ?? '',
+        city:        (d['name'] as String?) ?? resolved,
+        country:     (d['sys']?['country'] as String?) ?? '',
         temp:        (d['main']?['temp'] as num?)?.toDouble() ?? 0,
         feelsLike:   (d['main']?['feels_like'] as num?)?.toDouble() ?? 0,
         tempMin:     (d['main']?['temp_min'] as num?)?.toDouble() ?? 0,
         tempMax:     (d['main']?['temp_max'] as num?)?.toDouble() ?? 0,
-        description: d['weather']?[0]?['description'] ?? '',
-        humidity:    d['main']?['humidity'] ?? 0,
+        description: (d['weather']?[0]?['description'] as String?) ?? '',
+        humidity:    (d['main']?['humidity'] as int?) ?? 0,
         windSpeed:   (d['wind']?['speed'] as num?)?.toDouble() ?? 0,
-        weatherId:   d['weather']?[0]?['id'] ?? 800,
-        sunrise:     d['sys']?['sunrise'] ?? 0,
-        sunset:      d['sys']?['sunset'] ?? 0,
-        pressure:    d['main']?['pressure'] ?? 0,
+        weatherId:   (d['weather']?[0]?['id'] as int?) ?? 800,
+        sunrise:     (d['sys']?['sunrise'] as int?) ?? 0,
+        sunset:      (d['sys']?['sunset'] as int?) ?? 0,
+        pressure:    (d['main']?['pressure'] as int?) ?? 0,
         visibility:  (d['visibility'] as num?)?.toDouble(),
       );
     } catch (e) {
@@ -109,11 +107,10 @@ class WeatherService {
     }
   }
 
-  // ── Прогноз 5 дней ────────────────────────────────────────────────────────
   Future<List<ForecastDay>> getForecastData({String city = ''}) async {
     try {
       final resolved = await _resolveCity(city);
-      final url = '$_owmBase/forecast?q=\${Uri.encodeComponent(resolved)}'
+      final url = '$_owmBase/forecast?q=${Uri.encodeComponent(resolved)}'
           '&appid=$_owmKey&units=metric&lang=ru&cnt=40';
       final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return [];
@@ -123,7 +120,9 @@ class WeatherService {
       final Map<String, List<dynamic>> byDay = {};
       for (final item in list) {
         final dt  = DateTime.fromMillisecondsSinceEpoch((item['dt'] as int) * 1000);
-        final key = '\${dt.year}-\${dt.month.toString().padLeft(2,'0')}-\${dt.day.toString().padLeft(2,'0')}';
+        final mm  = dt.month.toString().padLeft(2, '0');
+        final dd  = dt.day.toString().padLeft(2, '0');
+        final key = '${dt.year}-$mm-$dd';
         byDay.putIfAbsent(key, () => []).add(item);
       }
 
@@ -137,10 +136,10 @@ class WeatherService {
           date:        DateTime.parse(entry.key),
           tempMin:     temps.reduce((a, b) => a < b ? a : b),
           tempMax:     temps.reduce((a, b) => a > b ? a : b),
-          description: midItem['weather']?[0]?['description'] ?? '',
-          weatherId:   midItem['weather']?[0]?['id'] ?? 800,
+          description: (midItem['weather']?[0]?['description'] as String?) ?? '',
+          weatherId:   (midItem['weather']?[0]?['id'] as int?) ?? 800,
           windSpeed:   (midItem['wind']?['speed'] as num?)?.toDouble() ?? 0,
-          humidity:    midItem['main']?['humidity'] ?? 0,
+          humidity:    (midItem['main']?['humidity'] as int?) ?? 0,
         ));
       }
       return result;
@@ -150,28 +149,29 @@ class WeatherService {
     }
   }
 
-  // ── Текстовый ответ для чата ─────────────────────────────────────────────
   Future<String> getWeather({String city = ''}) async {
     final data = await getCurrentWeatherData(city: city);
     if (data == null) return '❌ Не удалось получить погоду. Проверь интернет.';
     final emoji = weatherEmoji(data.weatherId);
-    return '$emoji \${data.city}\n'
-        '🌡 \${data.temp.round()}°C (ощущается \${data.feelsLike.round()}°C)\n'
-        '☁️ \${_cap(data.description)}\n'
-        '💧 Влажность: \${data.humidity}%\n'
-        '💨 Ветер: \${data.windSpeed.toStringAsFixed(1)} м/с';
+    final mm = data.city;
+    return '$emoji $mm\n'
+        '🌡 ${data.temp.round()}°C (ощущается ${data.feelsLike.round()}°C)\n'
+        '☁️ ${_cap(data.description)}\n'
+        '💧 Влажность: ${data.humidity}%\n'
+        '💨 Ветер: ${data.windSpeed.toStringAsFixed(1)} м/с';
   }
 
   Future<String> getForecast({String city = ''}) async {
     final days = await getForecastData(city: city);
     if (days.isEmpty) return '❌ Не удалось получить прогноз.';
     final buf = StringBuffer('📅 Прогноз:\n');
-    final weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    const weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
     for (final d in days) {
-      final wd = weekdays[d.date.weekday % 7];
+      final wd    = weekdays[d.date.weekday % 7];
       final emoji = weatherEmoji(d.weatherId);
-      buf.writeln('$emoji $wd \${d.date.day}.\${d.date.month.toString().padLeft(2,'0')}: '
-          '\${d.tempMin.round()}…\${d.tempMax.round()}°C, \${d.description}');
+      final dm    = d.date.month.toString().padLeft(2, '0');
+      buf.writeln('$emoji $wd ${d.date.day}.$dm: '
+          '${d.tempMin.round()}…${d.tempMax.round()}°C, ${d.description}');
     }
     return buf.toString().trim();
   }
