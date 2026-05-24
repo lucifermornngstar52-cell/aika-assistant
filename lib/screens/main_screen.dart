@@ -25,6 +25,7 @@ import '../services/music_detector_service.dart';
 import '../services/message_sender_service.dart';
 import '../services/url_launcher_service.dart';
 import '../services/weather_service.dart';
+import '../services/device_security_service.dart';
 import 'weather_screen.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
@@ -149,7 +150,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await AssistantMoodService.load();
     _sendGreeting();
     // Init Telegram Bot
-    TelegramBotService.onMessage = (text, from) async {
+    TelegramBotService.onSecurityCommand = (text, chatId) async {
+      return await DeviceSecurityService.handleTelegramCommand(text, chatId);
+    };
+        TelegramBotService.onMessage = (text, from) async {
       const openAiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
       final ctx = await _memoryService.getUserContext();
       final history = await _memoryService.getHistory();
@@ -830,7 +834,33 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // ── Погода — открываем свой экран ──────────────────────────────────
+    // ── Команды безопасности (голос) ─────────────────────────────────────
+    if (DeviceSecurityService.isSecurityVoiceCommand(text)) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      setState(() { _isThinking = true; });
+      try {
+        final secReply = await DeviceSecurityService.handleVoiceSecurityCommand(text);
+        if (secReply.isNotEmpty) {
+          _addMessage(ChatMessage(
+            id: (DateTime.now().millisecondsSinceEpoch+1).toString(),
+            role: MessageRole.aika,
+            content: secReply,
+            timestamp: DateTime.now(),
+          ));
+          await _speak(secReply.replaceAll(RegExp(r'<[^>]+>'), '').replaceAll('📍','').replaceAll('🔒',''));
+          return;
+        }
+      } finally {
+        setState(() { _isThinking = false; });
+      }
+    }
+
+        // ── Погода — открываем свой экран ──────────────────────────────────
     if (WeatherService.isWeatherRequest(text)) {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
