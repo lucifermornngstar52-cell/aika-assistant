@@ -1408,6 +1408,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             ? _messages.last.content
             : '',
         onMicTap: _toggleListening,
+        onThemeSwitch: () => _themeSwitcher.toggle(),
       );
     }
     return Scaffold(
