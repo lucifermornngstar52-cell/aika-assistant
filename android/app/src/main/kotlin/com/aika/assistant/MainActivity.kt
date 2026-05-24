@@ -79,9 +79,11 @@ class MainActivity : FlutterActivity() {
                                 dpm.lockNow()
                                 result.success(true)
                             } else {
-                                // Fallback: попробуем через accessibility
-                                performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-                                result.success(true)
+                                // Fallback: через AccessibilityService
+                                val locked = AikaAccessibilityService.instance?.performGlobalAction(
+                                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
+                                ) ?: false
+                                result.success(locked)
                             }
                         } catch (e: Exception) {
                             result.error("LOCK_FAILED", e.message, null)
@@ -497,7 +499,6 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-    }
 
 
 
