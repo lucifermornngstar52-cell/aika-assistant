@@ -54,6 +54,7 @@ import '../services/screen_reader_service.dart';
 import '../services/edge_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../services/theme_switcher_service.dart';
+import '../services/phone_control_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -80,6 +81,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Map<String, String>? _pendingReplyNotif;
   bool _awaitingReplyConfirm = false;
   final ThemeSwitcherService _themeSwitcher = ThemeSwitcherService();
+  final PhoneControlService _phoneControl = PhoneControlService();
   final AlarmService _alarmService = AlarmService();
   final ScheduleService _scheduleService = ScheduleService();
   final BriefingService _briefingService = BriefingService();
@@ -117,6 +119,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void initState() {
     _themeSwitcher.load();
     _themeSwitcher.addListener(() { if (mounted) setState(() {}); });
+    _phoneControl.init();
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initServices();
@@ -788,7 +791,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _textController.clear();
     _resetIdleTimer();
 
-    // ── Управление музыкой ───────────────────────────────────────────────
+    // ── Управление телефоном по голосу ─────────────────────────────────
+    final phoneResult = await _phoneControl.parseCommand(text);
+    if (phoneResult != null) {
+      final reply = phoneResult.message;
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(reply);
+      return;
+    }
+
+        // ── Управление музыкой ───────────────────────────────────────────────
     final musicCmd = MusicControlService.parseCommand(text);
     if (musicCmd != null) {
       await MusicControlService.send(musicCmd);
