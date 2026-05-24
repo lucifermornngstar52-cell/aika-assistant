@@ -38,9 +38,6 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
-  # Google Sign-In (лицензирование)
-  google_sign_in: ^6.2.1
-
   # Timezone (для precise reminders)
   timezone: ^0.9.4
 

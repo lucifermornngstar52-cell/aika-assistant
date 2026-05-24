@@ -32,12 +32,12 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _navigate() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('user_name');
-    final googleId = await LicenseService.getSavedGoogleId();
+    final savedEmail = await LicenseService.getSavedEmail();
     if (!mounted) return;
 
-    // Проверяем лицензию если Google ID уже есть
-    if (googleId != null) {
-      final status = await LicenseService.checkLicense(googleId);
+    // Проверяем лицензию если email уже есть
+    if (savedEmail != null) {
+      final status = await LicenseService.checkLicenseByEmail(savedEmail);
       if (!mounted) return;
       if (!status.valid) {
         Navigator.of(context).pushReplacement(PageRouteBuilder(
@@ -47,7 +47,7 @@ class _SplashScreenState extends State<SplashScreen>
         ));
         return;
       }
-    } else if (googleId == null) {
+    } else if (savedEmail == null) {
       // Первый запуск — идём на экран лицензии
       Navigator.of(context).pushReplacement(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const LicenseScreen(),
