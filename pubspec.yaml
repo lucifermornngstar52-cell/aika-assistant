@@ -26,9 +26,6 @@ dependencies:
   shared_preferences: ^2.2.3
   provider: ^6.1.2
   
-  # Location (geolocator_android 5.x+ compatible with AGP 8.1)
-  geolocator: ^14.0.0
-
   # Utils
   permission_handler: ^11.3.1
   battery_plus: ^6.0.2
