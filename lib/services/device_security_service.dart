@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'telegram_bot_service.dart';
@@ -9,10 +8,9 @@ import 'telegram_bot_service.dart';
 class DeviceSecurityService {
   static const _channel     = MethodChannel('com.aika.assistant/security');
   static const _keyEnabled  = 'security_enabled';
-  static const _keyPassword = 'security_password'; // кодовое слово для команд
+  static const _keyPassword = 'security_password';
   static const _owmKey      = '30b398816f9dc8ec92454b67c2172c31';
 
-  // ── Настройки ────────────────────────────────────────────────────────────
   static Future<bool> isEnabled() async {
     final p = await SharedPreferences.getInstance();
     return p.getBool(_keyEnabled) ?? false;
@@ -33,18 +31,14 @@ class DeviceSecurityService {
     await p.setString(_keyPassword, pw.trim().toLowerCase());
   }
 
-  // ── Распознавание команды безопасности ──────────────────────────────────
-  /// Вернёт true если текст — команда безопасности (и выполнит её)
   static Future<bool> handleTelegramCommand(String text, String chatId) async {
     if (!(await isEnabled())) return false;
-
     final t    = text.toLowerCase().trim();
     final pass = await getPassword();
 
-    // Формат: "[пароль] команда" или просто команда (если пароль не задан)
     String cmd = t;
     if (pass.isNotEmpty) {
-      if (!t.startsWith(pass)) return false; // не наш
+      if (!t.startsWith(pass)) return false;
       cmd = t.substring(pass.length).trim();
     }
 
@@ -67,10 +61,9 @@ class DeviceSecurityService {
     return false;
   }
 
-  /// Проверка команд из голосового чата Айки (без пароля — уже на телефоне)
   static bool isSecurityVoiceCommand(String text) {
     final t = text.toLowerCase();
-    return t.contains('заблокируй') && (t.contains('экран') || t.contains('телефон') || t.contains('устройство')) ||
+    return (t.contains('заблокируй') && (t.contains('экран') || t.contains('телефон') || t.contains('устройство'))) ||
         t.contains('покажи где я') || t.contains('моя геолокация') ||
         t.contains('режим тревоги') || t.contains('сигнал тревоги') ||
         t.contains('защита устройства');
@@ -93,7 +86,6 @@ class DeviceSecurityService {
     return '';
   }
 
-  // ── Команды ─────────────────────────────────────────────────────────────
   static bool _isLockCommand(String t) =>
       t.contains('заблокируй') || t.contains('lock') || t.contains('блокировка') ||
       t.contains('заблокировать') || t == 'lock screen';
@@ -110,12 +102,10 @@ class DeviceSecurityService {
       t.contains('статус') || t.contains('status') || t.contains('состояние') ||
       t.contains('заряд') || t.contains('battery');
 
-  // ── Действия ─────────────────────────────────────────────────────────────
   static Future<void> lockScreen() async {
     try {
       await _channel.invokeMethod('lockScreen');
-    } catch (e) {
-      // Fallback: попробуем через accessibility
+    } catch (_) {
       try {
         await _channel.invokeMethod('lockScreenAccessibility');
       } catch (_) {}
@@ -128,74 +118,57 @@ class DeviceSecurityService {
     } catch (_) {}
   }
 
+  /// Геолокация через IP (без GPS-разрешений)
   static Future<String> getLocationText() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return 'GPS выключен';
+      final resp = await http
+          .get(Uri.parse('http://ip-api.com/json/?fields=city,regionName,country,lat,lon'))
+          .timeout(const Duration(seconds: 6));
+      final d = jsonDecode(resp.body);
+      final city    = (d['city'] as String?) ?? '';
+      final region  = (d['regionName'] as String?) ?? '';
+      final country = (d['country'] as String?) ?? '';
+      final lat     = (d['lat'] as num?)?.toDouble() ?? 0.0;
+      final lon     = (d['lon'] as num?)?.toDouble() ?? 0.0;
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return 'Нет разрешения на GPS';
-      }
-      if (permission == LocationPermission.deniedForever) return 'GPS заблокирован в настройках';
-
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      // Обратное геокодирование через OWM
-      final url = 'https://api.openweathermap.org/data/2.5/weather'
-          '?lat=${pos.latitude}&lon=${pos.longitude}&appid=$_owmKey&lang=ru';
-      String cityInfo = '';
-      try {
-        final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
-        final d = jsonDecode(resp.body);
-        cityInfo = d['name'] ?? '';
-      } catch (_) {}
-
-      final latStr = pos.latitude.toStringAsFixed(6);
-      final lonStr = pos.longitude.toStringAsFixed(6);
-      final googleLink = 'https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
+      final googleLink = 'https://maps.google.com/?q=$lat,$lon';
+      final latStr     = lat.toStringAsFixed(4);
+      final lonStr     = lon.toStringAsFixed(4);
 
       String result = '';
-      if (cityInfo.isNotEmpty) result += '📌 $cityInfo\n';
+      if (city.isNotEmpty) result += '📌 $city, $region, $country\n';
       result += '🌐 $latStr, $lonStr\n';
       result += '🗺 <a href="$googleLink">Открыть на карте</a>';
       return result;
     } catch (e) {
-      return 'Ошибка GPS: $e';
+      return 'Ошибка определения местоположения: $e';
     }
   }
 
-  // ── Составные действия ───────────────────────────────────────────────────
-  static Future<void> _executeLockAndLocate(dynamic chatId) async {
-    // Сначала геолокацию (пока экран ещё не заблокирован)
-    final loc = await getLocationText();
+  static String _timeStr() {
     final now = DateTime.now();
-    final timeStr = '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
+    final h   = now.hour.toString().padLeft(2, '0');
+    final m   = now.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
 
+  static Future<void> _executeLockAndLocate(dynamic chatId) async {
+    final loc = await getLocationText();
     await TelegramBotService.sendToChatId(
       chatId,
       '🔒 <b>Экран заблокирован</b>\n'
-      '🕐 $timeStr\n\n'
+      '🕐 ${_timeStr()}\n\n'
       '📍 <b>Последнее местоположение:</b>\n$loc',
     );
-
-    // Блокируем экран
     await lockScreen();
   }
 
   static Future<void> _sendLocation(dynamic chatId) async {
     final loc = await getLocationText();
-    final now = DateTime.now();
-    final timeStr = '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
-
     await TelegramBotService.sendToChatId(
       chatId,
       '📍 <b>Местоположение устройства</b>\n'
-      '🕐 $timeStr\n\n'
+      '🕐 ${_timeStr()}\n\n'
       '$loc',
     );
   }
@@ -213,13 +186,10 @@ class DeviceSecurityService {
 
   static Future<void> _sendStatus(dynamic chatId) async {
     final loc = await getLocationText();
-    final now = DateTime.now();
-    final timeStr = '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
-
     await TelegramBotService.sendToChatId(
       chatId,
       '📱 <b>Статус устройства</b>\n'
-      '🕐 $timeStr\n\n'
+      '🕐 ${_timeStr()}\n\n'
       '📍 <b>Местоположение:</b>\n$loc\n\n'
       '✅ Устройство онлайн и отвечает',
     );
