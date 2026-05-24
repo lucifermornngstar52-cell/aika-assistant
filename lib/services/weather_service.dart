@@ -85,8 +85,10 @@ class WeatherService {
     if (permission == LocationPermission.deniedForever) return '';
 
     final pos = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.low,
-      timeLimit: const Duration(seconds: 8),
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.low,
+        timeLimit: Duration(seconds: 8),
+      ),
     );
 
     // Reverse geocode через OWM
