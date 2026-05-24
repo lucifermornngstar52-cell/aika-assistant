@@ -20,6 +20,9 @@ class TelegramBotService {
   /// Возвращает текст ответа который нужно отправить обратно.
   static Future<String> Function(String message, String from)? onMessage;
 
+  /// Callback: обработчик команд безопасности. Возвращает true если команда обработана.
+  static Future<bool> Function(String text, String chatId)? onSecurityCommand;
+
   static bool get isRunning => _isRunning;
 
   static Future<String?> getSavedToken() async {
@@ -96,6 +99,24 @@ class TelegramBotService {
         final fromName = '${from?['first_name'] ?? ''} ${from?['last_name'] ?? ''}'.trim();
         final chatId = message['chat']['id'];
 
+        // Сохраняем chat_id владельца (первый кто написал)
+        final prefs2 = await SharedPreferences.getInstance();
+        if (prefs2.getString('telegram_owner_chat_id') == null) {
+          await prefs2.setString('telegram_owner_chat_id', chatId.toString());
+        }
+
+        // Проверяем команды безопасности
+        try {
+          // Импортируем динамически через callback чтобы избежать цикличного импорта
+          if (onSecurityCommand != null) {
+            final handled = await onSecurityCommand!(text, chatId.toString());
+            if (handled) {
+              _offset = updateId + 1;
+              continue;
+            }
+          }
+        } catch (_) {}
+
         // Получаем ответ от AI
         if (onMessage != null) {
           try {
@@ -127,6 +148,27 @@ class TelegramBotService {
           'parse_mode': 'HTML',
         }),
       ).timeout(const Duration(seconds: 8));
+    } catch (_) {}
+  }
+
+  /// Отправить сообщение в конкретный чат по chatId
+  static Future<void> sendToChatId(dynamic chatId, String text) async {
+    if (_token == null) {
+      final prefs = await SharedPreferences.getInstance();
+      _token = prefs.getString(_keyToken);
+    }
+    if (_token == null) return;
+    try {
+      await http.post(
+        Uri.parse('https://api.telegram.org/bot$_token/sendMessage'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'chat_id': chatId is String ? int.tryParse(chatId) ?? chatId : chatId,
+          'text': text,
+          'parse_mode': 'HTML',
+          'disable_web_page_preview': false,
+        }),
+      ).timeout(const Duration(seconds: 10));
     } catch (_) {}
   }
 
