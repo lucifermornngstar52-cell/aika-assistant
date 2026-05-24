@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/license_service.dart';
+import 'license_screen.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
@@ -30,7 +32,30 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _navigate() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('user_name');
+    final googleId = await LicenseService.getSavedGoogleId();
     if (!mounted) return;
+
+    // Проверяем лицензию если Google ID уже есть
+    if (googleId != null) {
+      final status = await LicenseService.checkLicense(googleId);
+      if (!mounted) return;
+      if (!status.valid) {
+        Navigator.of(context).pushReplacement(PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const LicenseScreen(),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+          transitionDuration: const Duration(milliseconds: 600),
+        ));
+        return;
+      }
+    } else if (googleId == null) {
+      // Первый запуск — идём на экран лицензии
+      Navigator.of(context).pushReplacement(PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const LicenseScreen(),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 600),
+      ));
+      return;
+    }
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
