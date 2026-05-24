@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -11,6 +12,7 @@ class WakeWordService {
   factory WakeWordService() => instance;
 
   final SpeechToText _stt = SpeechToText();
+  static const _wakeLockChannel = MethodChannel('com.aika.assistant/wakelock');
 
   bool _initialized = false;
   bool _isRunning = false;
@@ -104,6 +106,7 @@ class WakeWordService {
     _isRunning = true;
     _isPaused = false;
     await updateTriggers();
+    await _acquireWakeLock();
     debugPrint('[WakeWord] ▶ запуск');
     await _startSttLoop();
     _startWatchdog();
@@ -168,7 +171,7 @@ class WakeWordService {
       await _stt.listen(
         localeId: 'ru-RU',
         listenFor: const Duration(minutes: 5),
-        pauseFor: const Duration(seconds: 3),
+        pauseFor: const Duration(seconds: 2), // 2с для wake word — быстрее отклик
         onResult: (result) {
           if (!_isRunning || _isPaused) return;
           final words = result.recognizedWords.toLowerCase().trim();
@@ -197,6 +200,15 @@ class WakeWordService {
     }
   }
 
+  // ── WakeLock (держим CPU активным на заблокированном экране) ────────────
+  Future<void> _acquireWakeLock() async {
+    try { await _wakeLockChannel.invokeMethod('acquire'); } catch (_) {}
+  }
+
+  Future<void> _releaseWakeLock() async {
+    try { await _wakeLockChannel.invokeMethod('release'); } catch (_) {}
+  }
+
   void _startWatchdog() {
     _watchdogTimer?.cancel();
     _watchdogTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
@@ -217,6 +229,7 @@ class WakeWordService {
     _restartTimer?.cancel();
     _sttTimeoutTimer?.cancel();
     if (_stt.isListening) await _stt.stop();
+    await _releaseWakeLock();
     debugPrint('[WakeWord] ⏹ остановлен');
   }
 }
