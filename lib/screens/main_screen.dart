@@ -1404,11 +1404,29 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return JarvisHud(
         isListening: _isListening,
         isThinking: _isThinking,
-        lastResponse: _messages.isNotEmpty
-            ? _messages.last.content
-            : '',
+        lastResponse: _messages.isNotEmpty ? _messages.last.content : '',
+        messages: _messages.map((m) => JarvisMessage(
+          content: m.content,
+          isUser: m.role == MessageRole.user,
+          timestamp: m.timestamp,
+        )).toList(),
+        textController: _textController,
+        scrollController: _scrollController,
+        onSendMessage: _sendMessage,
         onMicTap: _toggleListening,
         onThemeSwitch: () => _themeSwitcher.toggle(),
+        wakeWordEnabled: _wakeWordEnabled,
+        onToggleWakeWord: _toggleWakeWord,
+        hasOverlayPermission: _hasOverlayPermission,
+        onOverlayPermission: _showOverlayPermissionDialog,
+        onOpenSettings: _openSettings,
+        onOpenCurrency: _openCurrency,
+        onOpenMoodDiary: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen())),
+        onOpenSchedule: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduleScreen())),
+        onOpenTelegram: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen())),
+        onOpenAppCommands: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen())),
+        assistantName: _assistantName,
+        userName: _userName,
       );
     }
     return Scaffold(
