@@ -10,6 +10,14 @@ buildscript {
     }
 }
 
+// Provide flutter SDK values for plugins that reference flutter.compileSdkVersion etc.
+ext {
+    compileSdkVersion   = 36
+    targetSdkVersion    = 36
+    minSdkVersion       = 24
+    ndkVersion          = "27.0.12077973"
+}
+
 allprojects {
     repositories {
         google()
@@ -22,8 +30,13 @@ subprojects {
     afterEvaluate { project ->
         if (project.hasProperty('android')) {
             project.android {
-                if (compileSdkVersion == null || compileSdkVersion == 0) {
-                    compileSdkVersion 36
+                compileSdkVersion 36
+                if (project.android.hasProperty('defaultConfig')) {
+                    project.android.defaultConfig {
+                        if (minSdkVersion == null || minSdkVersion.apiLevel < 24) {
+                            minSdkVersion 24
+                        }
+                    }
                 }
             }
         }
