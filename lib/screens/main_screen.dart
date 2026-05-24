@@ -53,7 +53,6 @@ import 'schedule_screen.dart';
 import 'package:lottie/lottie.dart';
 import '../services/emotion_service.dart';
 import '../services/screen_reader_service.dart';
-import '../services/screen_reader_service.dart';
 import '../services/edge_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../services/theme_switcher_service.dart';
