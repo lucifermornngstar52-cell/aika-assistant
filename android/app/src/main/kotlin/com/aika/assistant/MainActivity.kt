@@ -89,8 +89,10 @@ class MainActivity : FlutterActivity() {
                     }
                     "lockScreenAccessibility" -> {
                         try {
-                            performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-                            result.success(true)
+                            val ok = AikaAccessibilityService.instance?.performGlobalAction(
+                                android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
+                            ) ?: false
+                            result.success(ok)
                         } catch (e: Exception) {
                             result.error("LOCK_FAILED", e.message, null)
                         }
@@ -499,21 +501,6 @@ class MainActivity : FlutterActivity() {
 
 
 
-    override fun onCreate(savedInstanceState: android.os.Bundle?) {
-        super.onCreate(savedInstanceState)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
-        }
-    }
-
-
         // ── WakeLock MethodChannel ────────────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WAKELOCK_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -541,6 +528,22 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }  // end configureFlutterEngine
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+    }
+
 
     override fun onResume() {
         super.onResume()
