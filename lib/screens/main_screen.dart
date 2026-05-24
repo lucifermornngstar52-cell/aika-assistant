@@ -24,6 +24,8 @@ import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
 import '../services/message_sender_service.dart';
 import '../services/url_launcher_service.dart';
+import '../services/weather_service.dart';
+import 'weather_screen.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
 import '../services/notification_service.dart';
@@ -84,6 +86,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final PhoneControlService _phoneControl = PhoneControlService();
   final AlarmService _alarmService = AlarmService();
   final ScheduleService _scheduleService = ScheduleService();
+  final WeatherService _weatherService = WeatherService();
   final BriefingService _briefingService = BriefingService();
   final FlutterTts _tts = FlutterTts();
   final EdgeTtsService _edgeTts = EdgeTtsService();
@@ -824,6 +827,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(reply);
+      return;
+    }
+
+    // ── Погода — открываем свой экран ──────────────────────────────────
+    if (WeatherService.isWeatherRequest(text)) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const WeatherScreen()));
       return;
     }
 
