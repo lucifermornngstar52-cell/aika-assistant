@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
     private val APPS_CHANNEL     = "com.aika.assistant/apps"
     private val LAUNCHER_CHANNEL  = "com.aika.assistant/launcher"
     private val ALARM_CHANNEL     = "com.aika.assistant/alarm"
+    private val PHONE_CONTROL_CHANNEL = "aika/phone_control"
 
     private var screenEventSink: EventChannel.EventSink? = null
     private var screenReceiver: BroadcastReceiver? = null
