@@ -11,6 +11,7 @@ class JarvisHud extends StatefulWidget {
   final bool isThinking;
   final String lastResponse;
   final VoidCallback? onMicTap;
+  final VoidCallback? onThemeSwitch;
 
   const JarvisHud({
     Key? key,
@@ -18,6 +19,7 @@ class JarvisHud extends StatefulWidget {
     this.isThinking = false,
     this.lastResponse = '',
     this.onMicTap,
+    this.onThemeSwitch,
   }) : super(key: key);
 
   @override
@@ -169,7 +171,26 @@ class _JarvisHudState extends State<JarvisHud> with TickerProviderStateMixin {
             const Text('SYSTEM ONLINE',
                 style: TextStyle(color: Color(0xFF00FF88), fontSize: 10, letterSpacing: 3)),
           ]),
-          _buildCircularGauge('BATTERY', _batteryLevel.toDouble(), 100, const Color(0xFF00D4FF)),
+          Row(children: [
+            GestureDetector(
+              onTap: widget.onThemeSwitch,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFF00D4FF).withOpacity(0.5), width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFF001830),
+                ),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('🌸', style: TextStyle(fontSize: 14)),
+                  SizedBox(width: 4),
+                  Text('АЙКА', style: TextStyle(color: Color(0xFF00D4FF), fontSize: 10, letterSpacing: 2)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildCircularGauge('BATTERY', _batteryLevel.toDouble(), 100, const Color(0xFF00D4FF)),
+          ]),
         ],
       ),
     );
