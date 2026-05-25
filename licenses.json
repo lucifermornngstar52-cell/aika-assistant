@@ -4,5 +4,11 @@
     "expires_at": "2026-06-24T00:46:50.023886",
     "plan": "purchase",
     "approved_at": "2026-05-25T00:46:50.023901"
+  },
+  "test@example.com": {
+    "status": "active",
+    "expires_at": "2026-06-24T01:21:38.809665",
+    "plan": "purchase",
+    "approved_at": "2026-05-25T01:21:38.809653"
   }
 }
