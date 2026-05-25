@@ -1,1 +1,8 @@
-{}
+{
+  "test-id-123": {
+    "status": "active",
+    "expires_at": "2026-06-24T00:46:49.045807",
+    "plan": "purchase",
+    "approved_at": "2026-05-25T00:46:49.045827"
+  }
+}
