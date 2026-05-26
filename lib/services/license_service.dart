@@ -2,15 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Telegram Bot — прямые запросы без backend
-const String _botToken = '8339740462:AAH8HywtjV2TfCS6MVnSwka4CidpNPdSIK4';
-const String _ownerChatId = '7500697130';
-const String _tgApi = 'https://api.telegram.org/bot$_botToken';
+// License check — читаем licenses.json с GitHub
+const String _licenseCheckUrl =
+    'https://raw.githubusercontent.com/lucifermornngstar52-cell/aika-assistant/main/licenses.json';
 
-// Base44 API для проверки лицензии (только для check — читаем из базы через публичный endpoint)
-// Для check используем Telegram polling (агент обновляет базу, Flutter проверяет через простой GET)
-// Мы используем простой JSON файл на GitHub как "лицензионный сервер"
-const String _licenseCheckUrl = 'https://raw.githubusercontent.com/lucifermornngstar52-cell/aika-assistant/main/licenses.json';
+// Заявки отправляются на Superagent endpoint — он уведомит владельца
+const String _submitUrl =
+    'https://app.base44.com/api/apps/6a0da5c66b1ec5f4ed5468be/functions/submitLicenseRequest';
 
 class LicenseStatus {
   final bool valid;
@@ -19,12 +17,18 @@ class LicenseStatus {
   final String? email;
   final String? plan;
 
-  LicenseStatus({required this.valid, required this.reason, this.expiresAt, this.email, this.plan});
+  LicenseStatus({
+    required this.valid,
+    required this.reason,
+    this.expiresAt,
+    this.email,
+    this.plan,
+  });
 }
 
 class LicenseService {
-  static const _keyEmail = 'license_email';
-  static const _keyStatus = 'license_status';
+  static const _keyEmail   = 'license_email';
+  static const _keyStatus  = 'license_status';
   static const _keyExpires = 'license_expires';
   static const _keyLastCheck = 'license_last_check';
 
@@ -38,7 +42,7 @@ class LicenseService {
     return prefs.getString(_keyEmail);
   }
 
-  // Проверяем лицензию через GitHub JSON файл (обновляется агентом)
+  // Проверяем лицензию через GitHub JSON
   static Future<LicenseStatus> checkLicenseByEmail(String email) async {
     try {
       final response = await http.get(
@@ -49,18 +53,19 @@ class LicenseService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final userEmail = email.toLowerCase().trim();
-        
+
         if (data.containsKey(userEmail)) {
           final info = data[userEmail] as Map<String, dynamic>;
           final status = info['status'] ?? 'pending';
-          
+
           if (status == 'active') {
             final expiresStr = info['expires_at'] as String?;
             if (expiresStr != null) {
               final expires = DateTime.tryParse(expiresStr);
               if (expires != null && expires.isAfter(DateTime.now())) {
                 await _cacheStatus('active', expiresStr);
-                return LicenseStatus(valid: true, reason: 'active', expiresAt: expiresStr, email: email);
+                return LicenseStatus(
+                    valid: true, reason: 'active', expiresAt: expiresStr, email: email);
               }
               return LicenseStatus(valid: false, reason: 'expired');
             }
@@ -102,13 +107,15 @@ class LicenseService {
     return LicenseStatus(valid: false, reason: status ?? 'not_found');
   }
 
-  // Регистрация — просто сохраняем локально
-  static Future<Map<String, dynamic>> register({required String email, required String fullName}) async {
+  static Future<Map<String, dynamic>> register({
+    required String email,
+    required String fullName,
+  }) async {
     await saveEmail(email);
     return {'success': true};
   }
 
-  // Отправляем заявку напрямую в Telegram
+  // Отправляем заявку на Superagent — он сразу уведомит владельца
   static Future<Map<String, dynamic>> submitPayment({
     required String email,
     required String fullName,
@@ -117,45 +124,26 @@ class LicenseService {
   }) async {
     try {
       final amount = plan == 'purchase' ? 3000 : 2800;
-      final bankName = paymentMethod == 'kaspi' ? 'Kaspi' : 'Freedom';
-      final planText = plan == 'purchase' ? '🛒 Покупка (3000 ₸)' : '🔄 Подписка (2800 ₸/мес)';
-      final requestId = '${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}_${DateTime.now().millisecondsSinceEpoch}';
-
-      final msg = '🔔 <b>Новая заявка на оплату Aika</b>\n\n'
-          '👤 <b>Имя:</b> ${fullName.isEmpty ? "—" : fullName}\n'
-          '📧 <b>Email:</b> <code>$email</code>\n'
-          '📱 <b>Тариф:</b> $planText\n'
-          '💰 <b>Сумма:</b> $amount ₸\n'
-          '🏦 <b>Способ:</b> $bankName\n'
-          '🆔 <b>ID:</b> <code>$requestId</code>';
-
-      final keyboard = {
-        'inline_keyboard': [
-          [
-            {'text': '✅ Разрешить', 'callback_data': 'approve:$email'},
-            {'text': '❌ Запретить', 'callback_data': 'reject:$email'},
-          ]
-        ]
-      };
 
       final response = await http.post(
-        Uri.parse('$_tgApi/sendMessage'),
+        Uri.parse(_submitUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'chat_id': _ownerChatId,
-          'text': msg,
-          'parse_mode': 'HTML',
-          'reply_markup': keyboard,
+          'email': email.toLowerCase().trim(),
+          'full_name': fullName.isEmpty ? email.split('@')[0] : fullName,
+          'plan': plan,
+          'payment_method': paymentMethod,
+          'amount': amount,
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
-      if (data['ok'] == true) {
-        // Сохраняем статус pending локально
+
+      if (data['success'] == true) {
         await _cacheStatus('pending', null);
-        return {'success': true, 'request_id': requestId};
+        return {'success': true, 'request_id': data['request_id'] ?? ''};
       }
-      return {'success': false, 'error': data['description'] ?? 'Ошибка Telegram'};
+      return {'success': false, 'error': data['error'] ?? 'Ошибка сервера'};
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
