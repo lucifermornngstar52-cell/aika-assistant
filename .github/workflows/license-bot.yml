@@ -18,136 +18,153 @@ jobs:
           BOT_TOKEN: ${{ secrets.AIKA_BOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          python3 << 'SCRIPT'
-          import json, urllib.request, os, datetime, subprocess
+          python3 - <<'PYEOF'
+          import json, urllib.request, urllib.parse, os, datetime, subprocess
 
           BOT = os.environ["BOT_TOKEN"]
           TG = f"https://api.telegram.org/bot{BOT}"
-          
-          # Читаем offset
+
+          # Read offset
           offset = 0
           try:
-            with open(".license_offset", "r") as f:
-              offset = int(f.read().strip())
+              with open(".license_offset", "r") as f:
+                  offset = int(f.read().strip())
           except:
-            pass
+              pass
 
-          # Получаем updates
-          url = f"{TG}/getUpdates?offset={offset}&timeout=3&allowed_updates=callback_query"
+          print(f"Starting with offset: {offset}")
+
+          # Get updates — include BOTH message and callback_query
+          params = urllib.parse.urlencode({
+              "offset": offset,
+              "timeout": 3,
+              "allowed_updates": '["message","callback_query"]'
+          })
+          url = f"{TG}/getUpdates?{params}"
+
           try:
-            with urllib.request.urlopen(url, timeout=15) as r:
-              data = json.loads(r.read())
+              with urllib.request.urlopen(url, timeout=15) as r:
+                  data = json.loads(r.read())
           except Exception as e:
-            print(f"TG error: {e}")
-            exit(0)
+              print(f"TG error: {e}")
+              exit(0)
 
           if not data.get("ok"):
-            print("TG not ok:", data)
-            exit(0)
+              print("TG not ok:", data)
+              exit(0)
 
           updates = data.get("result", [])
           print(f"Got {len(updates)} updates")
 
           if not updates:
-            exit(0)
+              exit(0)
 
-          # Читаем licenses.json
+          # Read licenses.json
           with open("licenses.json", "r") as f:
-            licenses = json.load(f)
+              licenses = json.load(f)
 
           changed = False
 
+          def tg_post(method, payload):
+              body = json.dumps(payload).encode()
+              req = urllib.request.Request(
+                  f"{TG}/{method}", data=body,
+                  headers={"Content-Type": "application/json"}
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=8) as r:
+                      return json.loads(r.read())
+              except Exception as e:
+                  print(f"{method} error: {e}")
+                  return {}
+
           for upd in updates:
-            offset = upd["update_id"] + 1
-            cb = upd.get("callback_query")
-            if not cb:
-              continue
+              offset = upd["update_id"] + 1
 
-            cb_data = cb.get("data", "")
-            if ":" not in cb_data:
-              continue
+              cb = upd.get("callback_query")
+              if not cb:
+                  # Regular message — just update offset
+                  continue
 
-            action, email = cb_data.split(":", 1)
-            email = email.lower().strip()
-            chat_id = cb["message"]["chat"]["id"]
-            msg_id = cb["message"]["message_id"]
-            orig_text = cb["message"].get("text", cb["message"].get("caption", ""))
+              cb_id   = cb["id"]
+              cb_data = cb.get("data", "")
+              msg     = cb.get("message", {})
+              chat_id = msg.get("chat", {}).get("id")
+              msg_id  = msg.get("message_id")
+              orig_text = msg.get("text", "")
 
-            # Answer callback
-            ack_url = f"{TG}/answerCallbackQuery"
-            ack_data = json.dumps({"callback_query_id": cb["id"]}).encode()
-            try:
-              req = urllib.request.Request(ack_url, data=ack_data, headers={"Content-Type": "application/json"})
-              urllib.request.urlopen(req, timeout=5)
-            except:
-              pass
+              print(f"callback: {cb_data} chat={chat_id} msg={msg_id}")
 
-            if action == "approve":
-              now = datetime.datetime.utcnow()
-              expires = now + datetime.timedelta(days=30)
-              licenses[email] = {
-                "status": "active",
-                "email": email,
-                "expires_at": expires.isoformat() + "Z",
-                "plan": "purchase",
-                "approved_at": now.isoformat() + "Z"
-              }
-              changed = True
-              new_text = orig_text + "\n\n✅ РАЗРЕШЕНО — активно 30 дней"
-              print(f"APPROVED: {email}")
+              # ALWAYS answer callback first (removes spinner)
+              tg_post("answerCallbackQuery", {
+                  "callback_query_id": cb_id,
+                  "text": "Обрабатываю..."
+              })
 
-            elif action == "reject":
-              licenses[email] = {
-                "status": "rejected",
-                "email": email,
-                "rejected_at": datetime.datetime.utcnow().isoformat() + "Z"
-              }
-              changed = True
-              new_text = orig_text + "\n\n❌ ЗАПРЕЩЕНО"
-              print(f"REJECTED: {email}")
+              if ":" not in cb_data:
+                  continue
 
-            else:
-              continue
+              action, email = cb_data.split(":", 1)
+              email = email.lower().strip()
 
-            # Edit message in Telegram
-            edit_url = f"{TG}/editMessageText"
-            edit_data = json.dumps({
-              "chat_id": chat_id,
-              "message_id": msg_id,
-              "text": new_text,
-              "parse_mode": "HTML"
-            }).encode()
-            try:
-              req = urllib.request.Request(edit_url, data=edit_data, headers={"Content-Type": "application/json"})
-              urllib.request.urlopen(req, timeout=5)
-            except Exception as e:
-              print(f"edit error: {e}")
+              if action == "approve":
+                  now = datetime.datetime.utcnow()
+                  expires = now + datetime.timedelta(days=30)
+                  licenses[email] = {
+                      "status": "active",
+                      "email": email,
+                      "expires_at": expires.isoformat() + "Z",
+                      "plan": "purchase",
+                      "approved_at": now.isoformat() + "Z"
+                  }
+                  changed = True
+                  new_text = orig_text + "\n\n✅ <b>ОДОБРЕНО</b> — доступ активен 30 дней"
+                  print(f"APPROVED: {email}")
 
-          # Сохраняем offset
+              elif action == "reject":
+                  licenses[email] = {
+                      "status": "rejected",
+                      "email": email,
+                      "rejected_at": datetime.datetime.utcnow().isoformat() + "Z"
+                  }
+                  changed = True
+                  new_text = orig_text + "\n\n❌ <b>ОТКЛОНЕНО</b>"
+                  print(f"REJECTED: {email}")
+
+              else:
+                  continue
+
+              # Edit original message — remove buttons, add status
+              tg_post("editMessageText", {
+                  "chat_id": chat_id,
+                  "message_id": msg_id,
+                  "text": new_text,
+                  "parse_mode": "HTML",
+                  "reply_markup": {"inline_keyboard": []}
+              })
+
+          # Save offset
           with open(".license_offset", "w") as f:
-            f.write(str(offset))
-
-          # Если были изменения — коммитим
-          if changed:
-            with open("licenses.json", "w") as f:
-              json.dump(licenses, f, indent=2, ensure_ascii=False)
-            subprocess.run(["git", "config", "user.email", "aika-bot@auto.com"])
-            subprocess.run(["git", "config", "user.name", "Aika Bot"])
-            subprocess.run(["git", "add", "licenses.json", ".license_offset"])
-            subprocess.run(["git", "commit", "-m", f"[bot] update licenses"])
-            subprocess.run(["git", "push"])
-            print("Committed!")
-          else:
-            # Обновляем только offset
-            with open(".license_offset", "w") as f:
               f.write(str(offset))
-            subprocess.run(["git", "config", "user.email", "aika-bot@auto.com"])
-            subprocess.run(["git", "config", "user.name", "Aika Bot"])
-            subprocess.run(["git", "add", ".license_offset"])
-            result = subprocess.run(["git", "diff", "--cached", "--quiet"])
-            if result.returncode != 0:
-              subprocess.run(["git", "commit", "-m", "[bot] update offset"])
+
+          # Commit
+          if changed:
+              with open("licenses.json", "w") as f:
+                  json.dump(licenses, f, indent=2, ensure_ascii=False)
+              subprocess.run(["git", "config", "user.email", "aika-bot@auto.com"])
+              subprocess.run(["git", "config", "user.name", "Aika Bot"])
+              subprocess.run(["git", "add", "licenses.json", ".license_offset"])
+              subprocess.run(["git", "commit", "-m", "[bot] update licenses"])
               subprocess.run(["git", "push"])
+              print("Licenses committed!")
+          else:
+              subprocess.run(["git", "config", "user.email", "aika-bot@auto.com"])
+              subprocess.run(["git", "config", "user.name", "Aika Bot"])
+              subprocess.run(["git", "add", ".license_offset"])
+              result = subprocess.run(["git", "diff", "--cached", "--quiet"])
+              if result.returncode != 0:
+                  subprocess.run(["git", "commit", "-m", "[bot] update offset"])
+                  subprocess.run(["git", "push"])
 
           print("Done")
-          'SCRIPT'
+          PYEOF
