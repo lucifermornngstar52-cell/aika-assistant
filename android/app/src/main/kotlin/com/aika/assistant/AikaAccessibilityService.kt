@@ -97,7 +97,7 @@ class AikaAccessibilityService : AccessibilityService() {
 
         // Машина состояний отправки
         if (sendStep != SendStep.IDLE) {
-            handler.postDelayed({ processStep(event) }, 800)
+            handler.postDelayed({ processStep(event) }, 1000)
         }
     }
 
@@ -110,7 +110,7 @@ class AikaAccessibilityService : AccessibilityService() {
                 if (evtPkg == targetPkg) {
                     sendStep = SendStep.SEARCHING_CONTACT
                     stepRetry = 0
-                    handler.postDelayed({ findAndClickContact() }, 1200)
+                    handler.postDelayed({ findAndClickContact() }, 2000)
                 } else {
                     stepRetry++
                     if (stepRetry > 10) { resetSend("error", "Не удалось открыть $pendingApp"); return }
@@ -127,33 +127,52 @@ class AikaAccessibilityService : AccessibilityService() {
     private fun findAndClickContact() {
         if (sendStep == SendStep.IDLE) return
         stepRetry++
-        if (stepRetry > 15) { resetSend("error", "Контакт не найден: $pendingContact"); return }
+        if (stepRetry > 20) { resetSend("error", "Контакт не найден: $pendingContact"); return }
 
         val root = rootInActiveWindow ?: run {
-            handler.postDelayed({ findAndClickContact() }, 800); return
+            handler.postDelayed({ findAndClickContact() }, 1000); return
         }
 
-        // Ищем поисковую строку и кликаем
-        val searchNode = findSearchBar(root)
-        if (searchNode != null) {
-            searchNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeContactName(pendingContact) }, 600)
-            return
-        }
-
-        // Ищем контакт в списке напрямую
-        val contactNode = findNodeByText(root, pendingContact)
+        // 1. Контакт уже виден в списке — кликаем (с поиском кликабельного родителя)
+        val contactNode = root.findAccessibilityNodeInfosByText(pendingContact)
+            ?.firstOrNull()
+            ?: findNodeContainingText(root, pendingContact)
         if (contactNode != null) {
-            contactNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            sendStep = SendStep.WAITING_CHAT_OPEN
-            stepRetry = 0
-            handler.postDelayed({ waitForChatAndType() }, 1500)
+            val clickable = if (contactNode.isClickable) contactNode
+                else generateSequence(contactNode.parent) { it.parent }.take(5).firstOrNull { it.isClickable }
+            if (clickable != null) {
+                clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                sendStep = SendStep.WAITING_CHAT_OPEN
+                stepRetry = 0
+                handler.postDelayed({ waitForChatAndType() }, 2500)
+                return
+            }
+        }
+
+        // 2. Ищем иконку/кнопку поиска (лупа) и нажимаем её
+        val searchBtn = findNodeByCondition(root) { node ->
+            val desc = (node.contentDescription ?: "").toString().lowercase()
+            val rid  = (node.viewIdResourceName ?: "").lowercase()
+            node.isClickable && !node.className.toString().contains("EditText") &&
+            (desc.contains("search") || desc.contains("поиск") ||
+             rid.contains("search_btn") || rid.contains("menu_search") || rid.contains("action_search"))
+        }
+        if (searchBtn != null) {
+            searchBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            handler.postDelayed({ typeContactName(pendingContact) }, 1000)
             return
         }
 
-        handler.postDelayed({ findAndClickContact() }, 800)
-    }
+        // 3. Поле поиска уже открыто — вводим имя
+        val searchBar = findSearchBar(root)
+        if (searchBar != null) {
+            searchBar.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            handler.postDelayed({ typeContactName(pendingContact) }, 800)
+            return
+        }
 
+        handler.postDelayed({ findAndClickContact() }, 1000)
+    }
     private fun typeContactName(name: String) {
         val root = rootInActiveWindow ?: return
         // Находим активное поле ввода (поиск)
@@ -180,7 +199,7 @@ class AikaAccessibilityService : AccessibilityService() {
             node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             sendStep = SendStep.WAITING_CHAT_OPEN
             stepRetry = 0
-            handler.postDelayed({ waitForChatAndType() }, 1500)
+            handler.postDelayed({ waitForChatAndType() }, 2500)
         } else {
             handler.postDelayed({ clickContactFromSearch() }, 800)
         }
@@ -533,4 +552,5 @@ class AikaAccessibilityService : AccessibilityService() {
 
 
 }
+
 
