@@ -209,28 +209,31 @@ class AikaAccessibilityService : AccessibilityService() {
     private fun waitForChatAndType() {
         if (sendStep == SendStep.IDLE) return
         stepRetry++
-        if (stepRetry > 20) { resetSend("error", "Чат не открылся"); return }
+        if (stepRetry > 25) { resetSend("error", "Чат не открылся"); return }
 
         val root = rootInActiveWindow ?: run {
-            handler.postDelayed({ waitForChatAndType() }, 800); return
+            handler.postDelayed({ waitForChatAndType() }, 1000); return
         }
 
-        // Убеждаемся что поисковая строка уже НЕ видна — мы в чате
-        val searchBar = findSearchBar(root)
-        if (searchBar != null) {
-            // Ещё на экране поиска — ждём
-            handler.postDelayed({ waitForChatAndType() }, 800)
-            return
-        }
-
-        // Ищем поле ввода сообщений (исключая search-поля)
+        // Ищем поле ввода сообщений СТРОГО — по resource-id мессенджера
+        // НЕ проверяем отсутствие searchBar — он есть и в чате (в тулбаре)
         val inputField = findMessageInputStrict(root)
+
         if (inputField != null && inputField.isEditable) {
+            // Дополнительная защита: убеждаемся что это НЕ строка поиска контакта
+            // Если поле содержит имя контакта — мы ещё в поиске, ждём
+            val currentText = (inputField.text ?: "").toString()
+            val isSearchField = currentText.lowercase().contains(pendingContact.lowercase().take(3)) &&
+                                currentText.length < 30
+            if (isSearchField) {
+                handler.postDelayed({ waitForChatAndType() }, 1000)
+                return
+            }
             sendStep = SendStep.TYPING
             inputField.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeMessageFresh() }, 700)
+            handler.postDelayed({ typeMessageFresh() }, 800)
         } else {
-            handler.postDelayed({ waitForChatAndType() }, 800)
+            handler.postDelayed({ waitForChatAndType() }, 1000)
         }
     }
 
@@ -302,10 +305,16 @@ class AikaAccessibilityService : AccessibilityService() {
 
     /** Строгий поиск поля ввода сообщения — исключает строки поиска и заголовки */
     private fun findMessageInputStrict(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // Известные resource-id полей сообщения
-        val msgRids = listOf("entry", "message_et", "chat_message_text", "chat_input",
-                             "compose_text", "text_input", "msg_input", "message_input",
-                             "input_text", "compose_box")
+        // Известные resource-id полей сообщения (WhatsApp: entry; Telegram: chat_message_text)
+        val msgRids = listOf(
+                             // WhatsApp
+                             "entry",
+                             // Telegram
+                             "chat_message_text", "editTextMessage",
+                             // Общие
+                             "message_et", "chat_input", "compose_text",
+                             "text_input", "msg_input", "message_input",
+                             "input_text", "compose_box", "message_box")
         // Явные исключения — поисковые поля
         val searchRids = listOf("search", "поиск", "find", "query", "filter")
         val searchDescs = listOf("search", "поиск", "найти")
