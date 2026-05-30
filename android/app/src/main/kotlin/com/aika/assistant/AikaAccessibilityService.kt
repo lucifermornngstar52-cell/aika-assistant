@@ -2,50 +2,44 @@ package com.aika.assistant
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Path
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import io.flutter.plugin.common.MethodChannel
 
 class AikaAccessibilityService : AccessibilityService() {
 
     companion object {
+        var instance: AikaAccessibilityService? = null
         var currentPackage: String = ""
         var currentAppLabel: String = ""
         const val ACTION_SCREEN_EVENT = "com.aika.assistant.SCREEN_EVENT"
         const val ACTION_SEND_MESSAGE = "com.aika.assistant.SEND_MESSAGE"
-        const val EXTRA_PACKAGE    = "package"
-        const val EXTRA_LABEL      = "label"
-        const val EXTRA_EVENT_TYPE = "event_type"
-        const val EXTRA_APP        = "app"        // "whatsapp" | "telegram"
-        const val EXTRA_CONTACT    = "contact"
-        const val EXTRA_MESSAGE    = "message"
-
-        // Singleton ссылка на сервис для вызова из broadcast
-        var instance: AikaAccessibilityService? = null
+        var flutterChannel: MethodChannel? = null
     }
 
+    // ── Send message state ──────────────────────────────────
+    private var pendingApp: String? = null
+    private var pendingContact: String? = null
+    private var pendingMessage: String? = null
+    private var sendStep: String = "idle"
     private val handler = Handler(Looper.getMainLooper())
-
-    // Состояние машины отправки
-    private var pendingApp: String = ""
-    private var pendingContact: String = ""
-    private var pendingMessage: String = ""
-    private enum class SendStep { IDLE, WAITING_APP_OPEN, SEARCHING_CONTACT, WAITING_CHAT_OPEN, TYPING, DONE }
-    private var sendStep = SendStep.IDLE
-    private var stepRetry = 0
 
     override fun onServiceConnected() {
         instance = this
         val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            notificationTimeout = 200
+            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                    AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+            notificationTimeout = 100
         }
         serviceInfo = info
     }
@@ -55,360 +49,201 @@ class AikaAccessibilityService : AccessibilityService() {
         instance = null
     }
 
-    // ── Запуск отправки ─────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+    // SEND MESSAGE
+    // ═══════════════════════════════════════════════════════════
+
     fun startSendMessage(app: String, contact: String, message: String) {
         pendingApp = app
         pendingContact = contact
         pendingMessage = message
-        sendStep = SendStep.WAITING_APP_OPEN
-        stepRetry = 0
+        sendStep = "open_app"
 
-        val pkg = if (app == "whatsapp") "com.whatsapp" else "org.telegram.messenger"
-        val intent = packageManager.getLaunchIntentForPackage(pkg)?.apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        val pkg = when {
+            app.contains("whatsapp", true) -> "com.whatsapp"
+            app.contains("telegram", true) -> "org.telegram.messenger"
+            app.contains("instagram", true) -> "com.instagram.android"
+            app.contains("вконтакте", true) || app.contains("vk", true) -> "com.vkontakte.android"
+            app.contains("viber", true) -> "com.viber.voip"
+            else -> app
         }
-        if (intent != null) {
-            startActivity(intent)
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launchIntent)
         } else {
-            sendStep = SendStep.IDLE
-            notifyFlutter("error", "Приложение не установлено")
+            notifyFlutter("error", "Приложение не найдено: $app")
+            resetSend(null, null)
         }
     }
 
-    // ── Accessibility events ────────────────────────────────────────────────
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        // Трекинг текущего приложения
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val pkg = event.packageName?.toString() ?: ""
-            if (pkg.isNotEmpty() && pkg != packageName && pkg != "android" && pkg != currentPackage) {
-                currentPackage = pkg
-                currentAppLabel = getAppLabel(pkg)
-                val broadcastIntent = Intent(ACTION_SCREEN_EVENT).apply {
-                    setPackage(packageName)
-                    putExtra(EXTRA_PACKAGE, pkg)
-                    putExtra(EXTRA_LABEL, currentAppLabel)
-                    putExtra(EXTRA_EVENT_TYPE, "app_changed")
-                }
-                sendBroadcast(broadcastIntent)
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg != "com.aika.assistant") {
+            currentPackage = pkg
+            currentAppLabel = try {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(pkg, 0)
+                ).toString()
+            } catch (e: Exception) { pkg }
+
+            val broadcast = Intent(ACTION_SCREEN_EVENT).apply {
+                putExtra("package", pkg)
+                putExtra("label", currentAppLabel)
             }
+            sendBroadcast(broadcast)
         }
 
-        // Машина состояний отправки
-        if (sendStep != SendStep.IDLE) {
-            handler.postDelayed({ processStep(event) }, 1000)
+        if (sendStep != "idle") {
+            processStep(event)
         }
     }
 
     private fun processStep(event: AccessibilityEvent) {
-        val targetPkg = if (pendingApp == "whatsapp") "com.whatsapp" else "org.telegram.messenger"
-        val evtPkg = event.packageName?.toString() ?: ""
+        val pkg = event.packageName?.toString() ?: return
+        val expectedPkg = when {
+            pendingApp?.contains("whatsapp", true) == true -> "com.whatsapp"
+            pendingApp?.contains("telegram", true) == true -> "org.telegram.messenger"
+            pendingApp?.contains("instagram", true) == true -> "com.instagram.android"
+            pendingApp?.contains("вконтакте", true) == true -> "com.vkontakte.android"
+            pendingApp?.contains("viber", true) == true -> "com.viber.voip"
+            else -> pendingApp ?: ""
+        }
+
+        if (!pkg.contains(expectedPkg) && !expectedPkg.contains(pkg)) return
 
         when (sendStep) {
-            SendStep.WAITING_APP_OPEN -> {
-                if (evtPkg == targetPkg) {
-                    sendStep = SendStep.SEARCHING_CONTACT
-                    stepRetry = 0
-                    handler.postDelayed({ findAndClickContact() }, 2000)
-                } else {
-                    stepRetry++
-                    if (stepRetry > 10) { resetSend("error", "Не удалось открыть $pendingApp"); return }
-                }
+            "open_app" -> {
+                sendStep = "find_contact"
+                handler.postDelayed({ findAndClickContact() }, 1500)
             }
-            SendStep.SEARCHING_CONTACT,
-            SendStep.WAITING_CHAT_OPEN,
-            SendStep.TYPING -> { /* handled by findAndClickContact / typeAndSend */ }
-            else -> {}
+            "find_contact" -> {
+                handler.postDelayed({ findAndClickContact() }, 500)
+            }
+            "wait_chat" -> {
+                handler.postDelayed({ waitForChatAndType() }, 500)
+            }
         }
     }
 
-    // ── Поиск контакта ──────────────────────────────────────────────────────
     private fun findAndClickContact() {
-        if (sendStep == SendStep.IDLE) return
-        stepRetry++
-        if (stepRetry > 20) { resetSend("error", "Контакт не найден: $pendingContact"); return }
-
         val root = rootInActiveWindow ?: run {
-            handler.postDelayed({ findAndClickContact() }, 1000); return
+            notifyFlutter("error", "Нет доступа к экрану")
+            resetSend(null, null)
+            return
         }
 
-        // 1. Контакт уже виден в списке — кликаем (с поиском кликабельного родителя)
-        val contactNode = root.findAccessibilityNodeInfosByText(pendingContact)
-            ?.firstOrNull()
-            ?: findNodeContainingText(root, pendingContact)
-        if (contactNode != null) {
-            val clickable = if (contactNode.isClickable) contactNode
-                else generateSequence(contactNode.parent) { it.parent }.take(5).firstOrNull { it.isClickable }
-            if (clickable != null) {
-                clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                sendStep = SendStep.WAITING_CHAT_OPEN
-                stepRetry = 0
-                handler.postDelayed({ waitForChatAndType() }, 2500)
-                return
-            }
-        }
-
-        // 2. Ищем иконку/кнопку поиска (лупа) и нажимаем её
-        val searchBtn = findNodeByCondition(root) { node ->
-            val desc = (node.contentDescription ?: "").toString().lowercase()
-            val rid  = (node.viewIdResourceName ?: "").lowercase()
-            node.isClickable && !node.className.toString().contains("EditText") &&
-            (desc.contains("search") || desc.contains("поиск") ||
-             rid.contains("search_btn") || rid.contains("menu_search") || rid.contains("action_search"))
-        }
+        // Пробуем нажать на иконку поиска
+        val searchBtn = findSearchButton(root)
         if (searchBtn != null) {
             searchBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeContactName(pendingContact) }, 1000)
+            handler.postDelayed({ typeContactName() }, 800)
             return
         }
 
-        // 3. Поле поиска уже открыто — вводим имя
-        val searchBar = findSearchBar(root)
+        // Пробуем найти поле поиска
+        val searchBar = findSearchInput(root)
         if (searchBar != null) {
             searchBar.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeContactName(pendingContact) }, 800)
+            handler.postDelayed({ typeContactName() }, 500)
             return
         }
 
-        handler.postDelayed({ findAndClickContact() }, 1000)
+        // Ищем контакт прямо в списке
+        val contact = pendingContact ?: return
+        val node = findNodeContainingText(root, contact)
+        if (node != null) {
+            clickNodeOrParent(node)
+            sendStep = "wait_chat"
+            handler.postDelayed({ waitForChatAndType() }, 1500)
+        } else {
+            notifyFlutter("error", "Контакт не найден: $contact")
+            resetSend(null, null)
+        }
     }
-    private fun typeContactName(name: String) {
+
+    private fun typeContactName() {
         val root = rootInActiveWindow ?: return
-        // Находим активное поле ввода (поиск)
-        val searchInput = findEditText(root) ?: findSearchBar(root) ?: return
+        val contact = pendingContact ?: return
+
+        val searchInput = findSearchInput(root) ?: run {
+            notifyFlutter("error", "Поле поиска не найдено")
+            resetSend(null, null)
+            return
+        }
+
         searchInput.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        val args = Bundle().apply { putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, name) }
+        val args = Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, contact)
+        }
         searchInput.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        stepRetry = 0
-        handler.postDelayed({ clickContactFromSearch() }, 1200)
+
+        sendStep = "click_contact"
+        handler.postDelayed({ clickContactFromSearch() }, 1500)
     }
 
     private fun clickContactFromSearch() {
-        if (sendStep == SendStep.IDLE) return
-        stepRetry++
-        if (stepRetry > 10) { resetSend("error", "Контакт не найден в поиске"); return }
+        val root = rootInActiveWindow ?: return
+        val contact = pendingContact ?: return
 
-        val root = rootInActiveWindow ?: run {
-            handler.postDelayed({ clickContactFromSearch() }, 800); return
-        }
-
-        // Ищем первый результат с именем контакта (частичное совпадение)
-        val node = findNodeContainingText(root, pendingContact)
+        val node = findNodeContainingText(root, contact)
         if (node != null) {
-            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            sendStep = SendStep.WAITING_CHAT_OPEN
-            stepRetry = 0
-            handler.postDelayed({ waitForChatAndType() }, 2500)
+            clickNodeOrParent(node)
+            sendStep = "wait_chat"
+            handler.postDelayed({ waitForChatAndType() }, 2000)
         } else {
-            handler.postDelayed({ clickContactFromSearch() }, 800)
+            notifyFlutter("error", "Контакт не найден в результатах: $contact")
+            resetSend(null, null)
         }
     }
 
-    // ── Ожидание открытия чата и ввод ──────────────────────────────────────
     private fun waitForChatAndType() {
-        if (sendStep == SendStep.IDLE) return
-        stepRetry++
-        if (stepRetry > 25) { resetSend("error", "Чат не открылся"); return }
-
         val root = rootInActiveWindow ?: run {
-            handler.postDelayed({ waitForChatAndType() }, 1000); return
+            notifyFlutter("error", "Нет доступа к чату")
+            resetSend(null, null)
+            return
         }
 
-        // Ищем поле ввода сообщений СТРОГО — по resource-id мессенджера
-        // НЕ проверяем отсутствие searchBar — он есть и в чате (в тулбаре)
-        val inputField = findMessageInputStrict(root)
-
-        if (inputField != null && inputField.isEditable) {
-            // Дополнительная защита: убеждаемся что это НЕ строка поиска контакта
-            // Если поле содержит имя контакта — мы ещё в поиске, ждём
-            val currentText = (inputField.text ?: "").toString()
-            val isSearchField = currentText.lowercase().contains(pendingContact.lowercase().take(3)) &&
-                                currentText.length < 30
-            if (isSearchField) {
-                handler.postDelayed({ waitForChatAndType() }, 1000)
-                return
-            }
-            sendStep = SendStep.TYPING
+        val inputField = findMessageInput(root)
+        if (inputField != null) {
             inputField.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeMessageFresh() }, 800)
+            handler.postDelayed({ typeMessageInField(inputField) }, 500)
         } else {
             handler.postDelayed({ waitForChatAndType() }, 1000)
         }
     }
 
-    // Вводим сообщение — берём свежую ноду чтобы не держать устаревшую
-    private fun typeMessageFresh() {
-        val root = rootInActiveWindow ?: return
-        val inputField = findMessageInputStrict(root) ?: return
+    private fun typeMessageInField(node: AccessibilityNodeInfo) {
+        val fresh = findMessageInput(rootInActiveWindow ?: return) ?: node
         val args = Bundle().apply {
             putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pendingMessage)
         }
-        inputField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        handler.postDelayed({ clickSendButton() }, 700)
-    }
-
-    private fun typeMessage(node: AccessibilityNodeInfo) {
-        // Prefer fresh strict lookup over cached node
-        val root = rootInActiveWindow
-        val target = if (root != null) findMessageInputStrict(root) ?: node else node
-        val args = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pendingMessage)
-        }
-        target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        handler.postDelayed({ clickSendButton() }, 700)
+        fresh.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        handler.postDelayed({ clickSendButton() }, 600)
     }
 
     private fun clickSendButton() {
         val root = rootInActiveWindow ?: return
-        // Ищем кнопку отправки по content-description
         val sendBtn = findSendButton(root)
         if (sendBtn != null) {
             sendBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            notifyFlutter("success", "Сообщение отправлено $pendingContact через $pendingApp")
-            resetSend(null, null)
+            notifyFlutter("success", "Сообщение отправлено")
         } else {
-            // Fallback: нажимаем Enter
+            // Fallback: Enter key
             val inputField = findMessageInput(root)
             inputField?.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
-            notifyFlutter("success", "Сообщение отправлено $pendingContact")
-            resetSend(null, null)
+            notifyFlutter("success", "Сообщение отправлено (Enter)")
         }
+        resetSend(null, null)
     }
 
-    // ── Поиск нод ───────────────────────────────────────────────────────────
-    private fun findSearchBar(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val descKeywords = listOf("search", "поиск", "найти", "search_src_text")
-        return findNodeByCondition(root) { node ->
-            val desc = (node.contentDescription ?: "").toString().lowercase()
-            val rid  = (node.viewIdResourceName ?: "").lowercase()
-            val hint = (node.hintText ?: "").toString().lowercase()
-            descKeywords.any { desc.contains(it) || rid.contains(it) || hint.contains(it) }
-        }
-    }
+    // ═══════════════════════════════════════════════════════════
+    // SCREEN ACTIONS (вызываются из Flutter)
+    // ═══════════════════════════════════════════════════════════
 
-    private fun findEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        return findNodeByCondition(root) { node ->
-            node.className?.toString()?.contains("EditText") == true && node.isEnabled
-        }
-    }
-
-    private fun findMessageInput(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // WhatsApp: entry / message_et; Telegram: chat_message_text
-        val ridKeywords = listOf("entry", "message_et", "chat_message", "input", "compose", "text_input")
-        return findNodeByCondition(root) { node ->
-            val rid = (node.viewIdResourceName ?: "").lowercase()
-            val cls = (node.className ?: "").toString()
-            cls.contains("EditText") && (ridKeywords.any { rid.contains(it) } || node.isEditable)
-        }
-    }
-
-    /** Строгий поиск поля ввода сообщения — исключает строки поиска и заголовки */
-    private fun findMessageInputStrict(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // Известные resource-id полей сообщения (WhatsApp: entry; Telegram: chat_message_text)
-        val msgRids = listOf(
-                             // WhatsApp
-                             "entry",
-                             // Telegram
-                             "chat_message_text", "editTextMessage",
-                             // Общие
-                             "message_et", "chat_input", "compose_text",
-                             "text_input", "msg_input", "message_input",
-                             "input_text", "compose_box", "message_box")
-        // Явные исключения — поисковые поля
-        val searchRids = listOf("search", "поиск", "find", "query", "filter")
-        val searchDescs = listOf("search", "поиск", "найти")
-
-        // 1) Сначала ищем по известным resource-id
-        val byRid = findNodeByCondition(root) { node ->
-            val rid = (node.viewIdResourceName ?: "").lowercase()
-            val cls = (node.className ?: "").toString()
-            cls.contains("EditText") && msgRids.any { rid.contains(it) }
-        }
-        if (byRid != null) return byRid
-
-        // 2) Fallback: любой editable EditText, не являющийся поиском
-        return findNodeByCondition(root) { node ->
-            val rid  = (node.viewIdResourceName ?: "").lowercase()
-            val cls  = (node.className ?: "").toString()
-            val desc = (node.contentDescription ?: "").toString().lowercase()
-            val hint = (node.hintText ?: "").toString().lowercase()
-            val isEditText = cls.contains("EditText")
-            val isSearch   = searchRids.any { rid.contains(it) } ||
-                             searchDescs.any { desc.contains(it) || hint.contains(it) }
-            isEditText && node.isEditable && !isSearch
-        }
-    }
-
-    private fun findSendButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // WhatsApp: send, conversation_send; Telegram: chat_send_button, btn_send
-        val descKeys = listOf("send", "отправить", "submit", "send message")
-        val ridKeys  = listOf("send", "btn_send", "chat_send", "conversation_send",
-                              "action_send", "send_button", "mic_send")
-        return findNodeByCondition(root) { node ->
-            val desc = (node.contentDescription ?: "").toString().lowercase()
-            val rid  = (node.viewIdResourceName ?: "").lowercase()
-            (descKeys.any { desc.contains(it) } || ridKeys.any { rid.contains(it) }) && node.isClickable
-        }
-    }
-
-    private fun findNodeByText(root: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        val results = root.findAccessibilityNodeInfosByText(text)
-        return results?.firstOrNull()
-    }
-
-    private fun findNodeContainingText(root: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        val lower = text.lowercase()
-        return findNodeByCondition(root) { node ->
-            val nodeText = (node.text ?: "").toString().lowercase()
-            nodeText.contains(lower) && node.isClickable
-        }
-    }
-
-    private fun findNodeByCondition(
-        root: AccessibilityNodeInfo,
-        condition: (AccessibilityNodeInfo) -> Boolean
-    ): AccessibilityNodeInfo? {
-        if (condition(root)) return root
-        for (i in 0 until root.childCount) {
-            val child = root.getChild(i) ?: continue
-            val found = findNodeByCondition(child, condition)
-            if (found != null) return found
-        }
-        return null
-    }
-
-    // ── Утилиты ─────────────────────────────────────────────────────────────
-    private fun notifyFlutter(status: String, message: String) {
-        val intent = Intent("com.aika.assistant.SEND_RESULT").apply {
-            setPackage(packageName)
-            putExtra("status", status)
-            putExtra("message", message)
-        }
-        sendBroadcast(intent)
-    }
-
-    private fun resetSend(status: String?, msg: String?) {
-        if (status != null && msg != null) notifyFlutter(status, msg)
-        sendStep = SendStep.IDLE
-        stepRetry = 0
-        pendingApp = ""
-        pendingContact = ""
-        pendingMessage = ""
-    }
-
-    private fun getAppLabel(packageName: String): String {
-        return try {
-            val pm = applicationContext.packageManager
-            val appInfo = pm.getApplicationInfo(packageName, 0)
-            pm.getApplicationLabel(appInfo).toString()
-        } catch (e: Exception) { packageName }
-    }
-
-    override fun onInterrupt() {}
-    // ── Screen Reader методы ─────────────────────────────────────────────────
-
-    /** Собирает весь текст с текущего экрана */
     fun getAllScreenText(): String {
         val root = rootInActiveWindow ?: return ""
         val sb = StringBuilder()
@@ -416,45 +251,274 @@ class AikaAccessibilityService : AccessibilityService() {
         return sb.toString()
     }
 
-    private fun collectTextFromNode(node: AccessibilityNodeInfo?, sb: StringBuilder, depth: Int) {
-        if (node == null || depth > 10) return
-        val text = node.text?.toString()?.trim()
-        val desc = node.contentDescription?.toString()?.trim()
-        when {
-            !text.isNullOrEmpty() -> sb.appendLine(text)
-            !desc.isNullOrEmpty() -> sb.appendLine(desc)
+    /** Клик по элементу с текстом */
+    fun clickByText(targetText: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = findNodeContainingText(root, targetText) ?: return false
+        return clickNodeOrParent(node)
+    }
+
+    /** Клик по элементу с точным текстом */
+    fun clickByExactText(targetText: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = findNodeByExactText(root, targetText) ?: return false
+        return clickNodeOrParent(node)
+    }
+
+    /** Клик по описанию (content-description) */
+    fun clickByDescription(desc: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = findNodeByDescription(root, desc) ?: return false
+        return clickNodeOrParent(node)
+    }
+
+    /** Клик по resource-id */
+    fun clickById(resourceId: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val nodes = root.findAccessibilityNodeInfosByViewId(resourceId)
+        if (nodes.isNullOrEmpty()) return false
+        return clickNodeOrParent(nodes[0])
+    }
+
+    /** Ввод текста в поле с текстом/id */
+    fun typeInField(hintOrId: String, text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        // Ищем по id
+        var node = root.findAccessibilityNodeInfosByViewId(hintOrId)?.firstOrNull()
+        // Ищем по тексту/hint
+        if (node == null) node = findEditTextByHint(root, hintOrId)
+        if (node == null) node = findNodeContainingText(root, hintOrId)
+        if (node == null) return false
+
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val args = Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        for (i in 0 until node.childCount) {
-            collectTextFromNode(node.getChild(i), sb, depth + 1)
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        return true
+    }
+
+    /** Скролл */
+    fun scroll(direction: String) {
+        val action = if (direction == "up" || direction == "left")
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        else
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        scrollNodeRecursive(rootInActiveWindow, action)
+    }
+
+    /** Назад */
+    fun performBack() = performGlobalAction(GLOBAL_ACTION_BACK)
+
+    /** Домой */
+    fun pressHome() = performGlobalAction(GLOBAL_ACTION_HOME)
+
+    /** Недавние */
+    fun pressRecents() = performGlobalAction(GLOBAL_ACTION_RECENTS)
+
+    /** Шторка уведомлений */
+    fun openNotifications() = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+
+    /** Быстрые настройки */
+    fun openQuickSettings() = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+
+    /** Блокировка экрана */
+    fun lockScreen() = performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+
+    /** Тап по координатам */
+    fun tapAt(x: Float, y: Float) {
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 50)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Долгий тап */
+    fun longTapAt(x: Float, y: Float) {
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 800)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Свайп */
+    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long = 300) {
+        val path = Path().apply {
+            moveTo(x1, y1)
+            lineTo(x2, y2)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Получить список всех кликабельных элементов с текстом */
+    fun getClickableElements(): List<Map<String, Any>> {
+        val root = rootInActiveWindow ?: return emptyList()
+        val result = mutableListOf<Map<String, Any>>()
+        collectClickableNodes(root, result)
+        return result
+    }
+
+    /** Получить элемент в фокусе */
+    fun getFocusedElement(): Map<String, Any?>? {
+        val root = rootInActiveWindow ?: return null
+        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        return mapOf(
+            "text" to (node.text?.toString() ?: ""),
+            "hint" to (node.hintText?.toString() ?: ""),
+            "class" to (node.className?.toString() ?: ""),
+            "id" to (node.viewIdResourceName ?: ""),
+            "x" to rect.centerX(),
+            "y" to rect.centerY()
+        )
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // NODE FINDERS
+    // ═══════════════════════════════════════════════════════════
+
+    private fun findSearchButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val descs = listOf("search", "поиск", "Search")
+        for (desc in descs) {
+            val nodes = root.findAccessibilityNodeInfosByText(desc)
+            if (!nodes.isNullOrEmpty()) {
+                val btn = nodes.firstOrNull { it.isClickable } ?: nodes.firstOrNull()
+                if (btn != null) return btn
+            }
+        }
+        return null
+    }
+
+    private fun findSearchInput(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val ids = listOf(
+            "com.whatsapp:id/search_input",
+            "org.telegram.messenger:id/search_field",
+            "com.instagram.android:id/action_bar_search_edit_text",
+            "com.vkontakte.android:id/search_edit_text"
+        )
+        for (id in ids) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty()) return nodes[0]
+        }
+        // Fallback — ищем EditText
+        return findEditTextByHint(root, "поиск")
+            ?: findEditTextByHint(root, "search")
+    }
+
+    private fun findMessageInput(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val strictIds = listOf(
+            "com.whatsapp:id/entry",
+            "org.telegram.messenger:id/chat_message_text",
+            "org.telegram.messenger:id/editTextMessage",
+            "com.instagram.android:id/direct_text_message_edit_text",
+            "com.vkontakte.android:id/message_text",
+            "com.viber.voip:id/chat_edittext"
+        )
+        for (id in strictIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty()) return nodes[0]
+        }
+        // Fallback — EditText внизу экрана
+        return findBottomEditText(root)
+    }
+
+    private fun findSendButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val ids = listOf(
+            "com.whatsapp:id/send",
+            "org.telegram.messenger:id/chat_message_enter",
+            "com.instagram.android:id/send_button",
+            "com.vkontakte.android:id/send_button"
+        )
+        for (id in ids) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty()) return nodes[0]
+        }
+        val descs = listOf("Send", "Отправить", "send")
+        for (desc in descs) {
+            val nodes = root.findAccessibilityNodeInfosByText(desc)
+            if (!nodes.isNullOrEmpty()) return nodes[0]
+        }
+        return null
+    }
+
+    private fun findNodeByExactText(root: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+        if (root.text?.toString()?.equals(text, ignoreCase = true) == true) return root
+        for (i in 0 until root.childCount) {
+            val found = findNodeByExactText(root.getChild(i) ?: continue, text)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findNodeContainingText(root: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+        val lower = text.lowercase()
+        if (root.text?.toString()?.lowercase()?.contains(lower) == true) return root
+        if (root.contentDescription?.toString()?.lowercase()?.contains(lower) == true) return root
+        for (i in 0 until root.childCount) {
+            val found = findNodeContainingText(root.getChild(i) ?: continue, text)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findNodeByDescription(root: AccessibilityNodeInfo, desc: String): AccessibilityNodeInfo? {
+        val lower = desc.lowercase()
+        if (root.contentDescription?.toString()?.lowercase()?.contains(lower) == true) return root
+        for (i in 0 until root.childCount) {
+            val found = findNodeByDescription(root.getChild(i) ?: continue, desc)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findEditTextByHint(root: AccessibilityNodeInfo, hint: String): AccessibilityNodeInfo? {
+        val lower = hint.lowercase()
+        val cls = root.className?.toString() ?: ""
+        if (cls.contains("EditText")) {
+            if (root.hintText?.toString()?.lowercase()?.contains(lower) == true) return root
+            if (root.text?.toString()?.lowercase()?.contains(lower) == true) return root
+        }
+        for (i in 0 until root.childCount) {
+            val found = findEditTextByHint(root.getChild(i) ?: continue, hint)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findBottomEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val editTexts = mutableListOf<AccessibilityNodeInfo>()
+        collectEditTexts(root, editTexts)
+        if (editTexts.isEmpty()) return null
+        // Берём самый нижний EditText (вероятно поле ввода сообщения)
+        return editTexts.maxByOrNull {
+            val rect = Rect(); it.getBoundsInScreen(rect); rect.top
         }
     }
 
-    /** Кликает по элементу с нужным текстом */
-    fun clickByText(targetText: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val nodes = root.findAccessibilityNodeInfosByText(targetText)
-        for (node in nodes ?: emptyList()) {
-            if (node.isClickable) {
-                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                return true
-            }
-            val parent = node.parent
+    private fun collectEditTexts(node: AccessibilityNodeInfo?, list: MutableList<AccessibilityNodeInfo>) {
+        if (node == null) return
+        if (node.className?.toString()?.contains("EditText") == true) list.add(node)
+        for (i in 0 until node.childCount) collectEditTexts(node.getChild(i), list)
+    }
+
+    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+        if (node.isClickable) {
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return true
+        }
+        var parent = node.parent
+        repeat(5) {
             if (parent?.isClickable == true) {
                 parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 return true
             }
+            parent = parent?.parent
         }
-        return false
-    }
-
-    /** Прокрутка */
-    fun scroll(direction: String) {
-        val root = rootInActiveWindow ?: return
-        val action = if (direction == "down")
-            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-        else
-            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-        scrollNodeRecursive(root, action)
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        return true
     }
 
     private fun scrollNodeRecursive(node: AccessibilityNodeInfo?, action: Int) {
@@ -463,103 +527,100 @@ class AikaAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) scrollNodeRecursive(node.getChild(i), action)
     }
 
-    /** Кнопка Назад */
-    fun performBack() = performGlobalAction(GLOBAL_ACTION_BACK)
-
-
-    // ── Полное управление телефоном ──────────────────────────────────────────
-
-    /** Тап по координатам (Android 7+) */
-    fun tapAt(x: Float, y: Float) {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
-        val path = android.graphics.Path().apply { moveTo(x, y) }
-        val gesture = android.accessibilityservice.GestureDescription.Builder()
-            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 100))
-            .build()
-        dispatchGesture(gesture, null, null)
+    private fun collectTextFromNode(node: AccessibilityNodeInfo?, sb: StringBuilder, depth: Int) {
+        if (node == null || depth > 20) return
+        val text = node.text?.toString()?.trim()
+        val desc = node.contentDescription?.toString()?.trim()
+        if (!text.isNullOrEmpty()) sb.appendLine(text)
+        else if (!desc.isNullOrEmpty()) sb.appendLine(desc)
+        for (i in 0 until node.childCount) collectTextFromNode(node.getChild(i), sb, depth + 1)
     }
 
-    /** Долгий тап по координатам */
-    fun longTapAt(x: Float, y: Float) {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
-        val path = android.graphics.Path().apply { moveTo(x, y) }
-        val gesture = android.accessibilityservice.GestureDescription.Builder()
-            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 1000))
-            .build()
-        dispatchGesture(gesture, null, null)
-    }
-
-    /** Свайп от (x1,y1) до (x2,y2) */
-    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long = 300) {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
-        val path = android.graphics.Path().apply {
-            moveTo(x1, y1)
-            lineTo(x2, y2)
+    private fun collectClickableNodes(node: AccessibilityNodeInfo?, result: MutableList<Map<String, Any>>) {
+        if (node == null) return
+        if (node.isClickable) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val text = node.text?.toString() ?: node.contentDescription?.toString() ?: ""
+            if (text.isNotEmpty()) {
+                result.add(mapOf(
+                    "text" to text,
+                    "id" to (node.viewIdResourceName ?: ""),
+                    "x" to rect.centerX(),
+                    "y" to rect.centerY(),
+                    "class" to (node.className?.toString() ?: "")
+                ))
+            }
         }
-        val gesture = android.accessibilityservice.GestureDescription.Builder()
-            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, durationMs))
-            .build()
-        dispatchGesture(gesture, null, null)
+        for (i in 0 until node.childCount) collectClickableNodes(node.getChild(i), result)
     }
 
-    /** Системная кнопка Home */
-    fun pressHome() = performGlobalAction(GLOBAL_ACTION_HOME)
+    // ═══════════════════════════════════════════════════════════
+    // HELPERS
+    // ═══════════════════════════════════════════════════════════
 
-    /** Недавние приложения */
-    fun pressRecents() = performGlobalAction(GLOBAL_ACTION_RECENTS)
-
-    /** Уведомления */
-    fun openNotifications() = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-
-    /** Быстрые настройки */
-    fun openQuickSettings() = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
-
-    /** Ввод текста в активное поле */
-    fun typeText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val editText = findFocusedOrFirstEditText(root) ?: return false
-        val args = android.os.Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+    private fun notifyFlutter(status: String, message: String) {
+        handler.post {
+            flutterChannel?.invokeMethod("onMessageSent", mapOf("status" to status, "message" to message))
         }
-        return editText.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
-    /** Очистить активное поле */
-    fun clearText(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val editText = findFocusedOrFirstEditText(root) ?: return false
-        val args = android.os.Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
-        }
-        return editText.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    private fun resetSend(status: String?, msg: String?) {
+        pendingApp = null
+        pendingContact = null
+        pendingMessage = null
+        sendStep = "idle"
     }
 
-    /** Нажать Enter/Done в активном поле */
-    fun pressEnter(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val edit = findFocusedOrFirstEditText(root) ?: return false
-        val args = android.os.Bundle().apply {
-            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, 
-                   AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE)
-        }
-        return edit.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, args)
-    }
+    private fun getAppLabel(packageName: String): String = try {
+        packageManager.getApplicationLabel(
+            packageManager.getApplicationInfo(packageName, 0)
+        ).toString()
+    } catch (e: Exception) { packageName }
 
-    /** Получить размер экрана */
-    fun getScreenSize(): Map<String, Int> {
-        val dm = resources.displayMetrics
-        return mapOf("width" to dm.widthPixels, "height" to dm.heightPixels)
-    }
-
-    private fun findFocusedOrFirstEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // Сначала ищем фокусированный элемент
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        if (focused != null && focused.isEditable) return focused
-        // Потом первый редактируемый
-        return findNodeByCondition(root) { it.isEditable && it.isFocusable }
-    }
-
-
+    override fun onInterrupt() {}
 }
 
+    // ── Дополнительные методы которые ожидает MainActivity ──────
 
+    fun typeText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        val args = Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        return true
+    }
+
+    fun clearText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        val args = Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        return true
+    }
+
+    fun pressEnter(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        node.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
+        return true
+    }
+
+    fun getScreenSize(): Map<String, Int> {
+        val wm = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            mapOf("width" to bounds.width(), "height" to bounds.height())
+        } else {
+            @Suppress("DEPRECATION")
+            val display = wm.defaultDisplay
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            mapOf("width" to metrics.widthPixels, "height" to metrics.heightPixels)
+        }
+    }
