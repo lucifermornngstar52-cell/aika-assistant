@@ -24,7 +24,7 @@ class ScreenCommandService {
            t.contains('введи текст') || t.contains('напечатай') ||
            t.contains('заблокируй экран') ||
            t.contains('потяни') || t.contains('проведи');
-  }
+   }
 
     /// Главный метод — принимает голосовую команду, выполняет действие.
   /// Возвращает текст-ответ для Айки.
@@ -161,7 +161,8 @@ $elemList
 Только JSON, без объяснений.
 ''';
 
-      final aiResponse = await AiService.sendMessage(prompt);
+      final aiService = AiService();
+      final aiResponse = await aiService.sendMessage(prompt);
       final jsonStr = _extractJson(aiResponse);
       if (jsonStr == null) return await _fallback(command);
 
