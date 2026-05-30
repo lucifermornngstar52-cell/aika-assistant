@@ -1,3 +1,4 @@
+SHA: e0b2586074d6fef658cb5f6e38f882a5528664f3
 package com.aika.assistant
 
 import android.content.BroadcastReceiver
@@ -240,6 +241,38 @@ class MainActivity : FlutterActivity() {
                         val size = AikaAccessibilityService.instance?.getScreenSize()
                             ?: mapOf("width" to 1080, "height" to 1920)
                         result.success(size)
+                    }
+                                        "getClickableElements" -> {
+                        val svc = AikaAccessibilityService.instance
+                        if (svc != null) result.success(svc.getClickableElements())
+                        else result.success(emptyList<Map<String,Any>>())
+                    }
+                    "getFocusedElement" -> {
+                        val svc = AikaAccessibilityService.instance
+                        result.success(svc?.getFocusedElement())
+                    }
+                    "typeInField" -> {
+                        val hint = call.argument<String>("hint") ?: ""
+                        val text = call.argument<String>("text") ?: ""
+                        val svc = AikaAccessibilityService.instance
+                        val ok = svc?.typeInField(hint, text) ?: false
+                        result.success(ok)
+                    }
+                    "clickById" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        val svc = AikaAccessibilityService.instance
+                        val ok = svc?.clickById(id) ?: false
+                        result.success(ok)
+                    }
+                    "clickByDescription" -> {
+                        val desc = call.argument<String>("desc") ?: ""
+                        val svc = AikaAccessibilityService.instance
+                        val ok = svc?.clickByDescription(desc) ?: false
+                        result.success(ok)
+                    }
+                    "lockScreen" -> {
+                        AikaAccessibilityService.instance?.lockScreen()
+                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }
@@ -588,4 +621,5 @@ class MainActivity : FlutterActivity() {
         return enabledServices.split(":").any { it.equals(serviceName, ignoreCase = true) }
     }
 }
+
 
