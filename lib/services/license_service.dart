@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// License check — читаем licenses.json с GitHub
+// Лицензии хранятся в GitHub — читаем напрямую
 const String _licenseCheckUrl =
     'https://raw.githubusercontent.com/lucifermornngstar52-cell/aika-assistant/main/licenses.json';
 
-// Заявки отправляются на Superagent endpoint — он уведомит владельца
-const String _submitUrl =
-    'https://app.base44.com/api/apps/6a0da5c66b1ec5f4ed5468be/functions/submitLicenseRequest';
+// Telegram бот для уведомлений владельца
+const String _botToken = '8339740462:AAH8HywtjV2TfCS6MVnSwka4CidpNPdSIK4';
+const int _ownerChatId = 7500697130;
 
 class LicenseStatus {
   final bool valid;
@@ -27,9 +27,9 @@ class LicenseStatus {
 }
 
 class LicenseService {
-  static const _keyEmail   = 'license_email';
-  static const _keyStatus  = 'license_status';
-  static const _keyExpires = 'license_expires';
+  static const _keyEmail    = 'license_email';
+  static const _keyStatus   = 'license_status';
+  static const _keyExpires  = 'license_expires';
   static const _keyLastCheck = 'license_last_check';
 
   static Future<void> saveEmail(String email) async {
@@ -115,7 +115,7 @@ class LicenseService {
     return {'success': true};
   }
 
-  // Отправляем заявку на Superagent — он сразу уведомит владельца
+  // Отправляем заявку НАПРЯМУЮ в Telegram владельцу
   static Future<Map<String, dynamic>> submitPayment({
     required String email,
     required String fullName,
@@ -124,26 +124,42 @@ class LicenseService {
   }) async {
     try {
       final amount = plan == 'purchase' ? 3000 : 2800;
+      final planLabel = plan == 'purchase' ? '🛒 Покупка' : '🔄 Подписка';
+      final bankLabel = paymentMethod == 'kaspi' ? '🟡 Kaspi' : '🟢 Freedom';
+
+      final text =
+          '💳 <b>Новая заявка на доступ</b>\n\n'
+          '👤 Email: <code>$email</code>\n'
+          '📋 Тариф: $planLabel — <b>$amount ₸</b>\n'
+          '🏦 Оплата: $bankLabel\n\n'
+          '⏳ Ожидает подтверждения оплаты';
+
+      final keyboard = {
+        'inline_keyboard': [
+          [
+            {'text': '✅ Одобрить', 'callback_data': 'approve:$email'},
+            {'text': '❌ Отклонить', 'callback_data': 'reject:$email'},
+          ]
+        ]
+      };
 
       final response = await http.post(
-        Uri.parse(_submitUrl),
+        Uri.parse('https://api.telegram.org/bot$_botToken/sendMessage'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'email': email.toLowerCase().trim(),
-          'full_name': fullName.isEmpty ? email.split('@')[0] : fullName,
-          'plan': plan,
-          'payment_method': paymentMethod,
-          'amount': amount,
+          'chat_id': _ownerChatId,
+          'text': text,
+          'parse_mode': 'HTML',
+          'reply_markup': keyboard,
         }),
       ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
-
-      if (data['success'] == true) {
+      if (data['ok'] == true) {
         await _cacheStatus('pending', null);
-        return {'success': true, 'request_id': data['request_id'] ?? ''};
+        return {'success': true};
       }
-      return {'success': false, 'error': data['error'] ?? 'Ошибка сервера'};
+      return {'success': false, 'error': data['description'] ?? 'Ошибка Telegram'};
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
