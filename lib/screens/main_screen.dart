@@ -57,6 +57,7 @@ import '../services/edge_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../services/theme_switcher_service.dart';
 import '../services/phone_control_service.dart';
+import '../services/screen_command_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -1289,6 +1290,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await _speak(actionResult);
         return;
       }
+    }
+
+
+    // ── Умное управление экраном через ScreenCommandService ──────────────
+    if (ScreenCommandService.isScreenCommand(text)) {
+      final cmdResult = await ScreenCommandService.execute(text);
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: cmdResult,
+        timestamp: DateTime.now(),
+      ));
+      setState(() => _isThinking = false);
+      await _speak(cmdResult);
+      return;
     }
 
     // ── Чтение контента экрана ───────────────────────────────────────────
