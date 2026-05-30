@@ -216,12 +216,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               max: max,
               divisions: divisions,
               onChanged: (v) {
-                onChanged(v);
-                // Live preview: apply immediately to EdgeTTS singleton
+                onChanged(v); // setState вызывается снаружи
+                // Live preview: передаём v напрямую, не ждём setState
                 final svc = EdgeTtsService();
                 svc.setVoice(_selectedEdgeVoice);
-                svc.setRate(_edgeTtsRate);
-                svc.setPitch(_edgeTtsPitch);
+                // определяем что именно меняется по label
+                // (rate/pitch/volume — передаём актуальное v)
+                svc.setRate(label.contains('Скорость') ? v : _edgeTtsRate);
+                svc.setPitch(label.contains('Высота') ? v : _edgeTtsPitch);
               },
             ),
           ),
@@ -423,16 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionTitle('АССИСТЕНТ'),
             _buildCard([
               _buildTextField(_assistantNameController, 'Имя ассистента', 'Aika'),
-              const Divider(color: Colors.white10, height: 1),
-              SwitchListTile(
-                title: const Text('Показывать аватар',
-                    style: TextStyle(color: Colors.white)),
-                subtitle: const Text('3D аватар на главном экране',
-                    style: TextStyle(color: Colors.white38, fontSize: 12)),
-                value: _showAvatar,
-                activeColor: AikaTheme.neonBlue,
-                onChanged: (v) => setState(() => _showAvatar = v),
-              ),
+
             ]),
 
             // ── Voice ────────────────────────────────────────────────
@@ -490,3 +483,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 }
+
