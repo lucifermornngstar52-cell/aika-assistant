@@ -9,7 +9,24 @@ class ScreenCommandService {
   static const _phone   = MethodChannel('aika/phone_control');
   static const _screen  = MethodChannel('com.aika.assistant/screen');
 
-  /// Главный метод — принимает голосовую команду, выполняет действие.
+  /// Определяет — это команда управления экраном?
+  static bool isScreenCommand(String text) {
+    final t = text.toLowerCase();
+    return t.contains('нажми') || t.contains('кликни') ||
+           t.contains('свайп') || t.contains('смахни') ||
+           t.contains('прокрути') || t.contains('листай') ||
+           t.contains('вернись') || t.contains('назад') ||
+           t.contains('домой') || t.contains('недавние') ||
+           t.contains('шторка') || t.contains('уведомлени') ||
+           t.contains('быстрые настройки') ||
+           t.contains('что на экране') || t.contains('прочитай экран') ||
+           t.contains('что написано') || t.contains('что можно нажать') ||
+           t.contains('введи текст') || t.contains('напечатай') ||
+           t.contains('заблокируй экран') ||
+           t.contains('потяни') || t.contains('проведи');
+  }
+
+    /// Главный метод — принимает голосовую команду, выполняет действие.
   /// Возвращает текст-ответ для Айки.
   static Future<String> execute(String command) async {
     final t = command.toLowerCase().trim();
