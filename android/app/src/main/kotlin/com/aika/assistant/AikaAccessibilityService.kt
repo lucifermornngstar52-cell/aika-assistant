@@ -611,7 +611,7 @@ class AikaAccessibilityService : AccessibilityService() {
     }
 
     fun getScreenSize(): Map<String, Int> {
-        val wm = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
+        val wm = getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             val bounds = wm.currentWindowMetrics.bounds
             mapOf("width" to bounds.width(), "height" to bounds.height())
