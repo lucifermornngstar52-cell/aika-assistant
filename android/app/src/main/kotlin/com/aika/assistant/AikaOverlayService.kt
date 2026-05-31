@@ -18,7 +18,6 @@ import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
-import io.flutter.embedding.android.FlutterTextureView
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -34,9 +33,9 @@ class AikaOverlayService : Service() {
         const val ACTION_HIDE   = "com.aika.HIDE"
         const val EXTRA_STATE   = "state"
         const val ENGINE_ID     = "live2d_overlay_engine"
-        private const val CHANNEL_ID  = "aika_overlay_channel"
-        private const val NOTIF_ID    = 1337
-        private const val FL_CHANNEL  = "com.aika.assistant/live2d_overlay"
+        private const val CHANNEL_ID = "aika_overlay_channel"
+        private const val NOTIF_ID   = 1337
+        private const val FL_CHANNEL = "com.aika.assistant/live2d_overlay"
 
         var isRunning = false
     }
@@ -62,35 +61,28 @@ class AikaOverlayService : Service() {
     // ── Flutter Engine ────────────────────────────────────────────────────────
 
     private fun initFlutterEngine() {
-        // Переиспользуем кэшированный движок если есть
         val cached = FlutterEngineCache.getInstance().get(ENGINE_ID)
         if (cached != null) {
             flutterEngine = cached
-            bindMethodChannel()
+            methodChannel = MethodChannel(cached.dartExecutor.binaryMessenger, FL_CHANNEL)
             return
         }
-
         val engine = FlutterEngine(this)
         engine.dartExecutor.executeDartEntrypoint(
             DartExecutor.DartEntrypoint.createDefault()
         )
         FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
         flutterEngine = engine
-        bindMethodChannel()
-    }
-
-    private fun bindMethodChannel() {
-        val engine = flutterEngine ?: return
         methodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, FL_CHANNEL)
     }
 
-    // ── Overlay Setup ─────────────────────────────────────────────────────────
+    // ── Overlay ───────────────────────────────────────────────────────────────
 
     private fun setupOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val density = resources.displayMetrics.density
-        val w = (170 * density).roundToInt()
-        val h = (255 * density).roundToInt()   // 1.5× aspect
+        val dp = resources.displayMetrics.density
+        val w = (170 * dp).roundToInt()
+        val h = (255 * dp).roundToInt()
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -107,13 +99,13 @@ class AikaOverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (20 * density).roundToInt()
-            y = (120 * density).roundToInt()
+            x = (20 * dp).roundToInt()
+            y = (120 * dp).roundToInt()
         }
 
-        // FlutterView с TextureView (прозрачный фон)
-        val fv = FlutterView(this, FlutterTextureView(this))
-        fv.attachToFlutterEngine(flutterEngine!!)
+        val engine = flutterEngine ?: return
+        val fv = FlutterView(this)
+        fv.attachToFlutterEngine(engine)
         fv.alpha = 0f
 
         val frame = FrameLayout(this)
@@ -144,10 +136,7 @@ class AikaOverlayService : Service() {
                 MotionEvent.ACTION_UP -> {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(200)
                         .setInterpolator(OvershootInterpolator()).start()
-                    if (dragDist < 100f) {
-                        // Тап — говорим Flutter-стороне
-                        methodChannel?.invokeMethod("onTap", null)
-                    }
+                    if (dragDist < 100f) methodChannel?.invokeMethod("onTap", null)
                     true
                 }
                 else -> false
@@ -159,13 +148,10 @@ class AikaOverlayService : Service() {
 
         try {
             windowManager?.addView(frame, params)
-            // Плавное появление после того как Flutter отрендерит первый кадр
             handler.postDelayed({
-                fv.animate().alpha(1f).setDuration(500)
-                    .setInterpolator(OvershootInterpolator(1.2f)).start()
-                // Говорим Flutter что overlay готов и применяем начальное состояние
+                fv.animate().alpha(1f).setDuration(500).start()
                 methodChannel?.invokeMethod("setState", currentState)
-            }, 600)
+            }, 800)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -177,18 +163,17 @@ class AikaOverlayService : Service() {
         when (intent?.action) {
             ACTION_SHOW, ACTION_UPDATE -> {
                 val state = intent.getStringExtra(EXTRA_STATE) ?: "idle"
-                applyState(state)
+                handler.post {
+                    currentState = state
+                    methodChannel?.invokeMethod("setState", state)
+                }
             }
-            ACTION_HIDE -> applyState("idle")
+            ACTION_HIDE -> handler.post {
+                currentState = "idle"
+                methodChannel?.invokeMethod("setState", "idle")
+            }
         }
         return START_STICKY
-    }
-
-    private fun applyState(state: String) {
-        handler.post {
-            currentState = state
-            methodChannel?.invokeMethod("setState", state)
-        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -199,14 +184,16 @@ class AikaOverlayService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel(
                 CHANNEL_ID, "Aika Overlay", NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false); description = "Aika Live2D overlay" }
+            ).apply { setShowBadge(false) }
             getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
         }
     }
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Айка активна")
