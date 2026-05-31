@@ -15,6 +15,8 @@ import android.view.WindowManager
 import android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.embedding.engine.dart.DartExecutor
 
 class MainActivity : FlutterActivity() {
     private val OVERLAY_CHANNEL  = "com.aika.assistant/overlay"
@@ -42,6 +44,18 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ── Pre-warm Live2D overlay engine ──────────────────────────────────
+        if (FlutterEngineCache.getInstance().get(AikaOverlayService.ENGINE_ID) == null) {
+            val overlayEngine = io.flutter.embedding.engine.FlutterEngine(this)
+            overlayEngine.dartExecutor.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint(
+                    flutterEngine.dartExecutor.appBundlePath,
+                    "overlayMain"
+                )
+            )
+            FlutterEngineCache.getInstance().put(AikaOverlayService.ENGINE_ID, overlayEngine)
+        }
 
         // ── Overlay channel ──────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
