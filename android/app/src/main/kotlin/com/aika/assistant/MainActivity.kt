@@ -1,4 +1,3 @@
-SHA: e0b2586074d6fef658cb5f6e38f882a5528664f3
 package com.aika.assistant
 
 import android.content.BroadcastReceiver
