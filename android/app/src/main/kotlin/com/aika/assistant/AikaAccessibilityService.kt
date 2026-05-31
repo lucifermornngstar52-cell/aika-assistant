@@ -21,6 +21,9 @@ class AikaAccessibilityService : AccessibilityService() {
         var currentAppLabel: String = ""
         const val ACTION_SCREEN_EVENT = "com.aika.assistant.SCREEN_EVENT"
         const val ACTION_SEND_MESSAGE = "com.aika.assistant.SEND_MESSAGE"
+        const val EXTRA_PACKAGE = "package"
+        const val EXTRA_LABEL = "label"
+        const val EXTRA_EVENT_TYPE = "event_type"
         var flutterChannel: MethodChannel? = null
     }
 
@@ -579,7 +582,6 @@ class AikaAccessibilityService : AccessibilityService() {
     } catch (e: Exception) { packageName }
 
     override fun onInterrupt() {}
-}
 
     // ── Дополнительные методы которые ожидает MainActivity ──────
 
@@ -624,3 +626,4 @@ class AikaAccessibilityService : AccessibilityService() {
             mapOf("width" to metrics.widthPixels, "height" to metrics.heightPixels)
         }
     }
+}
