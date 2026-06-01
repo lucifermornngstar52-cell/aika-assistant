@@ -43,6 +43,10 @@ class AikaOverlayService : Service() {
         const val EXTRA_SIZE     = "size"
         const val EXTRA_SIDE     = "side"
         const val EXTRA_OPACITY  = "opacity"
+        const val ACTION_MUSIC   = "com.aika.MUSIC"
+        const val ACTION_ANIM    = "com.aika.ANIM"
+        const val EXTRA_PLAYING  = "playing"
+        const val EXTRA_ANIM     = "anim_name"
     }
 
     private var windowManager: WindowManager? = null
