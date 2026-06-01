@@ -35,7 +35,6 @@ class AikaOverlayService : Service() {
         const val ENGINE_ID     = "live2d_overlay_engine"
         private const val CHANNEL_ID = "aika_overlay_channel"
         private const val NOTIF_ID   = 1337
-        // Channel that overlayMain() listens on (MethodChannel inside Flutter overlay)
         private const val FL_CHANNEL = "com.aika.assistant/live2d_overlay"
 
         var isRunning = false
@@ -68,7 +67,7 @@ class AikaOverlayService : Service() {
         setupOverlay()
     }
 
-    // ── Flutter Engine — запускаем overlayMain(), НЕ main() ──────────────────
+    // ── Flutter Engine — запускаем overlayMain() ──────────────────────────────
     private fun initFlutterEngine() {
         val cached = FlutterEngineCache.getInstance().get(ENGINE_ID)
         if (cached != null) {
@@ -77,17 +76,7 @@ class AikaOverlayService : Service() {
             return
         }
         val engine = FlutterEngine(this)
-        // ВАЖНО: запускаем именно overlayMain, а не main()
-        engine.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint(
-                engine.dartExecutor.javaClass.getDeclaredField("flutterJNI").also {
-                    it.isAccessible = true
-                }.let { engine.dartExecutor }.let {
-                    DartExecutor.DartEntrypoint.createDefault()
-                }.also { /* fallback */ }
-            )
-        )
-        // Правильный способ вызвать overlayMain
+        // Запускаем overlayMain() из lib/main_overlay.dart
         engine.dartExecutor.executeDartEntrypoint(
             DartExecutor.DartEntrypoint(
                 applicationContext.assets,
@@ -136,7 +125,6 @@ class AikaOverlayService : Service() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        // Drag + tap
         var ix = 0; var iy = 0; var tx = 0f; var ty = 0f; var dragDist = 0f
         frame.setOnTouchListener { v, event ->
             when (event.action) {
@@ -147,8 +135,7 @@ class AikaOverlayService : Service() {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - tx
-                    val dy = event.rawY - ty
+                    val dx = event.rawX - tx; val dy = event.rawY - ty
                     dragDist = dx * dx + dy * dy
                     params!!.x = (ix + dx).roundToInt()
                     params!!.y = (iy + dy).roundToInt()
@@ -171,27 +158,19 @@ class AikaOverlayService : Service() {
         try {
             windowManager?.addView(frame, params)
             handler.postDelayed({
-                fv.animate().alpha(1f).setDuration(500).start()
+                fv.animate().alpha(1f).setDuration(600).start()
                 methodChannel?.invokeMethod("setState", currentState)
-            }, 1200)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+            }, 1500)
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_SHOW, ACTION_UPDATE -> {
                 val state = intent.getStringExtra(EXTRA_STATE) ?: "idle"
-                handler.post {
-                    currentState = state
-                    methodChannel?.invokeMethod("setState", state)
-                }
+                handler.post { currentState = state; methodChannel?.invokeMethod("setState", state) }
             }
-            ACTION_HIDE -> handler.post {
-                currentState = "idle"
-                methodChannel?.invokeMethod("setState", "idle")
-            }
+            ACTION_HIDE -> handler.post { currentState = "idle"; methodChannel?.invokeMethod("setState", "idle") }
             ACTION_CONFIG -> {
                 val size  = intent.getFloatExtra(EXTRA_SIZE, 170f)
                 val side  = intent.getStringExtra(EXTRA_SIDE) ?: "left"
@@ -202,8 +181,7 @@ class AikaOverlayService : Service() {
                 val playing = intent.getBooleanExtra(EXTRA_PLAYING, false)
                 handler.post {
                     methodChannel?.invokeMethod("setMusicPlaying", playing)
-                    if (playing) currentState = "dance"
-                    else if (currentState == "dance") currentState = "idle"
+                    if (playing) currentState = "dance" else if (currentState == "dance") currentState = "idle"
                 }
             }
             ACTION_ANIM -> {
@@ -216,19 +194,15 @@ class AikaOverlayService : Service() {
 
     fun applyWindowConfig(sizeDp: Float, side: String, alpha: Float) {
         val dp = resources.displayMetrics.density
-        val w  = (sizeDp * dp).toInt()
-        val h  = (sizeDp * 1.5f * dp).toInt()
+        val w = (sizeDp * dp).toInt(); val h = (sizeDp * 1.5f * dp).toInt()
         params?.let { p ->
-            p.width  = w
-            p.height = h
+            p.width = w; p.height = h
             val screenW = resources.displayMetrics.widthPixels
             p.x = if (side == "right") screenW - w - (16 * dp).toInt() else (16 * dp).toInt()
             try { overlayRoot?.let { windowManager?.updateViewLayout(it, p) } } catch (_: Exception) {}
         }
         flutterView?.alpha = alpha
-        methodChannel?.invokeMethod("setConfig", mapOf(
-            "size" to sizeDp, "opacity" to alpha, "mirror" to (side == "right")
-        ))
+        methodChannel?.invokeMethod("setConfig", mapOf("size" to sizeDp, "opacity" to alpha, "mirror" to (side == "right")))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -245,18 +219,14 @@ class AikaOverlayService : Service() {
         val pi = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Айка активна")
-            .setContentText("Нажми чтобы открыть")
+            .setContentTitle("Айка активна").setContentText("Нажми чтобы открыть")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pi).setOngoing(true).setSilent(true).build()
     }
 
     override fun onDestroy() {
         isRunning = false
-        try {
-            flutterView?.detachFromFlutterEngine()
-            overlayRoot?.let { windowManager?.removeView(it) }
-        } catch (_: Exception) {}
+        try { flutterView?.detachFromFlutterEngine(); overlayRoot?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         super.onDestroy()
     }
 }
