@@ -75,6 +75,14 @@ flutter:
     - assets/models/Hiyori/
     - assets/models/Hiyori/Hiyori.2048/
     - assets/models/Hiyori/motions/
+    - assets/models/Natori/
+    - assets/models/Natori/Natori.2048/
+    - assets/models/Natori/motions/
+    - assets/models/Natori/exp/
+    - assets/models/Ren/
+    - assets/models/Ren/Ren.2048/
+    - assets/models/Ren/motions/
+    - assets/models/Ren/expressions/
     - assets/images/chat_wallpaper.jpg
     - assets/images/aika_avatar.png
     - assets/images/aika_chibi.png
