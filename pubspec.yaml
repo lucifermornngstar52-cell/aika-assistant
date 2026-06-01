@@ -72,6 +72,9 @@ flutter:
     - assets/models/Haru/motions/
     - assets/models/Haru/expressions/
     - assets/models/Haru/sounds/
+    - assets/models/Hiyori/
+    - assets/models/Hiyori/Hiyori.2048/
+    - assets/models/Hiyori/motions/
     - assets/images/chat_wallpaper.jpg
     - assets/images/aika_avatar.png
     - assets/images/aika_chibi.png
