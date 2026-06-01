@@ -66,7 +66,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 child: ClipOval(
                   child: Image.asset(
-                    'assets/images/aika_avatar.png',
+                    'assets/images/aika_chibi.png',
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
                       decoration: const BoxDecoration(
