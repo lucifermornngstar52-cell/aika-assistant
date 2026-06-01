@@ -5,58 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; background:transparent !important; overflow:hidden; }
-  #canvas { width:100%; height:100%; display:block; background:transparent !important; }
-  #log {
-    position:fixed; top:0; left:0; right:0; bottom:0;
-    color:#0ff; font-family:monospace; font-size:9px;
-    padding:4px; pointer-events:none; overflow:hidden;
-    text-shadow: 0 1px 3px #000, 0 0 6px #000;
-    white-space:pre-wrap; word-break:break-all;
+  html, body {
+    width:100%; height:100%;
+    background:transparent !important;
+    overflow:hidden;
   }
-  #pick-btn {
-    position:fixed; top:4px; right:4px;
-    background:rgba(0,0,0,0.6); border:1px solid #0ff;
-    color:#0ff; font-size:9px; padding:3px 7px;
-    border-radius:8px; cursor:pointer; font-family:sans-serif; z-index:999;
+  #canvas { width:100%; height:100%; display:block; }
+  #log {
+    position:fixed; top:4px; left:4px; right:4px;
+    color:#0ff; font-family:monospace; font-size:10px;
+    pointer-events:none; text-shadow:0 1px 3px #000;
+    white-space:pre-wrap; z-index:999;
   }
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
-<div id="log">init...</div>
-<button id="pick-btn" onclick="pickModel()">📂</button>
+<div id="log">⏳ загрузка...</div>
 
-<script src="live2d/live2dcubismcore.min.js"
-  onerror="log('❌ cubism load fail')"></script>
-<script src="live2d/pixi.min.js"
-  onerror="log('❌ pixi load fail')"></script>
-<script src="live2d/pixi-live2d-display.min.js"
-  onerror="log('❌ live2d-display load fail')"></script>
-
+<!-- flutter_inappwebview с initialFile открывает HTML из flutter_assets/ -->
+<!-- Все пути ДОЛЖНЫ быть относительно папки assets/ -->
 <script>
+// Определяем BASE — flutter_inappwebview открывает как file:///android_asset/flutter_assets/
+// Пути к скриптам и моделям — относительно расположения HTML файла
+// HTML лежит в assets/live2d_viewer.html
+// JS лежат в assets/live2d/
+// Модель лежит в assets/models/Haru/
+
 const logEl = document.getElementById('log');
 const lines = [];
 function log(msg) {
   lines.push(msg);
-  if (lines.length > 12) lines.shift();
+  if (lines.length > 8) lines.shift();
   logEl.textContent = lines.join('\n');
-  console.log(msg);
+  console.log('[L2D] ' + msg);
 }
 
-function pickModel() {
-  try { FlutterChannel.postMessage('pick_model'); } catch(e) {}
+function hideLog() {
+  setTimeout(() => { logEl.style.display = 'none'; }, 2000);
 }
 
-log('script start');
-log('PIXI: ' + (typeof PIXI !== 'undefined' ? 'OK v'+PIXI.VERSION : 'MISSING'));
-log('live2d: ' + (typeof PIXI !== 'undefined' && PIXI.live2d ? 'OK' : 'MISSING'));
+log('Загрузка скриптов...');
+
+// Динамическая загрузка скриптов по правильному пути
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Не загружен: ' + src));
+    document.head.appendChild(s);
+  });
+}
 
 let app = null, model = null, currentState = 'idle';
 
-function initApp() {
-  log('initApp...');
+function fitModel() {
+  if (!model || !app) return;
   try {
+    const w = app.screen.width;
+    const h = app.screen.height;
+    model.x = w / 2;
+    model.y = h * 0.6;
+    const origW = model.internalModel.originalWidth || 224;
+    const origH = model.internalModel.originalHeight || 224;
+    const scale = Math.min(w / origW, h / origH) * 0.95;
+    model.scale.set(scale);
+  } catch(e) {}
+}
+
+async function initLive2D() {
+  try {
+    // Правильные пути: HTML лежит в assets/, скрипты в assets/live2d/
+    await loadScript('live2d/live2dcubismcore.min.js');
+    log('✅ CubismCore');
+
+    await loadScript('live2d/pixi.min.js');
+    log('✅ PIXI v' + (PIXI ? PIXI.VERSION : '?'));
+
+    await loadScript('live2d/pixi-live2d-display.min.js');
+    log('✅ pixi-live2d-display');
+
+    // Инициализируем PIXI
     app = new PIXI.Application({
       view: document.getElementById('canvas'),
       autoStart: true,
@@ -64,76 +94,86 @@ function initApp() {
       transparent: true,
       resizeTo: window,
       antialias: true,
+      resolution: window.devicePixelRatio || 1,
     });
+
     PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker);
-    log('PIXI app OK');
-    return true;
+    log('✅ PIXI app создан');
+
+    // Загружаем модель — путь относительно HTML файла
+    log('Загрузка Haru...');
+    model = await PIXI.live2d.Live2DModel.from(
+      'models/Haru/Haru.model3.json',
+      { autoInteract: false }
+    );
+
+    app.stage.addChild(model);
+    model.anchor.set(0.5, 0.5);
+    fitModel();
+    window.addEventListener('resize', fitModel);
+
+    // Запускаем idle анимацию
+    try { model.motion('Idle'); } catch(e) {}
+
+    // Обработка тапа
+    model.on('tap', () => {
+      try { model.motion('TapBody'); } catch(e) {}
+      try { window.flutter_inappwebview.callHandler('FlutterChannel', 'tap'); } catch(e) {}
+    });
+
+    log('✅ Модель загружена!');
+    hideLog();
+
   } catch(e) {
-    log('initApp ERR: ' + e.message);
-    return false;
+    log('❌ Ошибка: ' + (e.message || String(e)));
+    console.error(e);
   }
 }
 
-async function loadModel(url) {
-  log('loadModel: ' + url);
+// ── API для Flutter ──────────────────────────────────────────────
+window.setAikaState = function(state) {
+  currentState = state;
+  if (!model) return;
+  try {
+    switch(state) {
+      case 'listening':
+      case 'thinking':
+        model.motion('FlickHead');
+        break;
+      case 'dance':
+      case 'greeting':
+      case 'talking':
+        model.motion('TapBody');
+        break;
+      default:
+        model.motion('Idle');
+    }
+  } catch(e) {}
+};
+
+window.loadCustomModel = async function(url) {
+  if (!app) return;
   if (model) {
     try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
     model = null;
   }
   try {
+    log('Загрузка кастомной модели...');
     model = await PIXI.live2d.Live2DModel.from(url, { autoInteract: false });
     app.stage.addChild(model);
     model.anchor.set(0.5, 0.5);
     fitModel();
     try { model.motion('Idle'); } catch(e) {}
-    log('✅ model loaded!');
-    // Скрываем лог после успешной загрузки
-    setTimeout(() => { logEl.style.display='none'; }, 3000);
-    model.on('tap', () => {
-      try { model.motion('TapBody'); } catch(e) {}
-      try { FlutterChannel.postMessage('tap'); } catch(e) {}
-    });
-    window.addEventListener('resize', fitModel);
+    log('✅ Кастомная модель загружена!');
+    hideLog();
+    window.setAikaState(currentState);
   } catch(e) {
-    log('❌ loadModel ERR: ' + (e.message || String(e)));
-    console.error(e);
+    log('❌ Кастомная модель: ' + e.message);
   }
-}
-
-function fitModel() {
-  if (!model || !app) return;
-  try {
-    model.position.set(app.screen.width/2, app.screen.height*0.55);
-    const s = Math.min(app.screen.width, app.screen.height)
-              / (model.internalModel.originalWidth || 200) * 0.9;
-    model.scale.set(s);
-  } catch(e) {}
-}
-
-window.setAikaState = function(state) {
-  currentState = state;
-  if (!model) return;
-  try {
-    if (state === 'listening' || state === 'thinking') model.motion('FlickHead');
-    else if (state === 'dance' || state === 'greeting' || state === 'talking') model.motion('TapBody');
-    else { model.motion('Idle'); }
-  } catch(e) {}
 };
 
-window.loadCustomModel = async function(url) {
-  await loadModel(url);
-  window.setAikaState(currentState);
-};
-
-// Старт
-(async () => {
-  log('checking libs...');
-  if (typeof PIXI === 'undefined') { log('FATAL: PIXI undefined'); return; }
-  if (!PIXI.live2d)               { log('FATAL: no PIXI.live2d'); return; }
-  if (!initApp()) return;
-  // Грузим модель
-  await loadModel('models/Haru/Haru.model3.json');
-})();
+// Запуск
+initLive2D();
 </script>
 </body>
 </html>
