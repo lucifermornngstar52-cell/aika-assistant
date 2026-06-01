@@ -85,6 +85,26 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
 
+                "musicOverlay" -> {
+                    val playing = call.argument<Boolean>("playing") ?: false
+                    val i = Intent(this, AikaOverlayService::class.java).apply {
+                        action = AikaOverlayService.ACTION_MUSIC
+                        putExtra(AikaOverlayService.EXTRA_PLAYING, playing)
+                    }
+                    startService(i)
+                    result.success(null)
+                }
+
+                "animOverlay" -> {
+                    val animName = call.argument<String>("anim") ?: "idle"
+                    val i = Intent(this, AikaOverlayService::class.java).apply {
+                        action = AikaOverlayService.ACTION_ANIM
+                        putExtra(AikaOverlayService.EXTRA_ANIM, animName)
+                    }
+                    startService(i)
+                    result.success(null)
+                }
+
                 else -> result.notImplemented()
             }
         }
