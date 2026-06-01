@@ -35,7 +35,8 @@ class AikaOverlayService : Service() {
         const val ENGINE_ID     = "live2d_overlay_engine"
         private const val CHANNEL_ID = "aika_overlay_channel"
         private const val NOTIF_ID   = 1337
-        private const val FL_CHANNEL = "com.aika.assistant/overlay_flutter"
+        // Channel that overlayMain() listens on (MethodChannel inside Flutter overlay)
+        private const val FL_CHANNEL = "com.aika.assistant/live2d_overlay"
 
         var isRunning = false
 
@@ -67,8 +68,7 @@ class AikaOverlayService : Service() {
         setupOverlay()
     }
 
-    // ── Flutter Engine ────────────────────────────────────────────────────────
-
+    // ── Flutter Engine — запускаем overlayMain(), НЕ main() ──────────────────
     private fun initFlutterEngine() {
         val cached = FlutterEngineCache.getInstance().get(ENGINE_ID)
         if (cached != null) {
@@ -77,16 +77,30 @@ class AikaOverlayService : Service() {
             return
         }
         val engine = FlutterEngine(this)
+        // ВАЖНО: запускаем именно overlayMain, а не main()
         engine.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint.createDefault()
+            DartExecutor.DartEntrypoint(
+                engine.dartExecutor.javaClass.getDeclaredField("flutterJNI").also {
+                    it.isAccessible = true
+                }.let { engine.dartExecutor }.let {
+                    DartExecutor.DartEntrypoint.createDefault()
+                }.also { /* fallback */ }
+            )
+        )
+        // Правильный способ вызвать overlayMain
+        engine.dartExecutor.executeDartEntrypoint(
+            DartExecutor.DartEntrypoint(
+                applicationContext.assets,
+                "lib/main_overlay.dart",
+                "overlayMain"
+            )
         )
         FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
         flutterEngine = engine
         methodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, FL_CHANNEL)
     }
 
-    // ── Overlay ───────────────────────────────────────────────────────────────
-
+    // ── Overlay Window ────────────────────────────────────────────────────────
     private fun setupOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val dp = resources.displayMetrics.density
@@ -99,8 +113,7 @@ class AikaOverlayService : Service() {
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
         params = WindowManager.LayoutParams(
-            w, h,
-            overlayType,
+            w, h, overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -160,13 +173,11 @@ class AikaOverlayService : Service() {
             handler.postDelayed({
                 fv.animate().alpha(1f).setDuration(500).start()
                 methodChannel?.invokeMethod("setState", currentState)
-            }, 800)
+            }, 1200)
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
-
-    // ── Commands ──────────────────────────────────────────────────────────────
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -197,9 +208,7 @@ class AikaOverlayService : Service() {
             }
             ACTION_ANIM -> {
                 val animName = intent.getStringExtra(EXTRA_ANIM) ?: "idle"
-                handler.post {
-                    methodChannel?.invokeMethod("playAnimation", animName)
-                }
+                handler.post { methodChannel?.invokeMethod("playAnimation", animName) }
             }
         }
         return START_STICKY
@@ -214,38 +223,32 @@ class AikaOverlayService : Service() {
             p.height = h
             val screenW = resources.displayMetrics.widthPixels
             p.x = if (side == "right") screenW - w - (16 * dp).toInt() else (16 * dp).toInt()
-            try {
-                overlayRoot?.let { windowManager?.updateViewLayout(it, p) }
-            } catch (_: Exception) {}
+            try { overlayRoot?.let { windowManager?.updateViewLayout(it, p) } } catch (_: Exception) {}
         }
         flutterView?.alpha = alpha
+        methodChannel?.invokeMethod("setConfig", mapOf(
+            "size" to sizeDp, "opacity" to alpha, "mirror" to (side == "right")
+        ))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ── Notification ──────────────────────────────────────────────────────────
-
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(
-                CHANNEL_ID, "Aika Overlay", NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            val ch = NotificationChannel(CHANNEL_ID, "Aika Overlay", NotificationManager.IMPORTANCE_LOW)
+                .apply { setShowBadge(false) }
             getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
         }
     }
 
     private fun buildNotification(): Notification {
-        val pi = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
-        )
+        val pi = PendingIntent.getActivity(this, 0,
+            Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Айка активна")
             .setContentText("Нажми чтобы открыть")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pi)
-            .setOngoing(true).setSilent(true).build()
+            .setContentIntent(pi).setOngoing(true).setSilent(true).build()
     }
 
     override fun onDestroy() {
