@@ -15,17 +15,17 @@ import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
 import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 import io.flutter.FlutterInjector
-import io.flutter.embedding.android.FlutterSurfaceView
+import io.flutter.embedding.android.FlutterTextureView
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
+import io.flutter.embedding.engine.plugins.util.GeneratedPluginRegister
 import io.flutter.plugin.common.MethodChannel
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -63,7 +63,9 @@ class AikaOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var currentState = "idle"
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ─────────────────────────────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
@@ -74,7 +76,9 @@ class AikaOverlayService : Service() {
         setupOverlay()
     }
 
-    // ── Flutter Engine ────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Flutter Engine — ключевое: регистрируем все плагины (в т.ч. InAppWebView)
+    // ─────────────────────────────────────────────────────────────────────────
 
     private fun initFlutterEngine() {
         val cached = FlutterEngineCache.getInstance().get(ENGINE_ID)
@@ -83,18 +87,32 @@ class AikaOverlayService : Service() {
             methodChannel = MethodChannel(cached.dartExecutor.binaryMessenger, FL_CHANNEL)
             return
         }
+
         val engine = FlutterEngine(this)
+
+        // ⚡ КРИТИЧНО: регистрируем все плагины в overlay engine
+        // Без этого flutter_inappwebview не работает — WebView пустой
+        GeneratedPluginRegister.registerGeneratedPlugins(engine)
+
         val loader = FlutterInjector.instance().flutterLoader()
+        if (!loader.initialized()) {
+            loader.startInitialization(applicationContext)
+            loader.ensureInitializationComplete(applicationContext, null)
+        }
         val bundlePath = loader.findAppBundlePath()
+
         engine.dartExecutor.executeDartEntrypoint(
             DartExecutor.DartEntrypoint(bundlePath, "overlayMain")
         )
+
         FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
         flutterEngine = engine
         methodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, FL_CHANNEL)
     }
 
-    // ── Overlay ───────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Overlay window
+    // ─────────────────────────────────────────────────────────────────────────
 
     private fun setupOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -107,10 +125,9 @@ class AikaOverlayService : Service() {
         else
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
+        // FLAG_NOT_TOUCH_MODAL убран — он блокировал события до DraggableFrame
         params = WindowManager.LayoutParams(
             w, h, overlayType,
-            // ⚡ Убираем FLAG_NOT_TOUCH_MODAL — он поглощал все touch события
-            // FLAG_NOT_FOCUSABLE оставляем — не перехватываем клавиатуру
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -122,8 +139,11 @@ class AikaOverlayService : Service() {
         }
 
         val engine = flutterEngine ?: return
-        val surfaceView = FlutterSurfaceView(this, true)
-        val fv = FlutterView(this, surfaceView)
+
+        // FlutterTextureView: единственный режим который работает в overlay
+        // FlutterSurfaceView требует SurfaceHolder — в overlay окне не работает корректно
+        val textureView = FlutterTextureView(this)
+        val fv = FlutterView(this, textureView)
         fv.setBackgroundColor(Color.TRANSPARENT)
         fv.attachToFlutterEngine(engine)
 
@@ -141,7 +161,7 @@ class AikaOverlayService : Service() {
 
         try {
             windowManager?.addView(frame, params)
-            // Отправляем начальное состояние после инициализации WebView (3 сек)
+            // Даём WebView время инициализироваться (3 сек) перед отправкой команд
             handler.postDelayed({
                 methodChannel?.invokeMethod("setState", currentState)
             }, 3000)
@@ -150,7 +170,9 @@ class AikaOverlayService : Service() {
         }
     }
 
-    // ── Commands ──────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Commands
+    // ─────────────────────────────────────────────────────────────────────────
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -172,7 +194,7 @@ class AikaOverlayService : Service() {
                 handler.post {
                     applyWindowConfig(size, opacity, side)
                     methodChannel?.invokeMethod("setConfig", mapOf(
-                        "size" to size.toDouble(),
+                        "size"    to size.toDouble(),
                         "opacity" to opacity.toDouble()
                     ))
                 }
@@ -207,7 +229,9 @@ class AikaOverlayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ── Notification ──────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Notification
+    // ─────────────────────────────────────────────────────────────────────────
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -240,19 +264,16 @@ class AikaOverlayService : Service() {
         super.onDestroy()
     }
 
-    // ── DraggableFrame ────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // DraggableFrame — drag/tap без FLAG_NOT_TOUCH_MODAL
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Собственный FrameLayout с правильной обработкой drag/tap.
-     * Ключевое: onInterceptTouchEvent перехватывает события ТОЛЬКО когда
-     * пользователь реально двигает пальцем (drag threshold 10px).
-     * Это позволяет WebView внутри получать tap события напрямую.
-     */
     inner class DraggableFrame(context: Context) : FrameLayout(context) {
         var onTap: (() -> Unit)? = null
         var getParamsAndWm: (() -> Pair<WindowManager.LayoutParams?, WindowManager?>)? = null
 
-        private val DRAG_THRESHOLD = 10f * context.resources.displayMetrics.density
+        // Порог в пикселях — меньше этого считается тапом, больше — drag
+        private val DRAG_PX = (10 * context.resources.displayMetrics.density)
 
         private var downX = 0f
         private var downY = 0f
@@ -260,66 +281,68 @@ class AikaOverlayService : Service() {
         private var startParamY = 0
         private var isDragging = false
 
+        // Перехватываем touch только когда это точно drag (превышен порог)
+        // Это позволяет WebView внутри получать tap/click события нормально
         override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-            return when (ev.actionMasked) {
+            when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = ev.rawX
                     downY = ev.rawY
-                    val (p, _) = getParamsAndWm?.invoke() ?: return false
-                    startParamX = p?.x ?: 0
-                    startParamY = p?.y ?: 0
+                    val pair = getParamsAndWm?.invoke()
+                    startParamX = pair?.first?.x ?: 0
+                    startParamY = pair?.first?.y ?: 0
                     isDragging = false
-                    false // не перехватываем — пусть дочерние views получат DOWN
+                    return false // не перехватываем DOWN — WebView должен его получить
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!isDragging) {
                         val dx = abs(ev.rawX - downX)
                         val dy = abs(ev.rawY - downY)
-                        if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
-                            isDragging = true
-                        }
+                        isDragging = dx > DRAG_PX || dy > DRAG_PX
                     }
-                    isDragging // перехватываем только когда точно drag
+                    return isDragging // перехватываем только реальный drag
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasDragging = isDragging
                     isDragging = false
-                    false
+                    return wasDragging
                 }
-                else -> false
+                else -> return false
             }
         }
 
         override fun onTouchEvent(ev: MotionEvent): Boolean {
-            val (p, wm) = getParamsAndWm?.invoke() ?: return false
+            val pair = getParamsAndWm?.invoke() ?: return false
+            val p = pair.first ?: return false
+            val wm = pair.second ?: return false
+
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = ev.rawX
                     downY = ev.rawY
-                    startParamX = p?.x ?: 0
-                    startParamY = p?.y ?: 0
+                    startParamX = p.x
+                    startParamY = p.y
                     isDragging = false
-                    animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).start()
+                    animate().scaleX(0.93f).scaleY(0.93f).setDuration(80).start()
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = ev.rawX - downX
                     val dy = ev.rawY - downY
-                    if (!isDragging && (abs(dx) > DRAG_THRESHOLD || abs(dy) > DRAG_THRESHOLD)) {
+                    if (!isDragging && (abs(dx) > DRAG_PX || abs(dy) > DRAG_PX)) {
                         isDragging = true
                     }
-                    if (isDragging && p != null) {
+                    if (isDragging) {
                         p.x = (startParamX + dx).roundToInt()
                         p.y = (startParamY + dy).roundToInt()
-                        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
+                        try { wm.updateViewLayout(this, p) } catch (_: Exception) {}
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
                     animate().scaleX(1f).scaleY(1f).setDuration(200)
                         .setInterpolator(OvershootInterpolator()).start()
-                    if (!isDragging) {
-                        onTap?.invoke()
-                    }
+                    if (!isDragging) onTap?.invoke()
                     isDragging = false
                     return true
                 }
@@ -328,8 +351,8 @@ class AikaOverlayService : Service() {
                     isDragging = false
                     return true
                 }
+                else -> return false
             }
-            return false
         }
     }
 }
