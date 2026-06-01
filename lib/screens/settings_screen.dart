@@ -83,8 +83,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _section(String title) => Padding(
     padding: const EdgeInsets.only(top: 24, bottom: 8),
-    child: Text(title, style: TextStyle(color: AikaTheme.neonBlue, fontSize: 11,
-        letterSpacing: 2, fontWeight: FontWeight.bold)),
+    child: Text(title,
+        style: TextStyle(
+            color: AikaTheme.neonBlue,
+            fontSize: 11,
+            letterSpacing: 2,
+            fontWeight: FontWeight.bold)),
   );
 
   Widget _slider(String label, double value, double min, double max,
@@ -92,9 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          Text(value.toStringAsFixed(0) == value.toString()
-              ? value.toStringAsFixed(0)
-              : value.toStringAsFixed(2),
+          Text(value.toStringAsFixed(2),
               style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12)),
         ]),
         SliderTheme(
@@ -131,16 +133,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  /// Превью аватара — показываем chibi PNG (ModelViewer не работает вне overlay)
+  Widget _buildAvatarPreview() {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.3)),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Glow effect
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AikaTheme.neonBlue.withOpacity(0.15),
+                  blurRadius: 40,
+                  spreadRadius: 20,
+                ),
+              ],
+            ),
+          ),
+          // Chibi image
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              'assets/images/aika_chibi.png',
+              height: 160,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.person_outline, color: AikaTheme.neonBlue, size: 48),
+                  const SizedBox(height: 8),
+                  Text('Аватар',
+                      style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          // Label
+          Positioned(
+            bottom: 8, right: 12,
+            child: Text('ПРЕДПРОСМОТР',
+                style: TextStyle(
+                    color: AikaTheme.neonBlue.withOpacity(0.5),
+                    fontSize: 9,
+                    letterSpacing: 1.5)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AikaTheme.background,
       appBar: AppBar(
         backgroundColor: AikaTheme.surface,
-        title: Text('Настройки', style: TextStyle(color: AikaTheme.neonBlue, letterSpacing: 2)),
+        title: Text('Настройки',
+            style: TextStyle(color: AikaTheme.neonBlue, letterSpacing: 2)),
         iconTheme: const IconThemeData(color: Colors.white54),
         actions: [
-          TextButton(onPressed: _save, child: Text('Сохранить', style: TextStyle(color: AikaTheme.neonBlue))),
+          TextButton(
+              onPressed: _save,
+              child: Text('Сохранить',
+                  style: TextStyle(color: AikaTheme.neonBlue))),
         ],
       ),
       body: _loading
@@ -148,24 +214,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
+                // ── Личное ───────────────────────────────────────────
                 _section('ЛИЧНОЕ'),
-                _buildTextField(_nameController, 'Имя ассистента', Icons.auto_awesome),
+                _buildTextField(
+                    _nameController, 'Имя ассистента', Icons.auto_awesome),
                 const SizedBox(height: 12),
-                _buildTextField(_userNameController, 'Ваше имя', Icons.person_outline),
+                _buildTextField(
+                    _userNameController, 'Ваше имя', Icons.person_outline),
 
+                // ── Аватар ───────────────────────────────────────────
                 _section('3D АВАТАР'),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  const Text('Показывать аватар', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  const Text('Показывать аватар',
+                      style: TextStyle(color: Colors.white70, fontSize: 13)),
                   Switch(
                     value: _show3DAvatar,
                     onChanged: (v) => setState(() => _show3DAvatar = v),
                     activeColor: AikaTheme.neonBlue,
                   ),
                 ]),
-                if (_show3DAvatar)
+                if (_show3DAvatar) ...[
+                  const SizedBox(height: 12),
+                  _buildAvatarPreview(),
+                  const SizedBox(height: 12),
                   _slider('Размер аватара', _avatarSize, 80, 300,
-                      (v) => setState(() => _avatarSize = v), divisions: 22),
-                if (_show3DAvatar)
+                      (v) => setState(() => _avatarSize = v),
+                      divisions: 22),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -178,7 +252,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(color: Colors.white38, fontSize: 12),
                     ),
                   ),
+                ],
 
+                // ── Голос ─────────────────────────────────────────────
                 _section('ГОЛОС'),
                 _slider('Скорость речи', _ttsRate, 0.1, 1.0,
                     (v) => setState(() => _ttsRate = v)),
@@ -187,6 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _slider('Громкость', _ttsVolume, 0.0, 1.0,
                     (v) => setState(() => _ttsVolume = v)),
 
+                // ── Выбор голоса ──────────────────────────────────────
                 if (_voices.isNotEmpty) ...[
                   _section('ВЫБОР ГОЛОСА'),
                   Container(
@@ -203,21 +280,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       underline: const SizedBox(),
                       hint: const Text('Выберите голос',
                           style: TextStyle(color: Colors.white38)),
-                      items: _voices.map((v) => DropdownMenuItem(
-                        value: v['name'],
-                        child: Text('${v["name"]} (${v["locale"]})',
-                            style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      )).toList(),
+                      items: _voices
+                          .map((v) => DropdownMenuItem(
+                                value: v['name'],
+                                child: Text(
+                                    '${v["name"]} (${v["locale"]})',
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 13)),
+                              ))
+                          .toList(),
                       onChanged: (v) => setState(() => _selectedVoice = v),
                     ),
                   ),
                 ],
-                const // ─── 3D Модель ───────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: const OverlaySettingsWidget(),
-          ),
-          SizedBox(height: 32),
+
+                // ── Настройки overlay ─────────────────────────────────
+                _section('НАСТРОЙКИ OVERLAY'),
+                const OverlaySettingsWidget(),
+
+                const SizedBox(height: 32),
               ],
             ),
     );
