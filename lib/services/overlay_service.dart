@@ -68,7 +68,7 @@ class OverlayService {
   }
 
   // Sync wrapper для вызова без await (публичный)
-  void asyncState(String s) { setState(s); }
+  Future<void> asyncState(String s) => setState(s);
 
   Future<void> setIdle()      => setState('idle');
   Future<void> setListening() => setState('listening');
