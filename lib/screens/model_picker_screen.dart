@@ -33,8 +33,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   String _previewState = 'idle';
   bool _loading = false;
 
-  final _previewKey = GlobalKey<_Live2DWidgetState2>();
-
   @override
   void initState() {
     super.initState();
@@ -361,5 +359,3 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   }
 }
 
-// Заглушка для ключа — не используется напрямую
-class _Live2DWidgetState2 {}
