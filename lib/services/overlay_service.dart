@@ -78,10 +78,8 @@ class OverlayService {
   Future<void> setMusicPlaying(bool playing) async {
     _musicPlaying = playing;
     try {
-      // Отправляем в оверлей
-      await _modelChannel.invokeMethod('setMusicPlaying', playing);
+      await _overlayChannel.invokeMethod('musicOverlay', {'playing': playing});
     } catch (_) {
-      // Fallback через setState
       await setState(playing ? 'dance' : 'idle');
     }
   }
@@ -90,7 +88,11 @@ class OverlayService {
 
   // ─── Анимация напрямую ──────────────────────────────────────────────
   Future<void> playAnimation(String animName) async {
-    try { await _modelChannel.invokeMethod('playAnimation', animName); } catch (_) {}
+    try {
+      await _overlayChannel.invokeMethod('animOverlay', {'anim': animName});
+    } catch (_) {
+      await _modelChannel.invokeMethod('playAnimation', animName);
+    }
   }
 
   // ─── Конфиг: размер / прозрачность / сторона ────────────────────────
