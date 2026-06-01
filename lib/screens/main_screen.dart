@@ -237,7 +237,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Подписываемся на изменения настроения → обновляем оверлей
     _moodService.moodStream.listen((mood) {
       final state = _moodToOverlayState(mood);
-      OverlayService()._asyncState(state);
+      OverlayService().asyncState(state);
     });
     // Автозапуск постоянного прослушивания wake word
     Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
@@ -296,9 +296,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               timestamp: DateTime.now(),
             ));
             _speak(reaction);
-            OverlayService()._asyncState('greeting');
+            OverlayService().asyncState('greeting');
             Future.delayed(const Duration(seconds: 3), () {
-              OverlayService()._asyncState('idle');
+              OverlayService().asyncState('idle');
             });
           }
         },
@@ -516,15 +516,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
         }
         setState(() => _isListening = false);
-        await OverlayService()._asyncState('thinking');
+        await OverlayService().asyncState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
-        await OverlayService()._asyncState('idle');
+        await OverlayService().asyncState('idle');
         // Возобновляем wake word после команды
         if (_wakeWordEnabled) await _wakeWordService.resume();
       },
       onDone: () {
         setState(() => _isListening = false);
-        OverlayService()._asyncState('idle');
+        OverlayService().asyncState('idle');
         if (_wakeWordEnabled) _wakeWordService.resume();
       },
     );
@@ -560,17 +560,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _idleTimer?.cancel();
     if (mounted && _isStretching) {
       setState(() => _isStretching = false);
-      OverlayService()._asyncState('idle');
+      OverlayService().asyncState('idle');
     }
     _idleTimer = Timer(const Duration(seconds: 30), () {
       if (mounted && !_isListening && !_isThinking && !_isDancing) {
         setState(() => _isStretching = true);
-        OverlayService()._asyncState('stretch');
+        OverlayService().asyncState('stretch');
         // Через 3 секунды возвращаемся в idle
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted) {
             setState(() => _isStretching = false);
-            OverlayService()._asyncState('idle');
+            OverlayService().asyncState('idle');
           }
         });
       }
@@ -584,14 +584,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (playing) {
         if (!_isDancing) {
           if (mounted) setState(() => _isDancing = true);
-          OverlayService()._asyncState('dance');
+          OverlayService().asyncState('dance');
         }
         // Медиа играет — полностью выключаем микрофон (не реагируем на музыку/видео)
         _wakeWordService.setMusicPlaying(true);
       } else {
         if (_isDancing) {
           if (mounted) setState(() => _isDancing = false);
-          OverlayService()._asyncState('idle');
+          OverlayService().asyncState('idle');
         }
         // Медиа остановилась — включаем микрофон обратно
         _wakeWordService.setMusicPlaying(false);
@@ -769,7 +769,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     final appName = cmd.app == 'whatsapp' ? 'WhatsApp' : 'Telegram';
     final reply = 'Отправляю "${cmd.message}" контакту ${cmd.contact} в $appName...';
-    OverlayService()._asyncState('greeting');
+    OverlayService().asyncState('greeting');
 
     final result = await MessageSenderService.sendMessage(
       app: cmd.app,
@@ -777,7 +777,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       message: cmd.message,
     );
 
-    Future.delayed(const Duration(seconds: 2), () => OverlayService()._asyncState('idle'));
+    Future.delayed(const Duration(seconds: 2), () => OverlayService().asyncState('idle'));
     return reply;
   }
 
@@ -785,13 +785,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void _startDance() {
     if (_isListening || _isThinking) return;
     setState(() => _isDancing = true);
-    OverlayService()._asyncState('dance');
+    OverlayService().asyncState('dance');
   }
 
   void _stopDance() {
     if (!_isDancing) return;
     setState(() => _isDancing = false);
-    OverlayService()._asyncState('idle');
+    OverlayService().asyncState('idle');
   }
 
   Future<void> _sendMessage(String text) async {
@@ -1278,7 +1278,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       timestamp: DateTime.now(),
     ));
     setState(() { _isThinking = true; _isDancing = false; });
-    await OverlayService()._asyncState('thinking');
+    await OverlayService().asyncState('thinking');
 
     // ── Управление телефоном голосом ─────────────────────────────────────
     if (ScreenReaderService.isPhoneControlRequest(text)) {
@@ -1416,7 +1416,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
     } finally {
       setState(() => _isThinking = false);
-      await OverlayService()._asyncState('idle');
+      await OverlayService().asyncState('idle');
     }
   }
 
@@ -1424,17 +1424,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isListening) {
       await _speechService.stopListening();
       setState(() => _isListening = false);
-      await OverlayService()._asyncState('idle');
+      await OverlayService().asyncState('idle');
     } else {
       setState(() { _isListening = true; _isDancing = false; });
-      await OverlayService()._asyncState('listening');
+      await OverlayService().asyncState('listening');
       await _speechService.startListening(
         onResult: (text) {
           if (text.isNotEmpty) _sendMessage(text);
         },
         onDone: () {
           setState(() => _isListening = false);
-          OverlayService()._asyncState('idle');
+          OverlayService().asyncState('idle');
         },
       );
     }
