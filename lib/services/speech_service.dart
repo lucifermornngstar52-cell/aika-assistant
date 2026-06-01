@@ -1,8 +1,16 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+/// SpeechService — владелец единственного экземпляра SpeechToText.
+/// WakeWordService получает shared доступ через sharedStt.
 class SpeechService extends ChangeNotifier {
+  // Синглтон — один STT на всё приложение
+  static SpeechService? _instance;
+  factory SpeechService() => _instance ??= SpeechService._internal();
+  SpeechService._internal();
+
   final SpeechToText _stt = SpeechToText();
   final FlutterTts _tts = FlutterTts();
 
@@ -11,21 +19,28 @@ class SpeechService extends ChangeNotifier {
   bool _isAvailable = false;
   String _lastWords = '';
   double _soundLevel = 0.0;
-  static const String _ruLocaleId = 'ru-RU';
+  static const String _ruLocaleId = 'ru_RU';
 
   bool get isListening => _isListening;
-  bool get isSpeaking => _isSpeaking;
+  bool get isSpeaking  => _isSpeaking;
   bool get isAvailable => _isAvailable;
   String get lastWords => _lastWords;
   double get soundLevel => _soundLevel;
 
-  /// Expose shared STT instance for WakeWordService
+  /// Shared STT для WakeWordService — не создавать второй экземпляр!
   SpeechToText get sharedStt => _stt;
 
   Future<void> initialize() async {
-    // ── STT ──────────────────────────────────────────────────────────
+    // ── STT ──────────────────────────────────────────────────────────────
     _isAvailable = await _stt.initialize(
-      onError: (error) => debugPrint('[STT] error: $error'),
+      onError: (error) {
+        debugPrint('[STT] error: $error');
+        // При ошибке — сбрасываем флаг чтобы можно было начать снова
+        if (_isListening) {
+          _isListening = false;
+          notifyListeners();
+        }
+      },
       onStatus: (status) {
         debugPrint('[STT] status: $status');
         if (status == 'done' || status == 'notListening') {
@@ -37,18 +52,15 @@ class SpeechService extends ChangeNotifier {
 
     if (_isAvailable) {
       final locales = await _stt.locales();
-      final ruLocale = locales.where(
-        (l) => l.localeId.startsWith('ru'),
-      ).toList();
-      debugPrint('[STT] Russian locales found: ${ruLocale.map((l) => l.localeId).join(", ")}');
-      if (ruLocale.isEmpty) {
-        debugPrint('[STT] ⚠️ Russian STT pack not installed on device!');
+      final ruLocales = locales.where((l) => l.localeId.startsWith('ru')).toList();
+      debugPrint('[STT] Russian locales: ${ruLocales.map((l) => l.localeId).join(", ")}');
+      if (ruLocales.isEmpty) {
+        debugPrint('[STT] ⚠️ Русский языковой пакет НЕ установлен на устройстве!');
       }
     }
+    debugPrint('[STT] Available: $_isAvailable');
 
-    debugPrint('[STT] Available: $_isAvailable | locale: $_ruLocaleId');
-
-    // ── TTS ──────────────────────────────────────────────────────────
+    // ── TTS (системный fallback) ─────────────────────────────────────────
     await _tts.setLanguage('ru-RU');
     await _tts.setSpeechRate(0.85);
     await _tts.setVolume(1.0);
@@ -61,113 +73,99 @@ class SpeechService extends ChangeNotifier {
         final ruVoices = allVoices
             .where((v) => v['locale']?.toString().toLowerCase().startsWith('ru') ?? false)
             .toList();
-
         debugPrint('[TTS] Russian voices: ${ruVoices.map((v) => v['name']).join(", ")}');
-
         if (ruVoices.isNotEmpty) {
           final femaleVoice = ruVoices.firstWhere(
             (v) {
               final name = v['name']?.toString().toLowerCase() ?? '';
-              return name.contains('female') ||
-                  name.contains('alena') ||
-                  name.contains('svetlana') ||
-                  name.contains('katya') ||
-                  name.contains('marina');
+              return name.contains('female') || name.contains('alena') ||
+                  name.contains('svetlana') || name.contains('katya') ||
+                  name.contains('marina') || name.contains('dariya');
             },
             orElse: () => ruVoices.first,
           );
-          final voiceName = femaleVoice['name']?.toString() ?? '';
-          final voiceLocale = femaleVoice['locale']?.toString() ?? 'ru-RU';
-          await _tts.setVoice({'name': voiceName, 'locale': voiceLocale});
-          debugPrint('[TTS] Voice set: $voiceName ($voiceLocale)');
-        } else {
-          await _tts.setLanguage('ru-RU');
-          debugPrint('[TTS] ⚠️ No ru voices, forcing language ru-RU');
+          await _tts.setVoice({
+            'name': femaleVoice['name']?.toString() ?? '',
+            'locale': femaleVoice['locale']?.toString() ?? 'ru-RU',
+          });
         }
       }
     } catch (e) {
-      debugPrint('[TTS] getVoices error: $e');
-      await _tts.setLanguage('ru-RU');
+      debugPrint('[TTS] voices error: $e');
     }
-
-    _tts.setStartHandler(() {
-      _isSpeaking = true;
-      notifyListeners();
-    });
-    _tts.setCompletionHandler(() {
-      _isSpeaking = false;
-      notifyListeners();
-    });
-    _tts.setErrorHandler((msg) {
-      debugPrint('[TTS] error: $msg');
-      _isSpeaking = false;
-      notifyListeners();
-    });
-
-    notifyListeners();
   }
 
-  Future<void> startListening({
-    required Function(String) onResult,
-    required Function() onDone,
+  Future<void> startListening(
+    Function(String text) onResult, {
+    Function()? onListeningStart,
   }) async {
-    if (!_isAvailable || _isListening) return;
-    _lastWords = '';
+    if (!_isAvailable) {
+      debugPrint('[STT] недоступен');
+      return;
+    }
+    // Если уже слушаем — останавливаем сначала
+    if (_stt.isListening) {
+      await _stt.stop();
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
     _isListening = true;
+    _lastWords = '';
     notifyListeners();
+    onListeningStart?.call();
 
-    String _partialText = '';
-    String _partialAccum = '';
-
-    await _stt.listen(
-      localeId: _ruLocaleId,
-      listenFor: const Duration(seconds: 60),   // максимум 60 секунд
-      pauseFor: const Duration(milliseconds: 3500), // 3.5с тишины → финал
-      cancelOnError: false,
-      partialResults: true,
-      listenMode: ListenMode.dictation,
+    _stt.listen(
       onResult: (result) {
         _lastWords = result.recognizedWords;
-        if (_lastWords.isNotEmpty) _partialAccum = _lastWords;
         _soundLevel = 0;
         notifyListeners();
-        if (result.finalResult) {
-          final words = _partialAccum.isNotEmpty ? _partialAccum : _lastWords;
-          _isListening = false;
-          notifyListeners();
-          if (words.isNotEmpty) onResult(words);
-          onDone();
+        if (result.finalResult && _lastWords.isNotEmpty) {
+          debugPrint('[STT] финал: $_lastWords');
+          onResult(_lastWords);
         }
       },
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 5),
+      localeId: _ruLocaleId,
       onSoundLevelChange: (level) {
         _soundLevel = level;
         notifyListeners();
       },
+      cancelOnError: false,
+      partialResults: true,
     );
   }
 
   Future<void> stopListening() async {
-    if (_isListening) {
-      await _stt.stop();
-      _isListening = false;
-      notifyListeners();
-    }
+    _isListening = false;
+    await _stt.stop();
+    notifyListeners();
   }
 
   Future<void> speak(String text) async {
-    if (text.isEmpty) return;
+    _isSpeaking = true;
+    notifyListeners();
+    final done = Completer<void>();
+    _tts.setCompletionHandler(() {
+      _isSpeaking = false;
+      notifyListeners();
+      if (!done.isCompleted) done.complete();
+    });
+    _tts.setErrorHandler((_) {
+      _isSpeaking = false;
+      notifyListeners();
+      if (!done.isCompleted) done.complete();
+    });
     await _tts.speak(text);
+    await done.future.timeout(
+      Duration(seconds: (text.length / 6).ceil() + 5),
+      onTimeout: () { _isSpeaking = false; notifyListeners(); },
+    );
   }
 
   Future<void> stopSpeaking() async {
     await _tts.stop();
-  }
-
-  @override
-  void dispose() {
-    _stt.stop();
-    _tts.stop();
-    super.dispose();
+    _isSpeaking = false;
+    notifyListeners();
   }
 }
-
