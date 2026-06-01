@@ -171,6 +171,14 @@ window.loadCustomModel = async function(url) {
   await loadModelFromPath(url);
 };
 
+window.switchBuiltinModel = async function(assetPath) {
+  if (!app) { log('PIXI не готов'); return; }
+  // Строим URL относительно текущего расположения live2d_viewer.html
+  const modelUrl = BASE + assetPath;
+  log('Переключаем модель: ' + assetPath);
+  await loadModelFromPath(modelUrl);
+};
+
 // Старт
 initLive2D();
 </script>
