@@ -38,6 +38,11 @@ class AikaOverlayService : Service() {
         private const val FL_CHANNEL = "com.aika.assistant/live2d_overlay"
 
         var isRunning = false
+
+        const val ACTION_CONFIG  = "com.aika.CONFIG"
+        const val EXTRA_SIZE     = "size"
+        const val EXTRA_SIDE     = "side"
+        const val EXTRA_OPACITY  = "opacity"
     }
 
     private var windowManager: WindowManager? = null
@@ -172,8 +177,30 @@ class AikaOverlayService : Service() {
                 currentState = "idle"
                 methodChannel?.invokeMethod("setState", "idle")
             }
+            ACTION_CONFIG -> {
+                val size  = intent.getFloatExtra(EXTRA_SIZE, 170f)
+                val side  = intent.getStringExtra(EXTRA_SIDE) ?: "left"
+                val alpha = intent.getFloatExtra(EXTRA_OPACITY, 1f)
+                handler.post { applyWindowConfig(size, side, alpha) }
+            }
         }
         return START_STICKY
+    }
+
+    fun applyWindowConfig(sizeDp: Float, side: String, alpha: Float) {
+        val dp = resources.displayMetrics.density
+        val w  = (sizeDp * dp).toInt()
+        val h  = (sizeDp * 1.5f * dp).toInt()
+        params?.let { p ->
+            p.width  = w
+            p.height = h
+            val screenW = resources.displayMetrics.widthPixels
+            p.x = if (side == "right") screenW - w - (16 * dp).toInt() else (16 * dp).toInt()
+            try {
+                overlayRoot?.let { windowManager?.updateViewLayout(it, p) }
+            } catch (_: Exception) {}
+        }
+        flutterView?.alpha = alpha
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
