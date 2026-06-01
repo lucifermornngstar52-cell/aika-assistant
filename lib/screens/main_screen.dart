@@ -507,26 +507,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _moodService.onUserSpoke();
         }
 
-    // ── Emotion Detection ────────────────────────────────────────────────
-    final detectedEmotion = EmotionService.detect(text);
-    if (EmotionService.shouldReact(detectedEmotion)) {
-      final reaction = EmotionService.getEmotionReaction(detectedEmotion);
-      if (reaction != null) {
-        _addMessage(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          role: MessageRole.aika,
-          content: reaction,
-          timestamp: DateTime.now(),
-        ));
-        await _speak(reaction);
-      }
-    }
-    // Меняем настроение Айки по эмоции
-    if (detectedEmotion != UserEmotion.neutral) {
-      final moodName = EmotionService.getAikaMoodForEmotion(detectedEmotion);
-      if (moodName == 'happy') _moodService.onUserSpoke();
-      else if (moodName == 'thinking') _moodService.onThinking();
-    }
+        // ── Emotion Detection ────────────────────────────────────────────────
+        final detectedEmotion = EmotionService.detect(text);
+        if (EmotionService.shouldReact(detectedEmotion)) {
+          final reaction = EmotionService.getEmotionReaction(detectedEmotion);
+          if (reaction != null) {
+            _addMessage(ChatMessage(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              role: MessageRole.aika,
+              content: reaction,
+              timestamp: DateTime.now(),
+            ));
+            await _speak(reaction);
+          }
+        }
+        // Меняем настроение Айки по эмоции
+        if (detectedEmotion != UserEmotion.neutral) {
+          final moodName = EmotionService.getAikaMoodForEmotion(detectedEmotion);
+          if (moodName == 'happy') _moodService.onUserSpoke();
+          else if (moodName == 'thinking') _moodService.onThinking();
         }
         setState(() => _isListening = false);
         OverlayService().asyncState('thinking');
