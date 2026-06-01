@@ -41,6 +41,9 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
+  # File picker (для выбора Live2D модели)
+  file_picker: ^8.1.2
+
   # Timezone
   timezone: ^0.9.4
 
@@ -62,6 +65,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/live2d_viewer.html
+    - assets/live2d/
     - assets/models/
     - assets/images/chat_wallpaper.jpg
     - assets/images/aika_avatar.png
