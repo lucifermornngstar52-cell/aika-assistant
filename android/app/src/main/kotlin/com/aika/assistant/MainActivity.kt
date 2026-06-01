@@ -9,7 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import android.view.WindowManager
 import android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
@@ -18,7 +18,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private val OVERLAY_CHANNEL  = "com.aika.assistant/overlay"
     private val AUDIO_CHANNEL    = "aika/audio"
     private val SCREEN_CHANNEL   = "com.aika.assistant/screen"
