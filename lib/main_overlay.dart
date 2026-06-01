@@ -235,5 +235,6 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
           debugPrint('[WebView] load error: \$code \$message');
         },
       ),
+    );
   }
 }
