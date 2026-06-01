@@ -28,12 +28,10 @@ class _MainScreenState extends State<MainScreen> {
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
-  final AvatarAnimationController _avatarCtrl = AvatarAnimationController.instance;
 
   List<ChatMessage> _messages = [];
   bool _isListening = false;
   bool _isThinking = false;
-  bool _show3DAvatar = true;
   bool _wakeWordEnabled = false;
   bool _musicPlaying = false;
   String _assistantName = 'Aika';
@@ -61,7 +59,7 @@ class _MainScreenState extends State<MainScreen> {
       if (!mounted) return false;
       final diff = DateTime.now().difference(_lastInteraction);
       if (diff.inMinutes >= 3 && !_musicPlaying) {
-        _avatarCtrl.setFromEvent(AvatarAnimation.sadPose);
+        OverlayService.updateState('idle');
       }
       return true;
     });
@@ -103,28 +101,28 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _onWakeWordDetected() async {
     _touch();
-    _avatarCtrl.setFromEvent(AvatarAnimation.walk); // идёт навстречу
+    OverlayService.updateState('listening'); // идёт навстречу
     await OverlayService.showOverlay(message: 'Слушаю...');
     await _speak('Да?');
     setState(() => _isListening = true);
     await _speechService.startListening(
       onResult: (text) async {
         setState(() => _isListening = false);
-        _avatarCtrl.setFromEvent(AvatarAnimation.sneakPose); // думает
+        OverlayService.updateState('thinking'); // думает
         await OverlayService.updateOverlay(message: 'Думаю...');
         if (text.isNotEmpty) await _sendMessage(text);
         await OverlayService.hideOverlay();
       },
       onDone: () {
         setState(() => _isListening = false);
-        _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+        OverlayService.updateState('idle');
         OverlayService.hideOverlay();
       },
     );
   }
 
   void _sendGreeting() {
-    _avatarCtrl.setFromEvent(AvatarAnimation.walk);
+    OverlayService.updateState('listening');
     final greeting = _userName.isNotEmpty
         ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
         : 'Привет! Я $_assistantName. Чем могу помочь?';
@@ -136,7 +134,7 @@ class _MainScreenState extends State<MainScreen> {
     ));
     _speak(greeting).then((_) {
       Future.delayed(const Duration(seconds: 4), () {
-        _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+        OverlayService.updateState('idle');
       });
     });
   }
@@ -177,7 +175,7 @@ class _MainScreenState extends State<MainScreen> {
       timestamp: DateTime.now(),
     ));
     setState(() => _isThinking = true);
-    _avatarCtrl.setFromEvent(AvatarAnimation.sneakPose); // думает
+    OverlayService.updateState('thinking'); // думает
     await _memoryService.addMessage('user', text);
     try {
       final ctx = await _memoryService.getUserContext();
@@ -200,10 +198,10 @@ class _MainScreenState extends State<MainScreen> {
         timestamp: DateTime.now(),
       ));
       // Ответ готов → agree на 3 сек
-      _avatarCtrl.playTemporary(AvatarAnimation.agree, duration: const Duration(seconds: 3));
+      OverlayService.updateState('greeting');
       await _speak(finalMsg);
     } catch (e) {
-      _avatarCtrl.playTemporary(AvatarAnimation.headShake, duration: const Duration(seconds: 2));
+      OverlayService.updateState('idle');
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -223,24 +221,24 @@ class _MainScreenState extends State<MainScreen> {
     if (lower.contains('музык') || lower.contains('включи') && (lower.contains('пес') || lower.contains('трек')) ||
         resp.contains('включаю музыку') || resp.contains('play music')) {
       setState(() => _musicPlaying = true);
-      _avatarCtrl.setFromEvent(AvatarAnimation.dance);
+      OverlayService.updateState('dance');
       return;
     }
     if (lower.contains('стоп') && _musicPlaying || lower.contains('выключи музык') || lower.contains('пауза')) {
       setState(() => _musicPlaying = false);
-      _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+      OverlayService.updateState('idle');
       return;
     }
 
     // 🚶 Открыть/запустить → walk
     if (lower.contains('открой') || lower.contains('запусти') || lower.contains('перейди')) {
-      _avatarCtrl.playTemporary(AvatarAnimation.walk, duration: const Duration(seconds: 2));
+      OverlayService.updateState('listening');
       return;
     }
 
     // 🏃 Поиск → run
     if (lower.contains('найди') || lower.contains('поищи') || lower.contains('search')) {
-      _avatarCtrl.playTemporary(AvatarAnimation.run, duration: const Duration(seconds: 2));
+      OverlayService.updateState('listening');
       return;
     }
   }
@@ -250,18 +248,18 @@ class _MainScreenState extends State<MainScreen> {
     if (_isListening) {
       await _speechService.stopListening();
       setState(() => _isListening = false);
-      _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+      OverlayService.updateState('idle');
     } else {
       setState(() => _isListening = true);
-      _avatarCtrl.setFromEvent(AvatarAnimation.walk); // идёт навстречу
+      OverlayService.updateState('listening'); // идёт навстречу
       await _speechService.startListening(
         onResult: (text) {
-          _avatarCtrl.setFromEvent(AvatarAnimation.sneakPose);
+          OverlayService.updateState('thinking');
           if (text.isNotEmpty) _sendMessage(text);
         },
         onDone: () {
           setState(() => _isListening = false);
-          _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+          OverlayService.updateState('idle');
         },
       );
     }
@@ -292,7 +290,6 @@ class _MainScreenState extends State<MainScreen> {
                 _buildInput(),
               ],
             ),
-            if (_show3DAvatar) const Aika3DOverlay(),
           ],
         ),
       ),
