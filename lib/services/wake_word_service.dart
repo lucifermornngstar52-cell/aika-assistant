@@ -4,40 +4,39 @@ import 'package:speech_to_text/speech_to_text.dart';
 /// WakeWordService — использует ОБЩИЙ экземпляр SpeechToText из SpeechService
 /// чтобы не конфликтовать за микрофон.
 class WakeWordService {
-  // Синглтон
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
   WakeWordService._();
 
-  /// Shared STT — передаётся из SpeechService при инициализации
   SpeechToText? _stt;
 
-  bool _isListening = false;
-  bool _paused = false;
+  bool _isListening  = false;
+  bool _paused       = false;
   bool _musicPlaying = false;
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
 
   static const String wakeWord = 'айка';
 
-  /// Инициализация с общим STT экземпляром
+  // ─── Инициализация ──────────────────────────────────────────────────────────
+
   Future<void> initWithSharedStt(SpeechToText stt) async {
     _stt = stt;
-    // STT уже инициализирован в SpeechService — нам ничего делать не надо
     debugPrint('[WakeWord] инициализирован с shared STT');
   }
 
-  /// Устаревший метод — для совместимости (теперь STT shared)
+  /// Устаревший — для совместимости
   Future<void> initialize() async {
-    // STT инициализируется в SpeechService — ждём initWithSharedStt
     debugPrint('[WakeWord] initialize() вызван — ждём shared STT');
   }
+
+  // ─── Запуск ────────────────────────────────────────────────────────────────
 
   Future<void> startListening(Function() onWakeWordDetected) async {
     _onWakeWord = onWakeWordDetected;
     if (_isListening) return;
     if (_stt == null) {
-      debugPrint('[WakeWord] ❌ STT не передан — вызови initWithSharedStt()');
+      debugPrint('[WakeWord] ❌ STT не передан');
       return;
     }
     _isListening = true;
@@ -46,13 +45,12 @@ class WakeWordService {
   }
 
   void _listen(Function() callback) {
-    if (!_isListening || _paused) return;
+    if (!_isListening || _paused || _musicPlaying) return;
     final stt = _stt;
     if (stt == null || !stt.isAvailable) return;
 
-    // Если STT уже слушает (активный диалог) — не перехватываем
+    // Если STT уже слушает (активный диалог) — ждём освобождения
     if (stt.isListening) {
-      // Повторим через 500мс
       Future.delayed(const Duration(milliseconds: 500), () => _listen(callback));
       return;
     }
@@ -61,6 +59,7 @@ class WakeWordService {
       onResult: (result) {
         final text = result.recognizedWords.toLowerCase();
         debugPrint('[WakeWord] услышал: $text');
+        if (_paused || _musicPlaying) return;
         for (final t in _triggers) {
           if (text.contains(t)) {
             debugPrint('[WakeWord] ✅ триггер: $t');
@@ -79,36 +78,73 @@ class WakeWordService {
     stt.statusListener = (status) {
       debugPrint('[WakeWord] STT status: $status');
       if ((status == 'done' || status == 'notListening') &&
-          _isListening && !_paused) {
+          _isListening && !_paused && !_musicPlaying) {
         Future.delayed(const Duration(milliseconds: 300), () => _listen(callback));
       }
     };
   }
 
+  // ─── Пауза / Возобновление ─────────────────────────────────────────────────
+
+  /// Пауза во время речи ассистента.
+  /// ⚡ Реально останавливает STT чтобы не записывать звук TTS в микрофон.
   Future<void> pause() async {
+    if (_paused) return;
     _paused = true;
     debugPrint('[WakeWord] пауза');
-    // НЕ останавливаем STT — он нужен для SpeechService
+    final stt = _stt;
+    // Останавливаем STT только если WakeWord им владеет (не активный диалог)
+    if (stt != null && stt.isListening) {
+      try {
+        await stt.stop();
+      } catch (e) {
+        debugPrint('[WakeWord] pause stop error: $e');
+      }
+    }
   }
 
   Future<void> resume() async {
     if (!_isListening || !_paused) return;
     _paused = false;
     debugPrint('[WakeWord] возобновление');
-    if (_onWakeWord != null) {
-      // Небольшая задержка чтобы SpeechService успел освободить STT
-      await Future.delayed(const Duration(milliseconds: 400));
+    if (_onWakeWord != null && !_musicPlaying) {
+      // Задержка чтобы TTS/EdgeTTS успел завершить воспроизведение
+      await Future.delayed(const Duration(milliseconds: 500));
       _listen(_onWakeWord!);
     }
   }
 
+  // ─── Музыка / Видео ────────────────────────────────────────────────────────
+
+  /// Вызывается когда начинается/заканчивается воспроизведение медиа.
+  /// ⚡ При playing=true — полностью останавливает STT пока играет медиа.
   void setMusicPlaying(bool playing) {
+    final wasPlaying = _musicPlaying;
     _musicPlaying = playing;
-    if (playing) pause();
-    // При выключении музыки resume() вызовет main_screen
+
+    if (playing && !wasPlaying) {
+      debugPrint('[WakeWord] 🎵 медиа играет — отключаем микрофон');
+      _paused = true;
+      final stt = _stt;
+      if (stt != null && stt.isListening) {
+        stt.stop().catchError((e) {
+          debugPrint('[WakeWord] music stop error: $e');
+        });
+      }
+    } else if (!playing && wasPlaying) {
+      debugPrint('[WakeWord] 🎵 медиа остановлена — включаем микрофон');
+      _paused = false;
+      if (_isListening && _onWakeWord != null) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (!_musicPlaying && !_paused) _listen(_onWakeWord!);
+        });
+      }
+    }
   }
 
-  void updateTriggers([List<String>? triggers]) {
+  // ─── Прочее ────────────────────────────────────────────────────────────────
+
+  Future<void> updateTriggers([List<String>? triggers]) async {
     if (triggers != null && triggers.isNotEmpty) {
       _triggers = triggers;
     } else {
@@ -116,12 +152,13 @@ class WakeWordService {
     }
   }
 
-  bool get isListening => _isListening && !_paused;
+  bool get isListening => _isListening && !_paused && !_musicPlaying;
+  bool get isMusicPlaying => _musicPlaying;
 
   Future<void> stop() async {
     _isListening = false;
     _paused = false;
     debugPrint('[WakeWord] остановлен');
-    // НЕ останавливаем shared STT
+    // НЕ останавливаем shared STT — он нужен SpeechService
   }
 }
