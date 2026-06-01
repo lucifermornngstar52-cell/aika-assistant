@@ -15,8 +15,10 @@ class BuiltinModel {
 }
 
 final _builtinModels = [
-  BuiltinModel(id: 'hiyori', name: 'Hiyori', assetPath: 'models/Hiyori/Hiyori.model3.json', emoji: '🌸'),
-  BuiltinModel(id: 'haru',   name: 'Haru',   assetPath: 'models/Haru/Haru.model3.json',     emoji: '⚡'),
+  BuiltinModel(id: 'natori', name: 'Natori',  assetPath: 'models/Natori/Natori.model3.json', emoji: '🌟'),
+  BuiltinModel(id: 'ren',    name: 'Ren',     assetPath: 'models/Ren/Ren.model3.json',       emoji: '🔥'),
+  BuiltinModel(id: 'hiyori', name: 'Hiyori',  assetPath: 'models/Hiyori/Hiyori.model3.json', emoji: '🌸'),
+  BuiltinModel(id: 'haru',   name: 'Haru',    assetPath: 'models/Haru/Haru.model3.json',     emoji: '⚡'),
 ];
 
 class ModelPickerScreen extends StatefulWidget {
@@ -42,7 +44,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _selectedId = prefs.getString('live2d_model_id') ?? 'hiyori';
+      _selectedId = prefs.getString('live2d_model_id') ?? 'natori';
       _customModelPath = prefs.getString('custom_model_path');
     });
   }
