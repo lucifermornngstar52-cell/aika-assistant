@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'dart:async';
 
 /// Entry point для 3D overlay — запускается отдельным Flutter Engine
 /// внутри AikaOverlayService (FlutterView поверх всех приложений).
@@ -13,193 +13,196 @@ void overlayMain() {
 
 class _OverlayApp extends StatelessWidget {
   const _OverlayApp();
+
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: _AikaOverlayPage(),
+      home: _ModelOverlayPage(),
     );
   }
 }
 
-class _AikaOverlayPage extends StatefulWidget {
-  const _AikaOverlayPage();
+class _ModelOverlayPage extends StatefulWidget {
+  const _ModelOverlayPage();
+
   @override
-  State<_AikaOverlayPage> createState() => _AikaOverlayPageState();
+  State<_ModelOverlayPage> createState() => _ModelOverlayPageState();
 }
 
-class _AikaOverlayPageState extends State<_AikaOverlayPage>
-    with TickerProviderStateMixin {
-  static const _channel = MethodChannel('com.aika.assistant/overlay_flutter');
+class _ModelOverlayPageState extends State<_ModelOverlayPage>
+    with SingleTickerProviderStateMixin {
+  static const _channel = MethodChannel('com.aika.assistant/live2d_overlay');
 
-  String _state = 'idle';
-  double _opacity = 1.0;
+  String _state    = 'idle';
+  double _opacity  = 1.0;
+  double _size     = 170.0; // dp
+  bool   _mirror   = false;
+  bool   _modelLoaded = false;
+  bool   _musicPlaying = false;
 
-  // Glow animation
-  late AnimationController _glowCtrl;
-  late Animation<double> _glowAnim;
+  // Имя текущей анимации для model-viewer
+  String _currentAnim = 'idle';
+  bool   _animAutoPlay = true;
 
-  // Bounce animation for listening/thinking
-  late AnimationController _bounceCtrl;
-  late Animation<double> _bounceAnim;
+  // Анимация пульса когда думает
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
 
-  // Анимации модели по состоянию
-  static const _animMap = {
-    'idle':      'TPose',
-    'listening': 'SambaDance',   // лёгкое движение
-    'thinking':  'TPose',
-    'talking':   'SambaDance',
-    'greeting':  'SambaDance',
+  // Маппинг состояний → анимации модели
+  // Названия должны совпадать с именами анимаций в GLB
+  static const _stateToAnim = {
+    'idle':      'idle',
+    'listening': 'agree',
+    'thinking':  'headShake',
+    'talking':   'agree',
+    'greeting':  'agree',
     'dance':     'SambaDance',
-    'stretch':   'TPose',
+    'walk':      'walk',
+    'run':       'run',
+    'wave':      'agree',
+    'sad':       'sad_pose',
+    'music':     'SambaDance',  // включилась музыка → танцует
   };
 
-  // Цвет glow по состоянию
-  Color get _glowColor {
-    switch (_state) {
-      case 'listening': return const Color(0xFF9C27B0);
-      case 'thinking':  return const Color(0xFF00BCD4);
-      case 'talking':   return const Color(0xFF4CAF50);
-      case 'greeting':  return const Color(0xFFFF9800);
-      case 'dance':     return const Color(0xFFE91E63);
-      case 'stretch':   return const Color(0xFF673AB7);
-      default:          return const Color(0xFF2196F3);
-    }
-  }
+  // Таймер для возврата в idle
+  Timer? _returnTimer;
 
   @override
   void initState() {
     super.initState();
-
-    _glowCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-    _glowAnim = Tween<double>(begin: 0.25, end: 0.75)
-        .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
-
-    _bounceCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..repeat(reverse: true);
-    _bounceAnim = Tween<double>(begin: 0.0, end: 1.0)
-        .animate(CurvedAnimation(parent: _bounceCtrl, curve: Curves.elasticInOut));
-
     _channel.setMethodCallHandler(_handleNative);
-  }
 
-  Future<dynamic> _handleNative(MethodCall call) async {
-    switch (call.method) {
-      case 'setState':
-        final s = call.arguments as String? ?? 'idle';
-        if (mounted) setState(() => _state = s);
-        break;
-      case 'setConfig':
-        final args = call.arguments as Map?;
-        if (args == null) break;
-        final newOpacity = (args['opacity'] as num?)?.toDouble() ?? _opacity;
-        if (mounted) setState(() => _opacity = newOpacity);
-        break;
-      case 'onTap':
-        if (mounted) setState(() => _state = 'greeting');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) setState(() => _state = 'idle');
-        });
-        break;
-    }
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void dispose() {
-    _glowCtrl.dispose();
-    _bounceCtrl.dispose();
+    _pulseCtrl.dispose();
+    _returnTimer?.cancel();
     super.dispose();
+  }
+
+  Future<dynamic> _handleNative(MethodCall call) async {
+    switch (call.method) {
+
+      // Изменить состояние (idle/listening/thinking/dance/etc.)
+      case 'setState':
+        final s = call.arguments as String? ?? 'idle';
+        _applyState(s);
+        break;
+
+      // Музыка включилась/выключилась
+      case 'setMusicPlaying':
+        final playing = call.arguments as bool? ?? false;
+        if (mounted) setState(() => _musicPlaying = playing);
+        if (playing) {
+          _applyState('music');
+        } else if (_state == 'music') {
+          _applyState('idle');
+        }
+        break;
+
+      // Конфиг: размер, прозрачность, зеркало
+      case 'setConfig':
+        final args = call.arguments as Map? ?? {};
+        if (mounted) {
+          setState(() {
+            _size    = (args['size']    as num?)?.toDouble() ?? _size;
+            _opacity = (args['opacity'] as num?)?.toDouble() ?? _opacity;
+            _mirror  = args['mirror']  as bool? ?? _mirror;
+          });
+        }
+        break;
+
+      // Тап на модель → реакция
+      case 'onTap':
+        _applyState('greeting');
+        _scheduleReturn(3);
+        break;
+
+      // Принудительно установить анимацию по имени
+      case 'playAnimation':
+        final animName = call.arguments as String? ?? 'idle';
+        if (mounted) setState(() => _currentAnim = animName);
+        break;
+
+      // Получить список доступных анимаций
+      case 'getAnimations':
+        return _stateToAnim.keys.toList();
+    }
+  }
+
+  void _applyState(String state) {
+    _returnTimer?.cancel();
+    final anim = _stateToAnim[state] ?? 'idle';
+    if (mounted) {
+      setState(() {
+        _state       = state;
+        _currentAnim = anim;
+      });
+    }
+  }
+
+  // Через N секунд возвращаемся в idle
+  void _scheduleReturn(int seconds) {
+    _returnTimer = Timer(Duration(seconds: seconds), () {
+      if (mounted && _state != 'idle' && !_musicPlaying) {
+        _applyState('idle');
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final animName = _animMap[_state] ?? 'TPose';
-    final isActive = _state != 'idle' && _state != 'thinking';
-
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Opacity(
+      body: AnimatedOpacity(
         opacity: _opacity,
-        child: AnimatedBuilder(
-          animation: _glowAnim,
-          builder: (_, child) {
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                // Glow ring
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 400),
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _glowColor.withOpacity(_glowAnim.value * 0.6),
-                        blurRadius: isActive ? 32 : 16,
-                        spreadRadius: isActive ? 8 : 2,
-                      ),
-                    ],
-                  ),
-                ),
-                // 3D Model
-                child!,
-                // State label
-                Positioned(
-                  bottom: 4,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Container(
-                      key: ValueKey(_state),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: _glowColor.withOpacity(0.5), width: 1),
-                      ),
-                      child: Text(
-                        _stateLabel(_state),
-                        style: TextStyle(
-                            color: _glowColor, fontSize: 9, letterSpacing: 0.4),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-          child: ModelViewer(
-            src: 'assets/models/aika_model.glb',
-            alt: 'Aika',
-            autoPlay: true,
-            autoRotate: false,
-            cameraControls: false,
-            disableZoom: true,
-            backgroundColor: const Color(0x00000000),
-            animationName: animName,
-          ),
-        ),
+        duration: const Duration(milliseconds: 400),
+        child: _buildModel(),
       ),
     );
   }
 
-  String _stateLabel(String state) {
-    switch (state) {
-      case 'idle':      return 'Aika 💤';
-      case 'listening': return 'Слушаю... 👂';
-      case 'thinking':  return 'Думаю... 🤔';
-      case 'talking':   return 'Говорю 💬';
-      case 'greeting':  return 'Привет! 👋';
-      case 'dance':     return 'Танцую 💃';
-      case 'stretch':   return 'Растяжка 🧘';
-      default:          return 'Aika';
+  Widget _buildModel() {
+    // Пульс когда думает
+    if (_state == 'thinking') {
+      return AnimatedBuilder(
+        animation: _pulseAnim,
+        builder: (_, child) => Transform.scale(
+          scale: _pulseAnim.value,
+          child: child,
+        ),
+        child: _modelViewer(),
+      );
     }
+
+    return Transform(
+      alignment: Alignment.center,
+      transform: _mirror
+          ? (Matrix4.identity()..scale(-1.0, 1.0))
+          : Matrix4.identity(),
+      child: _modelViewer(),
+    );
+  }
+
+  Widget _modelViewer() {
+    return ModelViewer(
+      src: 'asset://assets/models/aika_model.glb',
+      alt: 'Aika 3D Model',
+      autoPlay: _animAutoPlay,
+      animationName: _currentAnim,
+      autoRotate: false,
+      cameraControls: false,
+      backgroundColor: Colors.transparent,
+      // Размер управляется из overlay service через WindowManager
+    );
   }
 }
