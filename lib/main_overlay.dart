@@ -47,6 +47,8 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
   String? _customModelPath;
   bool _webViewReady = false;
 
+  static const _readyChannel = MethodChannel('com.aika.assistant/overlay_ready');
+
   @override
   void initState() {
     super.initState();
@@ -174,9 +176,7 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
   }
 
   Widget _buildLive2D() {
-    return SizedBox(
-      width: _size,
-      height: _size * 1.5,
+    return SizedBox.expand(
       child: InAppWebView(
         initialFile: 'assets/live2d_viewer.html',
         initialSettings: InAppWebViewSettings(
@@ -215,14 +215,17 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
         },
         onLoadStop: (ctrl, url) {
           setState(() => _webViewReady = true);
-          // Ждём пока JS динамически загрузит Pixi + Live2D скрипты и модель
+          // Даём JS время загрузить pixi + live2d + модель
           Future.delayed(const Duration(milliseconds: 1500), () {
             if (_customModelPath != null) {
               ctrl.evaluateJavascript(
                 source: "window.loadCustomModel('file://\$_customModelPath')"
               );
             }
-            // setAikaState вызывается автоматически после загрузки модели
+          });
+          // Сигналим Kotlin показать оверлей после загрузки модели
+          Future.delayed(const Duration(milliseconds: 3500), () {
+            _readyChannel.invokeMethod('modelReady').catchError((_) {});
           });
         },
         onConsoleMessage: (ctrl, msg) {
@@ -231,10 +234,6 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
         onLoadError: (ctrl, url, code, message) {
           debugPrint('[WebView] load error: \$code \$message');
         },
-        onReceivedError: (ctrl, req, err) {
-          debugPrint('[WebView] error: \${err.description}');
-        },
       ),
-    );
   }
 }
