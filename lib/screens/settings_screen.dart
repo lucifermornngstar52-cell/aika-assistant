@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_theme.dart';
+import '../widgets/overlay_settings_widget.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -211,7 +212,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 32),
+                const // ─── 3D Модель ───────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: const OverlaySettingsWidget(),
+          ),
+          SizedBox(height: 32),
               ],
             ),
     );
