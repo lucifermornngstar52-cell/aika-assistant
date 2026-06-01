@@ -505,6 +505,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ));
           await _speak(wakeMsg);
           _moodService.onUserSpoke();
+        }
 
     // ── Emotion Detection ────────────────────────────────────────────────
     final detectedEmotion = EmotionService.detect(text);
