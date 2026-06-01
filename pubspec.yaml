@@ -14,7 +14,8 @@ dependencies:
   speech_to_text: ^6.6.2
   flutter_tts: ^4.2.5
   
-  # 3D Model Viewer
+  # Live2D via WebView
+  flutter_inappwebview: ^6.1.5
   
   # Animations
   flutter_animate: ^4.5.0
