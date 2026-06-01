@@ -40,6 +40,8 @@ class _Live2DWidgetState extends State<Live2DWidget> {
 
   // Маппинг id -> путь внутри assets/models/
   static const _builtinPaths = {
+    'natori': 'models/Natori/Natori.model3.json',
+    'ren':    'models/Ren/Ren.model3.json',
     'hiyori': 'models/Hiyori/Hiyori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
   };
@@ -54,7 +56,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
-        _modelId = prefs.getString('live2d_model_id') ?? 'hiyori';
+        _modelId = prefs.getString('live2d_model_id') ?? 'natori';
         _savedCustomPath = prefs.getString('custom_model_path');
       });
     }
