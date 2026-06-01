@@ -18,6 +18,7 @@ import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -28,14 +29,14 @@ import kotlin.math.roundToInt
 class AikaOverlayService : Service() {
 
     companion object {
-        const val ACTION_SHOW   = "com.aika.SHOW"
-        const val ACTION_UPDATE = "com.aika.UPDATE"
-        const val ACTION_HIDE   = "com.aika.HIDE"
-        const val EXTRA_STATE   = "state"
-        const val ENGINE_ID     = "live2d_overlay_engine"
-        private const val CHANNEL_ID = "aika_overlay_channel"
-        private const val NOTIF_ID   = 1337
-        private const val FL_CHANNEL = "com.aika.assistant/live2d_overlay"
+        const val ACTION_SHOW    = "com.aika.SHOW"
+        const val ACTION_UPDATE  = "com.aika.UPDATE"
+        const val ACTION_HIDE    = "com.aika.HIDE"
+        const val EXTRA_STATE    = "state"
+        const val ENGINE_ID      = "live2d_overlay_engine"
+        private const val CHANNEL_ID  = "aika_overlay_channel"
+        private const val NOTIF_ID    = 1337
+        private const val FL_CHANNEL  = "com.aika.assistant/live2d_overlay"
 
         var isRunning = false
 
@@ -75,15 +76,16 @@ class AikaOverlayService : Service() {
             methodChannel = MethodChannel(cached.dartExecutor.binaryMessenger, FL_CHANNEL)
             return
         }
+
         val engine = FlutterEngine(this)
-        // Запускаем overlayMain() из lib/main_overlay.dart
+
+        // Правильный способ вызвать именованный entrypoint
+        val loader = FlutterInjector.instance().flutterLoader()
+        val appBundlePath = loader.findAppBundlePath()
         engine.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint(
-                applicationContext.assets,
-                "lib/main_overlay.dart",
-                "overlayMain"
-            )
+            DartExecutor.DartEntrypoint(appBundlePath, "overlayMain")
         )
+
         FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
         flutterEngine = engine
         methodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, FL_CHANNEL)
@@ -170,7 +172,9 @@ class AikaOverlayService : Service() {
                 val state = intent.getStringExtra(EXTRA_STATE) ?: "idle"
                 handler.post { currentState = state; methodChannel?.invokeMethod("setState", state) }
             }
-            ACTION_HIDE -> handler.post { currentState = "idle"; methodChannel?.invokeMethod("setState", "idle") }
+            ACTION_HIDE -> handler.post {
+                currentState = "idle"; methodChannel?.invokeMethod("setState", "idle")
+            }
             ACTION_CONFIG -> {
                 val size  = intent.getFloatExtra(EXTRA_SIZE, 170f)
                 val side  = intent.getStringExtra(EXTRA_SIDE) ?: "left"
@@ -181,7 +185,8 @@ class AikaOverlayService : Service() {
                 val playing = intent.getBooleanExtra(EXTRA_PLAYING, false)
                 handler.post {
                     methodChannel?.invokeMethod("setMusicPlaying", playing)
-                    if (playing) currentState = "dance" else if (currentState == "dance") currentState = "idle"
+                    if (playing) currentState = "dance"
+                    else if (currentState == "dance") currentState = "idle"
                 }
             }
             ACTION_ANIM -> {
@@ -194,7 +199,8 @@ class AikaOverlayService : Service() {
 
     fun applyWindowConfig(sizeDp: Float, side: String, alpha: Float) {
         val dp = resources.displayMetrics.density
-        val w = (sizeDp * dp).toInt(); val h = (sizeDp * 1.5f * dp).toInt()
+        val w = (sizeDp * dp).toInt()
+        val h = (sizeDp * 1.5f * dp).toInt()
         params?.let { p ->
             p.width = w; p.height = h
             val screenW = resources.displayMetrics.widthPixels
@@ -202,7 +208,9 @@ class AikaOverlayService : Service() {
             try { overlayRoot?.let { windowManager?.updateViewLayout(it, p) } } catch (_: Exception) {}
         }
         flutterView?.alpha = alpha
-        methodChannel?.invokeMethod("setConfig", mapOf("size" to sizeDp, "opacity" to alpha, "mirror" to (side == "right")))
+        methodChannel?.invokeMethod("setConfig", mapOf(
+            "size" to sizeDp, "opacity" to alpha, "mirror" to (side == "right")
+        ))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -219,14 +227,18 @@ class AikaOverlayService : Service() {
         val pi = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Айка активна").setContentText("Нажми чтобы открыть")
+            .setContentTitle("Айка активна")
+            .setContentText("Нажми чтобы открыть")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pi).setOngoing(true).setSilent(true).build()
     }
 
     override fun onDestroy() {
         isRunning = false
-        try { flutterView?.detachFromFlutterEngine(); overlayRoot?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+        try {
+            flutterView?.detachFromFlutterEngine()
+            overlayRoot?.let { windowManager?.removeView(it) }
+        } catch (_: Exception) {}
         super.onDestroy()
     }
 }
