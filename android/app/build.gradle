@@ -22,7 +22,7 @@ def useReleaseKey = keystoreFile != null && keystoreFile.exists()
 android {
     namespace "com.aika.assistant"
     compileSdk 36
-    ndkVersion "26.3.11579264"
+    ndkVersion "27.2.12479018"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
