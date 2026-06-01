@@ -198,6 +198,9 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
               final msg = args.isNotEmpty ? args[0].toString() : '';
               if (msg == 'tap') {
                 _channel.invokeMethod('onTap');
+              } else if (msg == 'modelLoaded') {
+                // Модель загружена — сигналим Kotlin показать оверлей
+                _readyChannel.invokeMethod('modelReady').catchError((_) {});
               } else if (msg == 'pick_model') {
                 _pickCustomModel();
               } else if (msg == 'reset_model') {
@@ -223,10 +226,7 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
               );
             }
           });
-          // Сигналим Kotlin показать оверлей после загрузки модели
-          Future.delayed(const Duration(milliseconds: 3500), () {
-            _readyChannel.invokeMethod('modelReady').catchError((_) {});
-          });
+          // Оверлей покажется когда JS сообщит 'modelLoaded' через FlutterChannel
         },
         onConsoleMessage: (ctrl, msg) {
           debugPrint('[WebView] \${msg.messageLevel.name}: \${msg.message}');
@@ -235,6 +235,5 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
           debugPrint('[WebView] load error: \$code \$message');
         },
       ),
-    );
   }
 }
