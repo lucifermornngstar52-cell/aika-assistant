@@ -98,7 +98,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               child: ClipOval(
                 child: Image.asset(
-                  'assets/images/aika_avatar.png',
+                  'assets/images/aika_chibi.png',
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     decoration: BoxDecoration(
