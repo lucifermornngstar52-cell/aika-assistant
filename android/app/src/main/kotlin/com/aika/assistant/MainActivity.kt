@@ -49,10 +49,7 @@ class MainActivity : FlutterActivity() {
         if (FlutterEngineCache.getInstance().get(AikaOverlayService.ENGINE_ID) == null) {
             val overlayEngine = io.flutter.embedding.engine.FlutterEngine(this)
             overlayEngine.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint(
-                    flutterEngine.dartExecutor.appBundlePath,
-                    "overlayMain"
-                )
+                DartExecutor.DartEntrypoint.createDefault()
             )
             FlutterEngineCache.getInstance().put(AikaOverlayService.ENGINE_ID, overlayEngine)
         }
