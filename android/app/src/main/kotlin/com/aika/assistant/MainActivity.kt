@@ -77,6 +77,22 @@ class MainActivity : FlutterActivity() {
                         startOverlayService(AikaOverlayService.ACTION_UPDATE, "idle")
                         result.success(null)
                     }
+                    "updateLive2DConfig" -> {
+                        val size    = (call.argument<Double>("size")    ?: 170.0).toFloat()
+                        val side    = call.argument<String>("side")     ?: "left"
+                        val opacity = (call.argument<Double>("opacity") ?: 1.0).toFloat()
+                        if (AikaOverlayService.isRunning) {
+                            val intent = Intent(this, AikaOverlayService::class.java).apply {
+                                action = AikaOverlayService.ACTION_CONFIG
+                                putExtra(AikaOverlayService.EXTRA_SIZE,    size)
+                                putExtra(AikaOverlayService.EXTRA_SIDE,    side)
+                                putExtra(AikaOverlayService.EXTRA_OPACITY, opacity)
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                                startForegroundService(intent) else startService(intent)
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
