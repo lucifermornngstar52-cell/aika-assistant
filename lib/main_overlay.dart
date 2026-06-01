@@ -30,13 +30,15 @@ class _Live2DOverlayPage extends StatefulWidget {
 }
 
 class _Live2DOverlayPageState extends State<_Live2DOverlayPage> {
-  static const _channel = MethodChannel('com.aika.assistant/live2d_overlay');
+  static const _channel     = MethodChannel('com.aika.assistant/live2d_overlay');
 
-  final _ctrl = Live2DViewController();
-  bool _loaded = false;
-  String _state = 'idle';
+  final _ctrl   = Live2DViewController();
+  bool   _loaded  = false;
+  String _state   = 'idle';
+  double _opacity = 1.0;
+  bool   _mirror  = false;
+  double _speed   = 1.0;
 
-  // Маппинг состояний → motion group
   static const _groups = {
     'idle':      'Idle',
     'listening': 'TapBody',
@@ -65,6 +67,7 @@ class _Live2DOverlayPageState extends State<_Live2DOverlayPage> {
     );
     if (!ok || !mounted) return;
     setState(() => _loaded = true);
+    _ctrl.setMotionSpeed(_speed);
     _applyState(_state);
   }
 
@@ -72,14 +75,32 @@ class _Live2DOverlayPageState extends State<_Live2DOverlayPage> {
     switch (call.method) {
       case 'setState':
         final s = call.arguments as String? ?? 'idle';
-        setState(() => _state = s);
+        if (mounted) setState(() => _state = s);
         _applyState(s);
         break;
+
       case 'onTap':
         if (_loaded) {
           _ctrl.startMotion(group: 'TapBody', priority: 3);
           _ctrl.setExpression(4);
         }
+        break;
+
+      case 'setConfig':
+        // Обновляем параметры модели без перезагрузки
+        final args = call.arguments as Map?;
+        if (args == null) break;
+        final newSpeed   = (args['speed']   as num?)?.toDouble() ?? _speed;
+        final newMirror  = args['mirror']   as bool? ?? _mirror;
+        final newOpacity = (args['opacity'] as num?)?.toDouble() ?? _opacity;
+        if (mounted) {
+          setState(() {
+            _speed   = newSpeed;
+            _mirror  = newMirror;
+            _opacity = newOpacity;
+          });
+        }
+        if (_loaded) _ctrl.setMotionSpeed(_speed);
         break;
     }
   }
@@ -102,11 +123,19 @@ class _Live2DOverlayPageState extends State<_Live2DOverlayPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Полностью прозрачный фон — видно приложение под оверлеем
       backgroundColor: Colors.transparent,
-      body: _loaded
-          ? Live2DView(controller: _ctrl)
-          : const SizedBox.shrink(),
+      body: !_loaded
+          ? const SizedBox.shrink()
+          : Opacity(
+              opacity: _opacity,
+              child: Transform(
+                alignment: Alignment.center,
+                transform: _mirror
+                    ? (Matrix4.identity()..scale(-1.0, 1.0))
+                    : Matrix4.identity(),
+                child: Live2DView(controller: _ctrl),
+              ),
+            ),
     );
   }
 }
