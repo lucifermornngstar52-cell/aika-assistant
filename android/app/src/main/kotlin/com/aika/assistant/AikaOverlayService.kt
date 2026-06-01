@@ -93,8 +93,10 @@ class AikaOverlayService : Service() {
     private fun setupOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val dp = resources.displayMetrics.density
-        val w = (170 * dp).roundToInt()
-        val h = (255 * dp).roundToInt()
+
+        // ФИЧ: увеличенный размер окна — 280x420dp
+        val w = (280 * dp).roundToInt()
+        val h = (420 * dp).roundToInt()
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -107,28 +109,50 @@ class AikaOverlayService : Service() {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            PixelFormat.TRANSPARENT  // ФИКС: TRANSPARENT вместо TRANSLUCENT
+            PixelFormat.TRANSPARENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (20 * dp).roundToInt()
-            y = (120 * dp).roundToInt()
+            x = (16 * dp).roundToInt()
+            y = (100 * dp).roundToInt()
         }
 
         val engine = flutterEngine ?: return
 
-        // ФИКС: используем FlutterSurfaceView с прозрачным фоном
-        val surfaceView = FlutterSurfaceView(this, true) // true = transparent
+        val surfaceView = FlutterSurfaceView(this, true)
         val fv = FlutterView(this, surfaceView)
-        fv.setBackgroundColor(Color.TRANSPARENT)  // КРИТИЧНО
+        fv.setBackgroundColor(Color.TRANSPARENT)
+        // Начинаем невидимым — покажем когда модель загрузится
         fv.alpha = 0f
         fv.attachToFlutterEngine(engine)
 
         val frame = FrameLayout(this)
-        frame.setBackgroundColor(Color.TRANSPARENT)  // КРИТИЧНО
+        frame.setBackgroundColor(Color.TRANSPARENT)
         frame.addView(fv, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
+
+        // Слушаем событие от Flutter что модель загружена
+        val overlayChannel = MethodChannel(engine.dartExecutor.binaryMessenger, "com.aika.assistant/overlay_ready")
+        overlayChannel.setMethodCallHandler { call, result ->
+            if (call.method == "modelReady") {
+                handler.post {
+                    fv.animate().alpha(1f).setDuration(500).start()
+                    methodChannel?.invokeMethod("setState", currentState)
+                }
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        // Fallback: показываем через 4 секунды в любом случае
+        handler.postDelayed({
+            if (fv.alpha < 0.5f) {
+                fv.animate().alpha(1f).setDuration(500).start()
+                methodChannel?.invokeMethod("setState", currentState)
+            }
+        }, 4000)
 
         var ix = 0; var iy = 0; var tx = 0f; var ty = 0f; var dragDist = 0f
         frame.setOnTouchListener { v, event ->
@@ -136,7 +160,7 @@ class AikaOverlayService : Service() {
                 MotionEvent.ACTION_DOWN -> {
                     ix = params!!.x; iy = params!!.y
                     tx = event.rawX; ty = event.rawY; dragDist = 0f
-                    v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(100).start()
+                    v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -162,11 +186,6 @@ class AikaOverlayService : Service() {
 
         try {
             windowManager?.addView(frame, params)
-            // ФИКС: ждём дольше пока WebView прогрузит модель, только потом показываем
-            handler.postDelayed({
-                fv.animate().alpha(1f).setDuration(400).start()
-                methodChannel?.invokeMethod("setState", currentState)
-            }, 2500)
         } catch (e: Exception) { e.printStackTrace() }
     }
 
