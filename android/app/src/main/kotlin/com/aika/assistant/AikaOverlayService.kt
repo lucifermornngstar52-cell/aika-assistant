@@ -183,6 +183,20 @@ class AikaOverlayService : Service() {
                 val alpha = intent.getFloatExtra(EXTRA_OPACITY, 1f)
                 handler.post { applyWindowConfig(size, side, alpha) }
             }
+            ACTION_MUSIC -> {
+                val playing = intent.getBooleanExtra(EXTRA_PLAYING, false)
+                handler.post {
+                    methodChannel?.invokeMethod("setMusicPlaying", playing)
+                    if (playing) currentState = "dance"
+                    else if (currentState == "dance") currentState = "idle"
+                }
+            }
+            ACTION_ANIM -> {
+                val animName = intent.getStringExtra(EXTRA_ANIM) ?: "idle"
+                handler.post {
+                    methodChannel?.invokeMethod("playAnimation", animName)
+                }
+            }
         }
         return START_STICKY
     }
