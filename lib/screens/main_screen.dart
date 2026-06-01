@@ -3,8 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
+import '../services/avatar_animation_controller.dart';
 import '../services/device_service.dart';
 import '../services/memory_service.dart';
+import '../services/music_control_service.dart';
 import '../services/speech_service.dart';
 import '../services/wake_word_service.dart';
 import '../services/overlay_service.dart';
@@ -27,34 +29,29 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final MemoryService _memoryService = MemoryService();
   final SpeechService _speechService = SpeechService();
   final WakeWordService _wakeWordService = WakeWordService();
+  final MusicControlService _musicService = MusicControlService();
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
-
-  final GlobalKey<_Aika3DOverlayHostState> _overlayKey = GlobalKey();
+  final AvatarAnimationController _avatarCtrl = AvatarAnimationController.instance;
 
   List<ChatMessage> _messages = [];
   bool _isListening = false;
   bool _isThinking = false;
   bool _show3DAvatar = true;
   bool _wakeWordEnabled = false;
+  bool _musicPlaying = false;
   String _assistantName = 'Aika';
   String _userName = '';
 
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  // Таймер неактивности → sitting
+  DateTime _lastInteraction = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
     _initServices();
+    _startIdleWatcher();
   }
 
   Future<void> _initServices() async {
@@ -63,6 +60,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
+  }
+
+  /// Следим за неактивностью — через 3 мин переходим в Sitting
+  void _startIdleWatcher() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 30));
+      if (!mounted) return false;
+      final diff = DateTime.now().difference(_lastInteraction);
+      if (diff.inMinutes >= 3) {
+        _avatarCtrl.setFromEvent(AvatarAnimation.sitting);
+      } else if (diff.inSeconds > 30) {
+        _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+      }
+      return true;
+    });
+  }
+
+  void _touchInteraction() {
+    _lastInteraction = DateTime.now();
   }
 
   Future<void> _loadPrefs() async {
@@ -86,10 +102,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _toggleWakeWord() async {
+    _touchInteraction();
     if (_wakeWordEnabled) {
       await _wakeWordService.stop();
       setState(() => _wakeWordEnabled = false);
-      _showSnack('Wake word выключен');
     } else {
       await _wakeWordService.startListening(() {
         if (!_isListening && !_isThinking) _onWakeWordDetected();
@@ -100,24 +116,29 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _onWakeWordDetected() async {
+    _touchInteraction();
+    _avatarCtrl.setFromEvent(AvatarAnimation.wave); // 👋 Wake word → Wave
     await OverlayService.showOverlay(message: 'Слушаю...');
     await _speak('Да?');
     setState(() => _isListening = true);
     await _speechService.startListening(
       onResult: (text) async {
         setState(() => _isListening = false);
+        _avatarCtrl.setFromEvent(AvatarAnimation.idle);
         await OverlayService.updateOverlay(message: 'Думаю...');
         if (text.isNotEmpty) await _sendMessage(text);
         await OverlayService.hideOverlay();
       },
       onDone: () {
         setState(() => _isListening = false);
+        _avatarCtrl.setFromEvent(AvatarAnimation.idle);
         OverlayService.hideOverlay();
       },
     );
   }
 
   void _sendGreeting() {
+    _avatarCtrl.setFromEvent(AvatarAnimation.wave); // 👋 Приветствие → Wave
     final greeting = _userName.isNotEmpty
         ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
         : 'Привет! Я $_assistantName. Чем могу помочь?';
@@ -127,7 +148,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       content: greeting,
       timestamp: DateTime.now(),
     ));
-    _speak(greeting);
+    _speak(greeting).then((_) {
+      Future.delayed(const Duration(seconds: 3), () {
+        _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+      });
+    });
   }
 
   void _addMessage(ChatMessage msg) {
@@ -149,6 +174,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _showSnack(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
       backgroundColor: AikaTheme.neonBlue.withOpacity(0.8),
@@ -159,6 +185,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+    _touchInteraction();
     _textController.clear();
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -166,7 +193,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       content: text,
       timestamp: DateTime.now(),
     ));
+
     setState(() => _isThinking = true);
+    _avatarCtrl.setFromEvent(AvatarAnimation.idle); // думает → idle покачивается
+
     await _memoryService.addMessage('user', text);
     try {
       final ctx = await _memoryService.getUserContext();
@@ -177,9 +207,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         assistantName: ctx['assistantName'] ?? _assistantName,
         history: history,
       );
+
+      // Анализируем команды для анимации
+      _handleActionAnimation(response, text);
+
       final actionResult = await _deviceService.parseAndExecute(response);
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
       final finalMsg = actionResult != null ? '$display\n$actionResult' : display;
+
       await _memoryService.addMessage('assistant', display);
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -187,8 +222,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         content: finalMsg,
         timestamp: DateTime.now(),
       ));
+
+      // Ответ получен → ThumbsUp на 2 сек, потом idle
+      _avatarCtrl.playTemporary(AvatarAnimation.thumbsUp,
+          duration: const Duration(seconds: 2));
+
       await _speak(finalMsg);
     } catch (e) {
+      _avatarCtrl.playTemporary(AvatarAnimation.no,
+          duration: const Duration(seconds: 2)); // ошибка → No
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -200,33 +242,79 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// Анализируем ответ и запрос — выбираем правильную анимацию
+  void _handleActionAnimation(String response, String userText) {
+    final lower = userText.toLowerCase();
+    final respLower = response.toLowerCase();
+
+    // 🎵 Музыка
+    if (lower.contains('музык') || lower.contains('music') ||
+        lower.contains('включи') && lower.contains('пес') ||
+        respLower.contains('включаю музыку') || respLower.contains('playing music')) {
+      setState(() => _musicPlaying = true);
+      _avatarCtrl.setFromEvent(AvatarAnimation.dance);
+      return;
+    }
+    if (lower.contains('стоп') || lower.contains('выключи музык') ||
+        lower.contains('пауза') || lower.contains('stop music')) {
+      setState(() => _musicPlaying = false);
+      _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+      return;
+    }
+
+    // ⏰ Будильник / таймер
+    if (lower.contains('будильник') || lower.contains('alarm') ||
+        lower.contains('таймер') || lower.contains('напомни')) {
+      _avatarCtrl.playTemporary(AvatarAnimation.jump, duration: const Duration(seconds: 3));
+      return;
+    }
+
+    // ✅ Да / подтверждение
+    if (respLower.contains('готово') || respLower.contains('выполнено') ||
+        respLower.contains('сделано') || respLower.contains('конечно')) {
+      _avatarCtrl.playTemporary(AvatarAnimation.yes, duration: const Duration(seconds: 2));
+      return;
+    }
+
+    // 🚶 Навигация / переход
+    if (lower.contains('открой') || lower.contains('запусти') ||
+        lower.contains('перейди') || lower.contains('open')) {
+      _avatarCtrl.playTemporary(AvatarAnimation.walking, duration: const Duration(seconds: 2));
+      return;
+    }
+  }
+
   Future<void> _toggleListening() async {
+    _touchInteraction();
     if (_isListening) {
       await _speechService.stopListening();
       setState(() => _isListening = false);
+      _avatarCtrl.setFromEvent(AvatarAnimation.idle);
     } else {
       setState(() => _isListening = true);
+      _avatarCtrl.setFromEvent(AvatarAnimation.wave); // слушает → Wave
       await _speechService.startListening(
         onResult: (text) {
+          _avatarCtrl.setFromEvent(AvatarAnimation.idle);
           if (text.isNotEmpty) _sendMessage(text);
         },
-        onDone: () => setState(() => _isListening = false),
+        onDone: () {
+          setState(() => _isListening = false);
+          _avatarCtrl.setFromEvent(AvatarAnimation.idle);
+        },
       );
     }
   }
 
   Future<void> _openSettings() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-    );
+    _touchInteraction();
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
     await _loadPrefs();
     await _applyTtsSettings();
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _scrollController.dispose();
     _textController.dispose();
     _tts.stop();
@@ -242,7 +330,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       body: SafeArea(
         child: Stack(
           children: [
-            // ── Main content ──
             Column(
               children: [
                 // Header
@@ -251,86 +338,64 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _assistantName.toUpperCase(),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_assistantName.toUpperCase(),
                             style: TextStyle(
-                              color: AikaTheme.neonBlue,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 4,
-                            ),
-                          ),
-                          Text(
+                                color: AikaTheme.neonBlue, fontSize: 20,
+                                fontWeight: FontWeight.bold, letterSpacing: 4)),
+                        Text(
                             _userName.isNotEmpty ? 'Привет, $_userName' : 'AI Assistant',
-                            style: const TextStyle(color: Colors.white38, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          // Wake word toggle
-                          GestureDetector(
-                            onTap: _toggleWakeWord,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
+                            style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                      ]),
+                      Row(children: [
+                        // Wake word
+                        GestureDetector(
+                          onTap: _toggleWakeWord,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: _wakeWordEnabled
+                                  ? AikaTheme.neonBlue.withOpacity(0.15)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
                                 color: _wakeWordEnabled
-                                    ? AikaTheme.neonBlue.withOpacity(0.15)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: _wakeWordEnabled
-                                      ? AikaTheme.neonBlue.withOpacity(0.6)
-                                      : Colors.white24,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.hearing, size: 14,
-                                      color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _wakeWordEnabled ? 'ON' : 'OFF',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
-                                    ),
-                                  ),
-                                ],
+                                    ? AikaTheme.neonBlue.withOpacity(0.6)
+                                    : Colors.white24,
                               ),
                             ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.hearing, size: 14,
+                                  color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38),
+                              const SizedBox(width: 4),
+                              Text(_wakeWordEnabled ? 'ON' : 'OFF',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold,
+                                      color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38)),
+                            ]),
                           ),
-                          const SizedBox(width: 8),
-                          // 3D avatar toggle
-                          IconButton(
-                            icon: Icon(
-                              _show3DAvatar ? Icons.face : Icons.face_outlined,
-                              color: _show3DAvatar ? AikaTheme.neonBlue : Colors.white38,
-                            ),
-                            tooltip: '3D аватар',
-                            onPressed: () async {
-                              final prefs = await SharedPreferences.getInstance();
-                              setState(() => _show3DAvatar = !_show3DAvatar);
-                              await prefs.setBool('show_3d_avatar', _show3DAvatar);
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.settings_outlined, color: Colors.white54),
-                            onPressed: _openSettings,
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Avatar toggle
+                        IconButton(
+                          icon: Icon(_show3DAvatar ? Icons.face : Icons.face_outlined,
+                              color: _show3DAvatar ? AikaTheme.neonBlue : Colors.white38),
+                          onPressed: () async {
+                            final prefs = await SharedPreferences.getInstance();
+                            setState(() => _show3DAvatar = !_show3DAvatar);
+                            await prefs.setBool('show_3d_avatar', _show3DAvatar);
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.settings_outlined, color: Colors.white54),
+                          onPressed: _openSettings,
+                        ),
+                      ]),
                     ],
                   ),
                 ),
 
-                // Status
+                // Status bar
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -346,41 +411,38 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                               : Colors.white10,
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _isListening ? Icons.mic : _isThinking ? Icons.psychology : Icons.check_circle_outline,
-                        size: 14,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(
+                      _isListening ? Icons.mic : _isThinking ? Icons.psychology : Icons.check_circle_outline,
+                      size: 14,
+                      color: _isListening ? AikaTheme.neonBlue : _isThinking ? AikaTheme.neonPurple : Colors.white38,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _isListening ? 'Слушаю...' : _isThinking ? 'Думаю...' : 'Готова',
+                      style: TextStyle(
                         color: _isListening ? AikaTheme.neonBlue : _isThinking ? AikaTheme.neonPurple : Colors.white38,
+                        fontSize: 12, letterSpacing: 1,
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isListening ? 'Слушаю...' : _isThinking ? 'Думаю...' : 'Готова',
-                        style: TextStyle(
-                          color: _isListening ? AikaTheme.neonBlue : _isThinking ? AikaTheme.neonPurple : Colors.white38,
-                          fontSize: 12,
-                          letterSpacing: 1,
-                        ),
-                      ),
+                    ),
+                    if (_musicPlaying) ...[
+                      const SizedBox(width: 12),
+                      Icon(Icons.music_note, size: 12, color: Colors.pinkAccent.withOpacity(0.8)),
+                      const SizedBox(width: 4),
+                      Text('музыка', style: TextStyle(color: Colors.pinkAccent.withOpacity(0.8), fontSize: 10)),
                     ],
-                  ),
+                  ]),
                 ),
 
-                // Chat list
+                // Chat
                 Expanded(
                   child: _messages.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.auto_awesome, size: 48, color: AikaTheme.neonBlue.withOpacity(0.3)),
-                              const SizedBox(height: 12),
-                              Text('Спроси меня о чём угодно',
-                                  style: TextStyle(color: Colors.white24, fontSize: 14)),
-                            ],
-                          ),
-                        )
+                      ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.auto_awesome, size: 48, color: AikaTheme.neonBlue.withOpacity(0.3)),
+                          const SizedBox(height: 12),
+                          Text('Спроси меня о чём угодно',
+                              style: TextStyle(color: Colors.white24, fontSize: 14)),
+                        ]))
                       : ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 8),
@@ -396,74 +458,50 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                     color: AikaTheme.surface,
                     border: Border(top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15))),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _textController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Напишите или говорите...',
-                            hintStyle: const TextStyle(color: Colors.white30),
-                            filled: true,
-                            fillColor: Colors.white.withOpacity(0.05),
-                            border: OutlineInputBorder(
+                  child: Row(children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _textController,
+                        style: const TextStyle(color: Colors.white),
+                        onTap: _touchInteraction,
+                        decoration: InputDecoration(
+                          hintText: 'Напишите или говорите...',
+                          hintStyle: const TextStyle(color: Colors.white30),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.05),
+                          border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          ),
-                          onSubmitted: _sendMessage,
+                              borderSide: BorderSide.none),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         ),
+                        onSubmitted: _sendMessage,
                       ),
-                      const SizedBox(width: 8),
-                      VoiceButton(isListening: _isListening, isSpeaking: false, onTap: _toggleListening),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => _sendMessage(_textController.text),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AikaTheme.neonBlue.withOpacity(0.2),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.5)),
-                          ),
-                          child: Icon(Icons.send, color: AikaTheme.neonBlue, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    VoiceButton(isListening: _isListening, isSpeaking: false, onTap: _toggleListening),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _sendMessage(_textController.text),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AikaTheme.neonBlue.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.5)),
                         ),
+                        child: Icon(Icons.send, color: AikaTheme.neonBlue, size: 20),
                       ),
-                    ],
-                  ),
+                    ),
+                  ]),
                 ),
               ],
             ),
 
-            // ── 3D Avatar Overlay (draggable, on top of everything) ──
-            if (_show3DAvatar)
-              _Aika3DOverlayHost(key: _overlayKey),
+            // 3D Avatar overlay — поверх всего
+            if (_show3DAvatar) const Aika3DOverlay(),
           ],
         ),
       ),
     );
-  }
-}
-
-// ─── Хост для 3D оверлея ───
-class _Aika3DOverlayHost extends StatefulWidget {
-  const _Aika3DOverlayHost({Key? key}) : super(key: key);
-
-  @override
-  State<_Aika3DOverlayHost> createState() => _Aika3DOverlayHostState();
-}
-
-class _Aika3DOverlayHostState extends State<_Aika3DOverlayHost> {
-  bool _visible = true;
-
-  void show() => setState(() => _visible = true);
-  void hide() => setState(() => _visible = false);
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
-    return const Aika3DOverlay();
   }
 }
