@@ -15,7 +15,6 @@ dependencies:
   flutter_tts: ^4.2.5
   
   # 3D Model Viewer
-  model_viewer_plus: ^1.7.0
   
   # Animations
   flutter_animate: ^4.5.0
