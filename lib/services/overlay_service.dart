@@ -67,6 +67,9 @@ class OverlayService {
     try { await _overlayChannel.invokeMethod('updateOverlay', {'state': state}); } catch (_) {}
   }
 
+  // Sync wrapper для вызова без await
+  void _asyncState(String s) { setState(s); }
+
   Future<void> setIdle()      => setState('idle');
   Future<void> setListening() => setState('listening');
   Future<void> setThinking()  => setState('thinking');
