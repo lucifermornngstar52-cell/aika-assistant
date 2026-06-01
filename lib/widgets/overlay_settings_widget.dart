@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/overlay_service.dart';
 
-/// Виджет настроек 3D оверлея: размер, прозрачность, сторона, зеркало
 class OverlaySettingsWidget extends StatefulWidget {
   const OverlaySettingsWidget({super.key});
   @override
@@ -16,15 +15,15 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
   String _side    = 'left';
   bool   _mirror  = false;
 
-  final _animations = const [
-    ('idle',       '🧍 Idle'),
-    ('SambaDance', '💃 Самба'),
-    ('agree',      '👍 Кивок'),
-    ('headShake',  '🤔 Отказ'),
-    ('walk',       '🚶 Ходьба'),
-    ('run',        '🏃 Бег'),
-    ('sad_pose',   '😢 Грусть'),
-    ('sneak_pose', '🥷 Тихо'),
+  static const _anims = [
+    {'id': 'idle',       'label': '🧍 Idle'},
+    {'id': 'SambaDance', 'label': '💃 Самба'},
+    {'id': 'agree',      'label': '👍 Кивок'},
+    {'id': 'headShake',  'label': '🤔 Отказ'},
+    {'id': 'walk',       'label': '🚶 Ходьба'},
+    {'id': 'run',        'label': '🏃 Бег'},
+    {'id': 'sad_pose',   'label': '😢 Грусть'},
+    {'id': 'sneak_pose', 'label': '🥷 Тихо'},
   ];
 
   @override
@@ -50,37 +49,38 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(children: [
-              const Text('🤖', style: TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              const Text('Настройки 3D модели',
+            child: Row(children: const [
+              Text('🤖', style: TextStyle(fontSize: 20)),
+              SizedBox(width: 8),
+              Text('Настройки 3D модели',
                   style: TextStyle(color: Color(0xFF00E5FF),
                       fontSize: 16, fontWeight: FontWeight.bold)),
             ]),
           ),
           const Divider(color: Colors.white12),
 
-          // Размер
-          _buildSection('📐 Размер: \${_size.round()} dp', Slider(
-            value: _size, min: 80, max: 350, divisions: 27,
-            activeColor: const Color(0xFF00E5FF),
-            inactiveColor: Colors.white12,
-            label: '\${_size.round()} dp',
-            onChanged: (v) => setState(() => _size = v),
-            onChangeEnd: (v) async { setState(() => _size = v); await _svc.setSize(v); },
-          )),
+          _buildSection(
+            '📐 Размер: \${_size.round()} dp',
+            Slider(
+              value: _size, min: 80, max: 350, divisions: 27,
+              activeColor: const Color(0xFF00E5FF),
+              inactiveColor: Colors.white12,
+              onChanged: (v) => setState(() => _size = v),
+              onChangeEnd: (v) async { setState(() => _size = v); await _svc.setSize(v); },
+            ),
+          ),
 
-          // Прозрачность
-          _buildSection('👁 Прозрачность: \${(_opacity*100).round()}%', Slider(
-            value: _opacity, min: 0.2, max: 1.0, divisions: 16,
-            activeColor: const Color(0xFF00E5FF),
-            inactiveColor: Colors.white12,
-            label: '\${(_opacity*100).round()}%',
-            onChanged: (v) => setState(() => _opacity = v),
-            onChangeEnd: (v) async { setState(() => _opacity = v); await _svc.setOpacity(v); },
-          )),
+          _buildSection(
+            '👁 Прозрачность: \${(_opacity * 100).round()}%',
+            Slider(
+              value: _opacity, min: 0.2, max: 1.0, divisions: 16,
+              activeColor: const Color(0xFF00E5FF),
+              inactiveColor: Colors.white12,
+              onChanged: (v) => setState(() => _opacity = v),
+              onChangeEnd: (v) async { setState(() => _opacity = v); await _svc.setOpacity(v); },
+            ),
+          ),
 
-          // Сторона
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(children: [
@@ -93,7 +93,6 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
             ]),
           ),
 
-          // Зеркало
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -115,20 +114,20 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
 
           const Divider(color: Colors.white12),
 
-          // Тест анимаций
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: const Text('🎬 Тест анимаций',
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text('🎬 Тест анимаций',
                 style: TextStyle(color: Color(0xFF00E5FF),
                     fontSize: 13, fontWeight: FontWeight.w600)),
           ),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
             child: Wrap(
               spacing: 6, runSpacing: 6,
-              children: _animations.map((e) {
+              children: _anims.map((anim) {
                 return GestureDetector(
-                  onTap: () => _svc.playAnimation(e.\$1),
+                  onTap: () => _svc.playAnimation(anim['id']!),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
@@ -137,7 +136,7 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
                       border: Border.all(
                           color: const Color(0xFF00E5FF).withOpacity(0.35)),
                     ),
-                    child: Text(e.\$2,
+                    child: Text(anim['label']!,
                         style: const TextStyle(
                             color: Color(0xFF00E5FF), fontSize: 11)),
                   ),
@@ -155,8 +154,7 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
         child,
       ],
     ),
