@@ -79,11 +79,10 @@ class AikaOverlayService : Service() {
             return
         }
         val engine = FlutterEngine(this)
-        // ⚡ Явно вызываем overlayMain — entry-point из main_overlay.dart
+        // ⚡ Вызываем overlayMain — entry-point из main_overlay.dart
+        val bundlePath = DartExecutor.DartEntrypoint.createDefault().appBundlePath ?: ""
         engine.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint.createDefault().let {
-                DartExecutor.DartEntrypoint(it.appBundlePath, DART_ENTRYPOINT)
-            }
+            DartExecutor.DartEntrypoint(bundlePath, DART_ENTRYPOINT)
         )
         FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
         flutterEngine = engine
