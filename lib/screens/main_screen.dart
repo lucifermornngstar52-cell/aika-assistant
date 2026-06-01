@@ -1657,6 +1657,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
 
+            // ── Avatar ─────────────────────────────────────────────
+            StreamBuilder<AikaMood>(
+              stream: _moodService.moodStream,
+              initialData: _moodService.currentMood,
+              builder: (_, snapshot) {
+                return Center(
+                  child: AikaAvatar(
+                    state: _avatarState,
+                    size: 160,
+                  ),
+                );
+              },
+            ),
+
             // ── Chat ───────────────────────────────────────────────
             Expanded(
               child: Container(
