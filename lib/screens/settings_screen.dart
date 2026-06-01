@@ -6,6 +6,7 @@ import '../services/wake_word_service.dart';
 import 'commands_screen.dart';
 import 'personality_screen.dart';
 import 'wardrobe_screen.dart';
+import '../services/overlay_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -28,6 +29,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showAvatar = true;
   bool _isLoading = true;
 
+  // Live2D model settings
+  double _live2dSize    = 170.0;  // px, 80..280
+  double _live2dOpacity = 1.0;    // 0.3..1.0
+  double _live2dSpeed   = 1.0;    // 0.5..2.0
+  bool   _live2dMirror  = false;  // flip horizontal
+  String _live2dSide    = 'left'; // left / right
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +52,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _edgeTtsPitch                  = prefs.getDouble('edge_tts_pitch')  ?? 0.0;
       _edgeTtsVolume                 = prefs.getDouble('edge_tts_volume') ?? 0.0;
       _showAvatar                    = prefs.getBool('show_avatar') ?? true;
+      _live2dSize    = prefs.getDouble('live2d_size')    ?? 170.0;
+      _live2dOpacity = prefs.getDouble('live2d_opacity') ?? 1.0;
+      _live2dSpeed   = prefs.getDouble('live2d_speed')   ?? 1.0;
+      _live2dMirror  = prefs.getBool('live2d_mirror')    ?? false;
+      _live2dSide    = prefs.getString('live2d_side')    ?? 'left';
       _isLoading = false;
     });
   }
@@ -61,6 +74,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setDouble('edge_tts_pitch',   _edgeTtsPitch);
     await prefs.setDouble('edge_tts_volume',  _edgeTtsVolume);
     await prefs.setBool('show_avatar', _showAvatar);
+    await prefs.setDouble('live2d_size',    _live2dSize);
+    await prefs.setDouble('live2d_opacity', _live2dOpacity);
+    await prefs.setDouble('live2d_speed',   _live2dSpeed);
+    await prefs.setBool('live2d_mirror',    _live2dMirror);
+    await prefs.setString('live2d_side',    _live2dSide);
+    // Apply Live2D settings to running overlay
+    await OverlayService.updateLive2DConfig(
+      size: _live2dSize,
+      opacity: _live2dOpacity,
+      speed: _live2dSpeed,
+      mirror: _live2dMirror,
+      side: _live2dSide,
+    );
 
     // Apply to running EdgeTTS singleton immediately
     final svc = EdgeTtsService();
@@ -432,6 +458,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionTitle('ГОЛОС'),
             _buildVoiceCard(),
 
+
+            // ── Live2D Avatar ─────────────────────────────────────────
+            _buildSectionTitle('АВАТАР LIVE2D'),
+            _buildLive2DCard(),
+
             // ── Navigation ───────────────────────────────────────────
             _buildSectionTitle('РАЗДЕЛЫ'),
             _buildCard([
@@ -482,5 +513,212 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _assistantNameController.dispose();
     super.dispose();
   }
-}
+  // ── Live2D card ───────────────────────────────────────────────────────────
 
+  Widget _buildLive2DCard() {
+    return _buildCard([
+      // Header
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AikaTheme.neonPink.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.face_retouching_natural, color: AikaTheme.neonPink, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Live2D Haru', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                Text('Анимированный 3D аватар', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ],
+            ),
+          ],
+        ),
+      ),
+      const Divider(color: Colors.white10, height: 1),
+
+      // Размер
+      _buildSlider(
+        label: 'Размер модели',
+        unit: 'px',
+        value: _live2dSize,
+        min: 80,
+        max: 280,
+        divisions: 20,
+        onChanged: (v) => setState(() => _live2dSize = v),
+      ),
+
+      // Прозрачность
+      _buildOpacitySlider(),
+
+      // Скорость анимации
+      _buildSpeedSlider(),
+
+      // Сторона экрана
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Сторона', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'left',  label: Text('Лево')),
+                ButtonSegment(value: 'right', label: Text('Право')),
+              ],
+              selected: {_live2dSide},
+              onSelectionChanged: (s) => setState(() => _live2dSide = s.first),
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith((states) =>
+                  states.contains(WidgetState.selected)
+                    ? AikaTheme.neonPink.withOpacity(0.25)
+                    : Colors.transparent,
+                ),
+                foregroundColor: WidgetStateProperty.resolveWith((states) =>
+                  states.contains(WidgetState.selected) ? AikaTheme.neonPink : Colors.white54,
+                ),
+                side: WidgetStatePropertyAll(BorderSide(color: AikaTheme.neonPink.withOpacity(0.3))),
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      // Зеркало
+      SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        title: const Text('Зеркальное отражение', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        value: _live2dMirror,
+        activeColor: AikaTheme.neonPink,
+        onChanged: (v) => setState(() => _live2dMirror = v),
+      ),
+
+      // Кнопка применить
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.preview_rounded, size: 18),
+            label: const Text('Применить сейчас'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AikaTheme.neonPink.withOpacity(0.2),
+              foregroundColor: AikaTheme.neonPink,
+              side: BorderSide(color: AikaTheme.neonPink.withOpacity(0.5)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onPressed: () async {
+              await OverlayService.updateLive2DConfig(
+                size: _live2dSize,
+                opacity: _live2dOpacity,
+                speed: _live2dSpeed,
+                mirror: _live2dMirror,
+                side: _live2dSide,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Аватар обновлён ✓'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 1),
+                ));
+              }
+            },
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildOpacitySlider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Прозрачность', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AikaTheme.neonPink.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${(_live2dOpacity * 100).round()}%',
+                  style: TextStyle(color: AikaTheme.neonPink, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: AikaTheme.neonPink,
+              inactiveTrackColor: AikaTheme.neonPink.withOpacity(0.15),
+              thumbColor: AikaTheme.neonPink,
+              overlayColor: AikaTheme.neonPink.withOpacity(0.15),
+              trackHeight: 3,
+            ),
+            child: Slider(
+              value: _live2dOpacity,
+              min: 0.2, max: 1.0, divisions: 16,
+              onChanged: (v) => setState(() => _live2dOpacity = v),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpeedSlider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Скорость анимации', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AikaTheme.neonPink.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${_live2dSpeed.toStringAsFixed(1)}×',
+                  style: TextStyle(color: AikaTheme.neonPink, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: AikaTheme.neonPink,
+              inactiveTrackColor: AikaTheme.neonPink.withOpacity(0.15),
+              thumbColor: AikaTheme.neonPink,
+              overlayColor: AikaTheme.neonPink.withOpacity(0.15),
+              trackHeight: 3,
+            ),
+            child: Slider(
+              value: _live2dSpeed,
+              min: 0.5, max: 2.0, divisions: 15,
+              onChanged: (v) => setState(() => _live2dSpeed = v),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+}
