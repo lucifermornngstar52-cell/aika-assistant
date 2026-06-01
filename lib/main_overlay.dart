@@ -215,19 +215,24 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
         },
         onLoadStop: (ctrl, url) {
           setState(() => _webViewReady = true);
-          Future.delayed(const Duration(milliseconds: 500), () {
-            // Передаём кастомный путь если есть
+          // Ждём пока JS динамически загрузит Pixi + Live2D скрипты и модель
+          Future.delayed(const Duration(milliseconds: 1500), () {
             if (_customModelPath != null) {
               ctrl.evaluateJavascript(
                 source: "window.loadCustomModel('file://\$_customModelPath')"
               );
-            } else {
-              ctrl.evaluateJavascript(source: "window.setAikaState('\$_state')");
             }
+            // setAikaState вызывается автоматически после загрузки модели
           });
         },
+        onConsoleMessage: (ctrl, msg) {
+          debugPrint('[WebView] \${msg.messageLevel.name}: \${msg.message}');
+        },
         onLoadError: (ctrl, url, code, message) {
-          debugPrint('WebView error: \$code \$message');
+          debugPrint('[WebView] load error: \$code \$message');
+        },
+        onReceivedError: (ctrl, req, err) {
+          debugPrint('[WebView] error: \${err.description}');
         },
       ),
     );
