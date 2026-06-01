@@ -142,8 +142,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _initServices() async {
     await _speechService.initialize();
-    await _wakeWordService.initialize();
-    // initWithSharedStt больше не нужен — WakeWordService имеет свой STT
+    // КРИТИЧНО: WakeWordService использует тот же STT что и SpeechService
+    // Два отдельных SpeechToText() конфликтуют за микрофон!
+    await _wakeWordService.initWithSharedStt(_speechService.sharedStt);
     await _applyTtsSettings();
     await _loadPrefs();
     await HabitMemoryService.load();
