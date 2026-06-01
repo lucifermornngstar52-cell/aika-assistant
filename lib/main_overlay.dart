@@ -18,7 +18,6 @@ class _OverlayApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        // КРИТИЧНО: прозрачный фон чтобы не было чёрного квадрата
         theme: ThemeData(
           scaffoldBackgroundColor: Colors.transparent,
           colorScheme: const ColorScheme.dark(),
@@ -42,12 +41,18 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
   bool   _mirror  = false;
 
   InAppWebViewController? _webCtrl;
-
-  // Путь к текущей модели (null = встроенная Haru)
-  String? _customModelPath;
   bool _webViewReady = false;
 
-  static const _readyChannel = MethodChannel('com.aika.assistant/overlay_ready');
+  // Сохранённые настройки модели
+  String _modelId = 'hiyori';
+  String? _customModelPath;
+
+  static const _builtinPaths = {
+    'natori': 'models/Natori/Natori.model3.json',
+    'ren':    'models/Ren/Ren.model3.json',
+    'hiyori': 'models/Hiyori/Hiyori.model3.json',
+    'haru':   'models/Haru/Haru.model3.json',
+  };
 
   @override
   void initState() {
@@ -58,9 +63,15 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
 
   Future<void> _loadSavedModel() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('custom_model_path');
-    if (saved != null && File(saved).existsSync()) {
-      setState(() => _customModelPath = saved);
+    final modelId = prefs.getString('live2d_model_id') ?? 'hiyori';
+    final customPath = prefs.getString('custom_model_path');
+    if (mounted) {
+      setState(() {
+        _modelId = modelId;
+        if (customPath != null && File(customPath).existsSync()) {
+          _customModelPath = customPath;
+        }
+      });
     }
   }
 
@@ -120,7 +131,6 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
     }
   }
 
-  // Выбор своей модели через file picker
   Future<void> _pickCustomModel() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -133,11 +143,12 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
         if (path.endsWith('model3.json') || path.endsWith('model.json')) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('custom_model_path', path);
+          await prefs.setString('live2d_model_id', 'custom');
           setState(() {
             _customModelPath = path;
+            _modelId = 'custom';
             _webViewReady = false;
           });
-          // Перезагружаем WebView с новой моделью
           _webCtrl?.reload();
         }
       }
@@ -146,15 +157,24 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
     }
   }
 
-  // Сброс к стандартной модели
   Future<void> _resetModel() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('custom_model_path');
+    await prefs.setString('live2d_model_id', 'hiyori');
     setState(() {
       _customModelPath = null;
+      _modelId = 'hiyori';
       _webViewReady = false;
     });
     _webCtrl?.reload();
+  }
+
+  String _buildSwitchJS() {
+    if (_customModelPath != null) {
+      return "window.loadCustomModel('file://\$_customModelPath');";
+    }
+    final assetPath = _builtinPaths[_modelId] ?? _builtinPaths['hiyori']!;
+    return "window.switchBuiltinModel('\$assetPath');";
   }
 
   @override
@@ -187,7 +207,6 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
           allowUniversalAccessFromFileURLs: true,
           mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
           useHybridComposition: true,
-          // Отключаем дефолтный белый/чёрный фон WebView
           disableDefaultErrorPage: true,
         ),
         onWebViewCreated: (ctrl) {
@@ -199,8 +218,10 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
               if (msg == 'tap') {
                 _channel.invokeMethod('onTap');
               } else if (msg == 'modelLoaded') {
-                // Модель загружена — сигналим Kotlin показать оверлей
-                _readyChannel.invokeMethod('modelReady').catchError((_) {});
+                // Модель загружена — отправляем текущее состояние
+                Future.delayed(const Duration(milliseconds: 300), () {
+                  _sendState(_state);
+                });
               } else if (msg == 'pick_model') {
                 _pickCustomModel();
               } else if (msg == 'reset_model') {
@@ -208,31 +229,21 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
               }
             },
           );
-          // Передаём путь к кастомной модели если есть
-          if (_customModelPath != null) {
-            ctrl.addJavaScriptHandler(
-              handlerName: 'getCustomModelPath',
-              callback: (_) => _customModelPath,
-            );
-          }
         },
         onLoadStop: (ctrl, url) {
           setState(() => _webViewReady = true);
-          // Даём JS время загрузить pixi + live2d + модель
+          // Переключаем на нужную модель через 1.5 секунды
+          // (HTML сначала загрузит Hiyori, потом мы переключим)
           Future.delayed(const Duration(milliseconds: 1500), () {
-            if (_customModelPath != null) {
-              ctrl.evaluateJavascript(
-                source: "window.loadCustomModel('file://\$_customModelPath')"
-              );
-            }
+            final js = _buildSwitchJS();
+            ctrl.evaluateJavascript(source: js);
           });
-          // Оверлей покажется когда JS сообщит 'modelLoaded' через FlutterChannel
         },
         onConsoleMessage: (ctrl, msg) {
-          debugPrint('[WebView] \${msg.messageLevel.name}: \${msg.message}');
+          debugPrint('[Overlay WebView] \${msg.messageLevel.name}: \${msg.message}');
         },
         onLoadError: (ctrl, url, code, message) {
-          debugPrint('[WebView] load error: \$code \$message');
+          debugPrint('[Overlay WebView] load error: \$code \$message');
         },
       ),
     );
