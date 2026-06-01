@@ -61,6 +61,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/live2d_viewer.html
     - assets/models/
     - assets/images/chat_wallpaper.jpg
     - assets/images/aika_avatar.png
