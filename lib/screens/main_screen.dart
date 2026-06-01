@@ -6,7 +6,10 @@ import '../services/ai_service.dart';
 import '../services/device_service.dart';
 import '../services/memory_service.dart';
 import '../services/speech_service.dart';
+import '../services/wake_word_service.dart';
+import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/aika_avatar.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import 'settings_screen.dart';
@@ -23,6 +26,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final DeviceService _deviceService = DeviceService();
   final MemoryService _memoryService = MemoryService();
   final SpeechService _speechService = SpeechService();
+  final WakeWordService _wakeWordService = WakeWordService();
   final FlutterTts _tts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
@@ -30,6 +34,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   List<ChatMessage> _messages = [];
   bool _isListening = false;
   bool _isThinking = false;
+  bool _showAvatar = true;
+  bool _wakeWordEnabled = false;
   String _assistantName = 'Aika';
   String _userName = '';
 
@@ -51,6 +57,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Future<void> _initServices() async {
     await _speechService.initialize();
+    await _wakeWordService.initialize();
     await _applyTtsSettings();
     await _loadPrefs();
     _sendGreeting();
@@ -61,6 +68,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     setState(() {
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
+      _showAvatar = prefs.getBool('show_avatar') ?? true;
     });
   }
 
@@ -73,6 +81,38 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (voice != null) {
       await _tts.setVoice({'name': voice, 'locale': 'ru-RU'});
     }
+  }
+
+  Future<void> _toggleWakeWord() async {
+    if (_wakeWordEnabled) {
+      await _wakeWordService.stop();
+      setState(() => _wakeWordEnabled = false);
+      _showSnack('Wake word выключен');
+    } else {
+      await _wakeWordService.startListening(() {
+        if (!_isListening && !_isThinking) _onWakeWordDetected();
+      });
+      setState(() => _wakeWordEnabled = true);
+      _showSnack('Скажи "Айка" чтобы активировать');
+    }
+  }
+
+  Future<void> _onWakeWordDetected() async {
+    await OverlayService.showOverlay(message: 'Слушаю...');
+    await _speak('Да?');
+    setState(() => _isListening = true);
+    await _speechService.startListening(
+      onResult: (text) async {
+        setState(() => _isListening = false);
+        await OverlayService.updateOverlay(message: 'Думаю...');
+        if (text.isNotEmpty) await _sendMessage(text);
+        await OverlayService.hideOverlay();
+      },
+      onDone: () {
+        setState(() => _isListening = false);
+        OverlayService.hideOverlay();
+      },
+    );
   }
 
   void _sendGreeting() {
@@ -104,6 +144,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Future<void> _speak(String text) async {
     final clean = text.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '');
     await _tts.speak(clean);
+  }
+
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: AikaTheme.neonBlue.withOpacity(0.8),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+    ));
   }
 
   Future<void> _sendMessage(String text) async {
@@ -180,6 +229,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _textController.dispose();
     _tts.stop();
     _deviceService.dispose();
+    _wakeWordService.stop();
     super.dispose();
   }
 
@@ -203,7 +253,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         _assistantName.toUpperCase(),
                         style: TextStyle(
                           color: AikaTheme.neonBlue,
-                          fontSize: 22,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 4,
                         ),
@@ -216,36 +266,52 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   ),
                   Row(
                     children: [
-                      // Status dot
-                      AnimatedBuilder(
-                        animation: _pulseAnimation,
-                        builder: (_, __) => Transform.scale(
-                          scale: _isListening ? _pulseAnimation.value : 1.0,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _isListening
-                                  ? AikaTheme.neonBlue
-                                  : _isThinking
-                                      ? AikaTheme.neonPurple
-                                      : Colors.green,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (_isListening
-                                          ? AikaTheme.neonBlue
-                                          : _isThinking
-                                              ? AikaTheme.neonPurple
-                                              : Colors.green)
-                                      .withOpacity(0.6),
-                                  blurRadius: 8,
-                                ),
-                              ],
+                      // Wake word toggle
+                      GestureDetector(
+                        onTap: _toggleWakeWord,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: _wakeWordEnabled
+                                ? AikaTheme.neonBlue.withOpacity(0.15)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: _wakeWordEnabled
+                                  ? AikaTheme.neonBlue.withOpacity(0.6)
+                                  : Colors.white24,
                             ),
                           ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.hearing, size: 14,
+                                  color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38),
+                              const SizedBox(width: 4),
+                              Text(
+                                _wakeWordEnabled ? 'ON' : 'OFF',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: Icon(
+                          _showAvatar ? Icons.face : Icons.face_outlined,
+                          color: _showAvatar ? AikaTheme.neonBlue : Colors.white38,
+                        ),
+                        onPressed: () async {
+                          final prefs = await SharedPreferences.getInstance();
+                          setState(() => _showAvatar = !_showAvatar);
+                          await prefs.setBool('show_avatar', _showAvatar);
+                        },
                       ),
                       IconButton(
                         icon: const Icon(Icons.settings_outlined, color: Colors.white54),
@@ -257,57 +323,36 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ),
             ),
 
-            // Status bar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: AikaTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _isListening
-                      ? AikaTheme.neonBlue.withOpacity(0.5)
-                      : _isThinking
-                          ? AikaTheme.neonPurple.withOpacity(0.5)
-                          : Colors.white10,
+            // Avatar
+            if (_showAvatar)
+              ScaleTransition(
+                scale: _pulseAnimation,
+                child: AikaAvatar(isThinking: _isThinking, isListening: _isListening),
+              ),
+
+            // Wake word banner
+            if (_wakeWordEnabled)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AikaTheme.neonBlue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.hearing, size: 12, color: AikaTheme.neonBlue.withOpacity(0.7)),
+                    const SizedBox(width: 6),
+                    Text('Жду: "Айка"',
+                        style: TextStyle(
+                            color: AikaTheme.neonBlue.withOpacity(0.7),
+                            fontSize: 11,
+                            letterSpacing: 1)),
+                  ],
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _isListening
-                        ? Icons.mic
-                        : _isThinking
-                            ? Icons.psychology
-                            : Icons.check_circle_outline,
-                    size: 14,
-                    color: _isListening
-                        ? AikaTheme.neonBlue
-                        : _isThinking
-                            ? AikaTheme.neonPurple
-                            : Colors.white38,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _isListening
-                        ? 'Слушаю...'
-                        : _isThinking
-                            ? 'Думаю...'
-                            : 'Готова',
-                    style: TextStyle(
-                      color: _isListening
-                          ? AikaTheme.neonBlue
-                          : _isThinking
-                              ? AikaTheme.neonPurple
-                              : Colors.white38,
-                      fontSize: 12,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
 
             // Chat
             Expanded(
@@ -319,11 +364,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           Icon(Icons.auto_awesome,
                               size: 48, color: AikaTheme.neonBlue.withOpacity(0.3)),
                           const SizedBox(height: 12),
-                          Text(
-                            'Спроси меня о чём угодно',
-                            style: TextStyle(
-                                color: Colors.white24, fontSize: 14),
-                          ),
+                          Text('Спроси меня о чём угодно',
+                              style: TextStyle(color: Colors.white24, fontSize: 14)),
                         ],
                       ),
                     )
@@ -340,9 +382,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AikaTheme.surface,
-                border: Border(
-                  top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15)),
-                ),
+                border: Border(top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15))),
               ),
               child: Row(
                 children: [
@@ -359,18 +399,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       ),
                       onSubmitted: _sendMessage,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  VoiceButton(
-                    isListening: _isListening,
-                    isSpeaking: false,
-                    onTap: _toggleListening,
-                  ),
+                  VoiceButton(isListening: _isListening, isSpeaking: false, onTap: _toggleListening),
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => _sendMessage(_textController.text),
@@ -379,8 +414,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       decoration: BoxDecoration(
                         color: AikaTheme.neonBlue.withOpacity(0.2),
                         shape: BoxShape.circle,
-                        border: Border.all(
-                            color: AikaTheme.neonBlue.withOpacity(0.5)),
+                        border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.5)),
                       ),
                       child: Icon(Icons.send, color: AikaTheme.neonBlue, size: 20),
                     ),
