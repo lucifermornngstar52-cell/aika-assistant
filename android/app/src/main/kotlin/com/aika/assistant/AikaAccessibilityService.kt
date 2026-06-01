@@ -581,6 +581,17 @@ class AikaAccessibilityService : AccessibilityService() {
         ).toString()
     } catch (e: Exception) { packageName }
 
+
+    /** Прокрутка экрана вверх или вниз */
+    fun scrollScreen(direction: String) {
+        val root = rootInActiveWindow ?: return
+        val action = if (direction == "up")
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        else
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        scrollNodeRecursive(root, action)
+    }
+
     override fun onInterrupt() {}
 
     // ── Дополнительные методы которые ожидает MainActivity ──────
