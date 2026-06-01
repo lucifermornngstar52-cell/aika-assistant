@@ -55,6 +55,7 @@ import '../services/emotion_service.dart';
 import '../services/screen_reader_service.dart';
 import '../services/edge_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
+import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
 import '../services/phone_control_service.dart';
 import '../services/screen_command_service.dart';
@@ -816,6 +817,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final musicCmd = MusicControlService.parseCommand(text);
     if (musicCmd != null) {
       await MusicControlService.send(musicCmd);
+      // 🎵 Синхронизируем 3D анимацию с музыкой
+      final overlayService = OverlayService();
+      if (musicCmd == 'play') {
+        await overlayService.setMusicPlaying(true);
+      } else if (musicCmd == 'pause' || musicCmd == 'stop') {
+        await overlayService.setMusicPlaying(false);
+      } else if (musicCmd == 'next' || musicCmd == 'previous') {
+        await overlayService.playAnimation('SambaDance');
+      }
       final replies = {
         'play': 'Включаю музыку 🎵',
         'pause': 'Поставила на паузу ⏸',
