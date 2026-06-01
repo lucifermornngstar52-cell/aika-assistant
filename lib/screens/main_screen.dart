@@ -516,9 +516,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
         }
         setState(() => _isListening = false);
-        await OverlayService().asyncState('thinking');
+        OverlayService().asyncState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
-        await OverlayService().asyncState('idle');
+        OverlayService().asyncState('idle');
         // Возобновляем wake word после команды
         if (_wakeWordEnabled) await _wakeWordService.resume();
       },
@@ -1278,7 +1278,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       timestamp: DateTime.now(),
     ));
     setState(() { _isThinking = true; _isDancing = false; });
-    await OverlayService().asyncState('thinking');
+    OverlayService().asyncState('thinking');
 
     // ── Управление телефоном голосом ─────────────────────────────────────
     if (ScreenReaderService.isPhoneControlRequest(text)) {
@@ -1416,7 +1416,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
     } finally {
       setState(() => _isThinking = false);
-      await OverlayService().asyncState('idle');
+      OverlayService().asyncState('idle');
     }
   }
 
@@ -1424,10 +1424,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isListening) {
       await _speechService.stopListening();
       setState(() => _isListening = false);
-      await OverlayService().asyncState('idle');
+      OverlayService().asyncState('idle');
     } else {
       setState(() { _isListening = true; _isDancing = false; });
-      await OverlayService().asyncState('listening');
+      OverlayService().asyncState('listening');
       await _speechService.startListening(
         onResult: (text) {
           if (text.isNotEmpty) _sendMessage(text);
