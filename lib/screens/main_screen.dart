@@ -59,7 +59,7 @@ class _MainScreenState extends State<MainScreen> {
       if (!mounted) return false;
       final diff = DateTime.now().difference(_lastInteraction);
       if (diff.inMinutes >= 3 && !_musicPlaying) {
-        OverlayService.updateState('idle');
+        OverlayService.updateOverlay(message: 'idle');
       }
       return true;
     });
@@ -72,7 +72,6 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
-      _show3DAvatar = prefs.getBool('show_3d_avatar') ?? true;
     });
   }
 
@@ -101,28 +100,28 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _onWakeWordDetected() async {
     _touch();
-    OverlayService.updateState('listening'); // идёт навстречу
+    OverlayService.updateOverlay(message: 'listening'); // идёт навстречу
     await OverlayService.showOverlay(message: 'Слушаю...');
     await _speak('Да?');
     setState(() => _isListening = true);
     await _speechService.startListening(
       onResult: (text) async {
         setState(() => _isListening = false);
-        OverlayService.updateState('thinking'); // думает
+        OverlayService.updateOverlay(message: 'thinking'); // думает
         await OverlayService.updateOverlay(message: 'Думаю...');
         if (text.isNotEmpty) await _sendMessage(text);
         await OverlayService.hideOverlay();
       },
       onDone: () {
         setState(() => _isListening = false);
-        OverlayService.updateState('idle');
+        OverlayService.updateOverlay(message: 'idle');
         OverlayService.hideOverlay();
       },
     );
   }
 
   void _sendGreeting() {
-    OverlayService.updateState('listening');
+    OverlayService.updateOverlay(message: 'listening');
     final greeting = _userName.isNotEmpty
         ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
         : 'Привет! Я $_assistantName. Чем могу помочь?';
@@ -134,7 +133,7 @@ class _MainScreenState extends State<MainScreen> {
     ));
     _speak(greeting).then((_) {
       Future.delayed(const Duration(seconds: 4), () {
-        OverlayService.updateState('idle');
+        OverlayService.updateOverlay(message: 'idle');
       });
     });
   }
@@ -175,7 +174,7 @@ class _MainScreenState extends State<MainScreen> {
       timestamp: DateTime.now(),
     ));
     setState(() => _isThinking = true);
-    OverlayService.updateState('thinking'); // думает
+    OverlayService.updateOverlay(message: 'thinking'); // думает
     await _memoryService.addMessage('user', text);
     try {
       final ctx = await _memoryService.getUserContext();
@@ -198,10 +197,10 @@ class _MainScreenState extends State<MainScreen> {
         timestamp: DateTime.now(),
       ));
       // Ответ готов → agree на 3 сек
-      OverlayService.updateState('greeting');
+      OverlayService.updateOverlay(message: 'greeting');
       await _speak(finalMsg);
     } catch (e) {
-      OverlayService.updateState('idle');
+      OverlayService.updateOverlay(message: 'idle');
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -221,24 +220,24 @@ class _MainScreenState extends State<MainScreen> {
     if (lower.contains('музык') || lower.contains('включи') && (lower.contains('пес') || lower.contains('трек')) ||
         resp.contains('включаю музыку') || resp.contains('play music')) {
       setState(() => _musicPlaying = true);
-      OverlayService.updateState('dance');
+      OverlayService.updateOverlay(message: 'dance');
       return;
     }
     if (lower.contains('стоп') && _musicPlaying || lower.contains('выключи музык') || lower.contains('пауза')) {
       setState(() => _musicPlaying = false);
-      OverlayService.updateState('idle');
+      OverlayService.updateOverlay(message: 'idle');
       return;
     }
 
     // 🚶 Открыть/запустить → walk
     if (lower.contains('открой') || lower.contains('запусти') || lower.contains('перейди')) {
-      OverlayService.updateState('listening');
+      OverlayService.updateOverlay(message: 'listening');
       return;
     }
 
     // 🏃 Поиск → run
     if (lower.contains('найди') || lower.contains('поищи') || lower.contains('search')) {
-      OverlayService.updateState('listening');
+      OverlayService.updateOverlay(message: 'listening');
       return;
     }
   }
@@ -248,18 +247,18 @@ class _MainScreenState extends State<MainScreen> {
     if (_isListening) {
       await _speechService.stopListening();
       setState(() => _isListening = false);
-      OverlayService.updateState('idle');
+      OverlayService.updateOverlay(message: 'idle');
     } else {
       setState(() => _isListening = true);
-      OverlayService.updateState('listening'); // идёт навстречу
+      OverlayService.updateOverlay(message: 'listening'); // идёт навстречу
       await _speechService.startListening(
         onResult: (text) {
-          OverlayService.updateState('thinking');
+          OverlayService.updateOverlay(message: 'thinking');
           if (text.isNotEmpty) _sendMessage(text);
         },
         onDone: () {
           setState(() => _isListening = false);
-          OverlayService.updateState('idle');
+          OverlayService.updateOverlay(message: 'idle');
         },
       );
     }
@@ -311,12 +310,9 @@ class _MainScreenState extends State<MainScreen> {
         Row(children: [
           _wakeWordBtn(),
           IconButton(
-            icon: Icon(_show3DAvatar ? Icons.face : Icons.face_outlined,
-                color: _show3DAvatar ? AikaTheme.neonBlue : Colors.white38),
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
-              setState(() => _show3DAvatar = !_show3DAvatar);
-              await prefs.setBool('show_3d_avatar', _show3DAvatar);
+              
             },
           ),
           IconButton(
