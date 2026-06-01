@@ -20,6 +20,9 @@ import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
+import 'personality_screen.dart';
+import 'model_picker_screen.dart';
+import '../widgets/live2d_widget.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
 import '../services/message_sender_service.dart';
@@ -118,6 +121,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isThinking)   return AikaState.thinking;
     if (_isStretching) return AikaState.stretch;
     return AikaState.idle;
+  }
+
+  String get _avatarStateString {
+    if (_isDancing)    return 'dance';
+    if (_isListening)  return 'listening';
+    if (_isThinking)   return 'thinking';
+    if (_isStretching) return 'idle';
+    return 'idle';
   }
 
   @override
@@ -1471,6 +1482,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openModelPicker() async {
+    await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => const ModelPickerScreen(),
+    ));
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1611,6 +1628,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         onSelected: (value) {
                           if (value == 'settings') _openSettings();
+                          if (value == 'personality') Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonalityScreen()));
+                          if (value == 'model') _openModelPicker();
                           if (value == 'switchtheme') _themeSwitcher.toggle();
                           if (value == 'mood') Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen()));
                           if (value == 'schedule') Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduleScreen()));
@@ -1618,6 +1637,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           if (value == 'appcommands') Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen()));
                         },
                         itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'personality', child: Row(children: [Text('🎭', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Характер', style: TextStyle(color: Colors.white70))])),
+                          const PopupMenuItem(value: 'model', child: Row(children: [Text('🧊', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Сменить модель', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'switchtheme', child: Row(children: [Text('🤖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Переключить тему', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings_outlined, color: Colors.white70, size: 18), SizedBox(width: 10), Text('Настройки', style: TextStyle(color: Colors.white70))])),
                           const PopupMenuItem(value: 'mood', child: Row(children: [Text('📖', style: TextStyle(fontSize: 16)), SizedBox(width: 10), Text('Дневник настроения', style: TextStyle(color: Colors.white70))])),
@@ -1657,18 +1678,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-            // ── Avatar ─────────────────────────────────────────────
-            StreamBuilder<AikaMood>(
-              stream: _moodService.moodStream,
-              initialData: _moodService.currentMood,
-              builder: (_, snapshot) {
-                return Center(
-                  child: AikaAvatar(
-                    state: _avatarState,
-                    size: 160,
-                  ),
-                );
-              },
+            // ── Live2D Avatar ───────────────────────────────────────
+            Center(
+              child: Live2DWidget(
+                width: 220,
+                height: 320,
+                state: _avatarStateString,
+              ),
             ),
 
             // ── Chat ───────────────────────────────────────────────
