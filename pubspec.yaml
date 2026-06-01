@@ -9,26 +9,26 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+  
   # Speech & Voice
   speech_to_text: ^6.6.2
-  flutter_tts: ^4.0.2
-
-  # 3D Model
+  flutter_tts: ^4.2.5
+  
+  # 3D Model Viewer
   model_viewer_plus: ^1.7.0
-
+  
   # Animations
   flutter_animate: ^4.5.0
-  lottie: ^3.1.2
-
-  # UI
+  lottie: ^3.1.0
+  
+  # UI & Effects
   animated_text_kit: ^4.2.2
   shimmer: ^3.0.0
-
+  
   # Storage & State
   shared_preferences: ^2.2.3
   provider: ^6.1.2
-
+  
   # Utils
   permission_handler: ^11.3.1
   battery_plus: ^6.0.2
@@ -37,12 +37,20 @@ dependencies:
   android_intent_plus: ^4.0.2
   torch_light: ^1.0.1
   volume_controller: ^2.0.7
-  device_info_plus: ^10.1.2
-  package_info_plus: ^8.0.2
-
+  
   # HTTP
   http: ^1.2.1
 
+  # Timezone
+  timezone: ^0.9.4
+
+  # Audio playback
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.3
+
+  # Notifications & Reminders
+  flutter_local_notifications: ^17.2.2
+  
   cupertino_icons: ^1.0.6
 
 dev_dependencies:
@@ -53,6 +61,41 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/
-    - assets/animations/
     - assets/models/
+    - assets/images/chat_wallpaper.jpg
+    - assets/images/aika_avatar.png
+    - assets/images/aika_chibi.png
+    - assets/images/aika_idle.png
+    - assets/images/aika_listen.png
+    - assets/images/aika_think.png
+    - assets/images/aika_wave.png
+    - assets/images/aika_dance1.png
+    - assets/images/aika_dance2.png
+    - assets/images/aika_dance3.png
+    - assets/images/aika_dance4.png
+    - assets/images/aika_dance5.png
+    - assets/images/aika_dance6.png
+    - assets/images/aika_dance7.png
+    - assets/images/aika_dance8.png
+    - assets/images/aika_dance9.png
+    - assets/images/aika_dance10.png
+    - assets/images/aika_dance11.png
+    - assets/images/aika_dance12.png
+    - assets/images/aika_dance13.png
+    - assets/images/aika_dance14.png
+    - assets/images/aika_dance15.png
+    - assets/images/aika_stretch1.png
+    - assets/images/aika_stretch2.png
+    - assets/images/aika_stretch3.png
+    - assets/images/aika_stretch4.png
+    - assets/images/aika_stretch5.png
+    - assets/images/aika_stretch6.png
+    - assets/images/aika_stretch7.png
+    - assets/images/aika_stretch8.png
+    - assets/images/aika_stretch9.png
+    - assets/images/aika_stretch10.png
+    - assets/images/aika_stretch11.png
+    - assets/images/aika_stretch12.png
+    - assets/images/aika_stretch13.png
+    - assets/images/aika_stretch14.png
+    - assets/images/aika_stretch15.png
