@@ -493,7 +493,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _speak('Да?');
     setState(() => _isListening = true);
     await _speechService.startListening(
-      onResult: (text) async {
+      (text) async {
         // Если Айка задремала — радостное приветствие
         if (_moodService.isSleepy) {
           final wakeMsg = _moodService.getWakeUpMessage();
@@ -1441,12 +1441,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() { _isListening = true; _isDancing = false; });
       OverlayService().asyncState('listening');
       await _speechService.startListening(
-        onResult: (text) {
-          if (text.isNotEmpty) _sendMessage(text);
-        },
-        onDone: () {
+        (text) {
           setState(() => _isListening = false);
           OverlayService().asyncState('idle');
+          if (text.isNotEmpty) _sendMessage(text);
         },
       );
     }
