@@ -5,6 +5,9 @@ import 'screens/splash_screen.dart';
 import 'services/personality_service.dart';
 import 'services/wardrobe_service.dart';
 import 'services/theme_switcher_service.dart';
+import 'main_overlay.dart' show overlayMain;
+
+export 'main_overlay.dart' show overlayMain;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,4 +45,3 @@ class AikaApp extends StatelessWidget {
     );
   }
 }
-
