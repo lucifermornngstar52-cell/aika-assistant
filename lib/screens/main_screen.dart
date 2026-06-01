@@ -309,12 +309,7 @@ class _MainScreenState extends State<MainScreen> {
         ]),
         Row(children: [
           _wakeWordBtn(),
-          IconButton(
-            onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              
-            },
-          ),
+
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.white54),
             onPressed: () async {
