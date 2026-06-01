@@ -30,38 +30,18 @@ function log(msg) {
 }
 function hideLog() { setTimeout(() => { logEl.style.display='none'; }, 3000); }
 
-// ── Определяем базовый путь к assets ────────────────────────────────────
-// В flutter_inappwebview initialFile HTML лежит в:
-// android: file:///android_asset/flutter_assets/assets/live2d_viewer.html
-// Значит модели лежат в: file:///android_asset/flutter_assets/assets/models/
+// ── Базовый путь ────────────────────────────────────────────────────────
 const BASE = (() => {
   try {
-    const url = document.currentScript
-      ? document.currentScript.src
-      : window.location.href;
-    // Берём директорию HTML файла
-    const dir = url.substring(0, url.lastIndexOf('/') + 1);
-    log('📍 base: ' + dir);
+    // В InAppWebView href = file:///android_asset/flutter_assets/assets/live2d_viewer.html
+    const href = window.location.href;
+    const dir = href.substring(0, href.lastIndexOf('/') + 1);
+    log('\u{1F4CD} base: ' + dir);
     return dir;
   } catch(e) {
-    // Fallback: стандартный путь Flutter asset
     return 'file:///android_asset/flutter_assets/assets/';
   }
 })();
-
-// Путь к модели относительно assets/
-const MODEL_PATH = BASE + 'models/Hiyori/Hiyori.model3.json';
-
-// ── Загрузка скриптов ───────────────────────────────────────────────────
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('Не загружен: ' + src));
-    document.head.appendChild(s);
-  });
-}
 
 let app = null, model = null, currentState = 'idle';
 
@@ -78,15 +58,64 @@ function fitModel() {
   } catch(e) {}
 }
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => { console.log('[L2D] loaded: ' + src); resolve(); };
+    s.onerror = () => reject(new Error('Failed: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadModelFromPath(path) {
+  log('\u{1F504} ' + path.split('/').slice(-3).join('/'));
+  if (model) {
+    try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
+    model = null;
+  }
+  try {
+    // Проверяем что PIXI.live2d доступен
+    if (!window.PIXI || !PIXI.live2d || !PIXI.live2d.Live2DModel) {
+      log('\u274C PIXI.live2d не готов!');
+      return;
+    }
+    model = await PIXI.live2d.Live2DModel.from(path, { autoInteract: false });
+    app.stage.addChild(model);
+    model.anchor.set(0.5, 0.5);
+    fitModel();
+    window.addEventListener('resize', fitModel);
+    try { model.motion('Idle'); } catch(e) {}
+    model.on('pointerdown', () => {
+      try { model.motion('TapBody'); } catch(e) {}
+      try { window.flutter_inappwebview.callHandler('FlutterChannel', 'tap'); } catch(e) {}
+    });
+    log('\u2705 Модель загружена!');
+    hideLog();
+    try { window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded'); } catch(e) {}
+  } catch(e) {
+    log('\u274C loadModel: ' + (e.message || String(e)));
+    console.error('[L2D] load error:', e);
+  }
+}
+
 async function initLive2D() {
   try {
+    // 1. Загружаем CubismCore
     await loadScript(BASE + 'live2d/live2dcubismcore.min.js');
-    log('✅ CubismCore');
-    await loadScript(BASE + 'live2d/pixi.min.js');
-    log('✅ PIXI v' + (typeof PIXI !== 'undefined' ? PIXI.VERSION : '?'));
-    await loadScript(BASE + 'live2d/pixi-live2d-display.min.js');
-    log('✅ pixi-live2d-display');
+    log('\u2705 CubismCore');
 
+    // 2. Загружаем PIXI
+    await loadScript(BASE + 'live2d/pixi.min.js');
+    if (!window.PIXI) throw new Error('PIXI не определён после загрузки');
+    log('\u2705 PIXI v' + PIXI.VERSION);
+
+    // 3. Загружаем pixi-live2d-display
+    await loadScript(BASE + 'live2d/pixi-live2d-display.min.js');
+    if (!window.PIXI || !PIXI.live2d) throw new Error('PIXI.live2d не определён');
+    log('\u2705 pixi-live2d-display');
+
+    // 4. Создаём PIXI приложение ПЕРВЫМ
     app = new PIXI.Application({
       view: document.getElementById('canvas'),
       autoStart: true,
@@ -97,49 +126,19 @@ async function initLive2D() {
       resolution: window.devicePixelRatio || 1,
     });
 
-    PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker);
-    log('✅ PIXI app OK');
+    // 5. registerTicker ПОСЛЕ создания app и ПОСЛЕ загрузки pixi-live2d
+    if (PIXI.live2d.Live2DModel.registerTicker) {
+      PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker);
+    }
+    log('\u2705 App + Ticker OK');
 
-    await loadModelFromPath(MODEL_PATH);
-
-  } catch(e) {
-    log('❌ init: ' + (e.message || String(e)));
-    console.error(e);
-  }
-}
-
-async function loadModelFromPath(path) {
-  log('🔄 Загрузка: ' + path.split('/').slice(-3).join('/'));
-  if (model) {
-    try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
-    model = null;
-  }
-  try {
-    model = await PIXI.live2d.Live2DModel.from(path, { autoInteract: false });
-    app.stage.addChild(model);
-    model.anchor.set(0.5, 0.5);
-    fitModel();
-    window.addEventListener('resize', fitModel);
-
-    // Запускаем idle анимацию
-    try { model.motion('Idle'); } catch(e) {}
-
-    model.on('pointerdown', () => {
-      try { model.motion('TapBody'); } catch(e) {}
-      try { window.flutter_inappwebview.callHandler('FlutterChannel', 'tap'); } catch(e) {}
-    });
-
-    log('✅ Модель загружена!');
-    hideLog();
-
-    // Сигнал Flutter что модель готова
-    try {
-      window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded');
-    } catch(e) {}
+    // 6. Загружаем дефолтную модель Hiyori
+    const defaultModel = BASE + 'models/Hiyori/Hiyori.model3.json';
+    await loadModelFromPath(defaultModel);
 
   } catch(e) {
-    log('❌ loadModel: ' + (e.message || String(e)));
-    console.error('[L2D] load error:', e);
+    log('\u274C init: ' + (e.message || String(e)));
+    console.error('[L2D] init error:', e);
   }
 }
 
@@ -150,7 +149,7 @@ window.setAikaState = function(state) {
   try {
     switch(state) {
       case 'listening':
-        model.expression && model.expression(0);
+        try { model.expression && model.expression(0); } catch(e) {}
         break;
       case 'thinking':
         try { model.motion('FlickHead'); } catch(e) { model.motion('Idle'); }
@@ -158,10 +157,10 @@ window.setAikaState = function(state) {
       case 'dance':
       case 'greeting':
       case 'talking':
-        model.motion('TapBody');
+        try { model.motion('TapBody'); } catch(e) {}
         break;
       default:
-        model.motion('Idle');
+        try { model.motion('Idle'); } catch(e) {}
     }
   } catch(e) {}
 };
@@ -173,7 +172,6 @@ window.loadCustomModel = async function(url) {
 
 window.switchBuiltinModel = async function(assetPath) {
   if (!app) { log('PIXI не готов'); return; }
-  // Строим URL относительно текущего расположения live2d_viewer.html
   const modelUrl = BASE + assetPath;
   log('Переключаем модель: ' + assetPath);
   await loadModelFromPath(modelUrl);
