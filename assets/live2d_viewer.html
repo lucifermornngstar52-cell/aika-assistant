@@ -29,11 +29,11 @@ function log(msg) {
 }
 function hideLog() { setTimeout(() => { logEl.style.display='none'; }, 3000); }
 
-// Базовый путь — директория html файла
+// Базовый путь
 const BASE = (() => {
   const href = window.location.href;
   const dir = href.substring(0, href.lastIndexOf('/') + 1);
-  log('base: ' + dir.replace('file:///android_asset/flutter_assets/assets/', '...assets/'));
+  log('base: .../' + dir.split('/').slice(-2).join('/'));
   return dir;
 })();
 
@@ -88,24 +88,43 @@ async function loadModelFromPath(path) {
 
 async function initLive2D() {
   try {
+    // 1. CubismCore
     await loadScript(BASE + 'live2d/live2dcubismcore.min.js');
     log('\u2705 CubismCore');
 
+    // 2. PIXI
+    // Убеждаемся что module/exports не мешают UMD
+    const _module = window.module;
+    const _exports = window.exports;
+    window.module = undefined;
+    window.exports = undefined;
+
     await loadScript(BASE + 'live2d/pixi.min.js');
-    if (!window.PIXI) throw new Error('PIXI undefined after load');
+    if (!window.PIXI) {
+      // Восстанавливаем и пробуем ещё раз
+      window.module = _module;
+      window.exports = _exports;
+      throw new Error('PIXI not found');
+    }
     log('\u2705 PIXI v' + PIXI.VERSION);
 
-    // cubism4.min.js прописывает себя в window.PIXI.live2d автоматически
+    // 3. pixi-live2d-display (cubism4 browser bundle)
+    // module уже undefined — UMD пойдёт по browser пути и запишет в window.PIXI.live2d
     await loadScript(BASE + 'live2d/pixi-live2d-display.min.js');
-    log('\u2705 live2d-display loaded');
+    
+    // Восстанавливаем module/exports
+    window.module = _module;
+    window.exports = _exports;
 
-    // Проверяем что PIXI.live2d существует
-    if (!window.PIXI.live2d || !PIXI.live2d.Live2DModel) {
-      throw new Error('PIXI.live2d.Live2DModel not found after load');
+    // Проверяем результат
+    if (!window.PIXI || !PIXI.live2d || !PIXI.live2d.Live2DModel) {
+      log('PIXI: ' + typeof window.PIXI);
+      log('live2d: ' + typeof (PIXI.live2d));
+      throw new Error('PIXI.live2d.Live2DModel not found');
     }
     log('\u2705 PIXI.live2d OK');
 
-    // Создаём Application
+    // 4. Создаём Application
     app = new PIXI.Application({
       view: document.getElementById('canvas'),
       autoStart: true,
@@ -116,15 +135,15 @@ async function initLive2D() {
       resolution: window.devicePixelRatio || 1,
     });
 
-    // registerTicker — после создания app
+    // 5. registerTicker
     try {
       PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker);
-      log('\u2705 Ticker registered');
+      log('\u2705 Ticker OK');
     } catch(e) {
-      log('\u26A0 registerTicker skip: ' + e.message);
+      log('\u26A0 ticker: ' + e.message);
     }
 
-    // Загружаем дефолтную модель
+    // 6. Загружаем модель
     await loadModelFromPath(BASE + 'models/Hiyori/Hiyori.model3.json');
 
   } catch(e) {
