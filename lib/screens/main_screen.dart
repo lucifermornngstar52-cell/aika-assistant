@@ -534,11 +534,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // Возобновляем wake word после команды
         if (_wakeWordEnabled) await _wakeWordService.resume();
       },
-      onDone: () {
-        setState(() => _isListening = false);
-        OverlayService().asyncState('idle');
-        if (_wakeWordEnabled) _wakeWordService.resume();
-      },
+
     );
   }
 
