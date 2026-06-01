@@ -31,7 +31,10 @@ jobs:
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "ndk;27.2.12479018" \
+            "cmake;3.10.2.4988404" \
             "cmake;3.22.1"
+          # Добавляем cmake 3.10.2 в PATH (flutter_live2d требует именно эту версию)
+          echo "$ANDROID_HOME/cmake/3.10.2.4988404/bin" >> $GITHUB_PATH
 
       - name: Get dependencies
         run: flutter pub get
