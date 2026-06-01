@@ -63,8 +63,8 @@ class WakeWordService {
   }
 
   /// Обновить список триггерных слов
-  void updateTriggers(List<String> triggers) {
-    _triggers = triggers.isEmpty ? ['айка'] : triggers;
+  void updateTriggers([List<String>? triggers]) {
+    if (triggers != null) _triggers = triggers.isEmpty ? ['айка'] : triggers;
   }
 
   Future<void> stop() async {
