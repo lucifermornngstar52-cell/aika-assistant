@@ -121,8 +121,8 @@ class AikaOverlayService : Service() {
         val surfaceView = FlutterSurfaceView(this, true)
         val fv = FlutterView(this, surfaceView)
         fv.setBackgroundColor(Color.TRANSPARENT)
-        // Начинаем невидимым — покажем когда модель загрузится
-        fv.alpha = 0f
+        // Сразу видимый — модель загрузится через WebView
+        fv.alpha = 1f
         fv.attachToFlutterEngine(engine)
 
         val frame = FrameLayout(this)
@@ -132,27 +132,10 @@ class AikaOverlayService : Service() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        // Слушаем событие от Flutter что модель загружена
-        val overlayChannel = MethodChannel(engine.dartExecutor.binaryMessenger, "com.aika.assistant/overlay_ready")
-        overlayChannel.setMethodCallHandler { call, result ->
-            if (call.method == "modelReady") {
-                handler.post {
-                    fv.animate().alpha(1f).setDuration(500).start()
-                    methodChannel?.invokeMethod("setState", currentState)
-                }
-                result.success(null)
-            } else {
-                result.notImplemented()
-            }
-        }
-
-        // Fallback: показываем через 4 секунды в любом случае
+        // Посылаем начальное состояние после инициализации WebView
         handler.postDelayed({
-            if (fv.alpha < 0.5f) {
-                fv.animate().alpha(1f).setDuration(500).start()
-                methodChannel?.invokeMethod("setState", currentState)
-            }
-        }, 4000)
+            methodChannel?.invokeMethod("setState", currentState)
+        }, 3000)
 
         var ix = 0; var iy = 0; var tx = 0f; var ty = 0f; var dragDist = 0f
         frame.setOnTouchListener { v, event ->
