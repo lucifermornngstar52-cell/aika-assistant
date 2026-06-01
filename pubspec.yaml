@@ -34,6 +34,8 @@ dependencies:
   android_intent_plus: ^4.0.2
   torch_light: ^1.0.1
   volume_controller: ^2.0.7
+  device_info_plus: ^10.1.2
+  package_info_plus: ^8.0.2
 
   # HTTP
   http: ^1.2.1
