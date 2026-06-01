@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:transparent; overflow:hidden; }
+  #canvas { width:100%; height:100%; display:block; }
+  #status { position:fixed; bottom:8px; left:0; right:0; text-align:center;
+            color:rgba(0,229,255,0.7); font-family:sans-serif; font-size:11px; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="status">Загрузка модели...</div>
+
+<!-- Live2D Cubism Core -->
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<!-- pixi.js для рендеринга -->
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+<!-- pixi-live2d-display -->
+<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
+
+<script>
+(async () => {
+  const status = document.getElementById('status');
+
+  // Инициализируем PIXI
+  const app = new PIXI.Application({
+    view: document.getElementById('canvas'),
+    autoStart: true,
+    backgroundAlpha: 0,
+    resizeTo: window,
+    antialias: true,
+  });
+
+  // Регистрируем Live2D тикер
+  if (window.PIXI && window.PIXI.live2d) {
+    PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker);
+  }
+
+  let model = null;
+  let currentMotionGroup = 'idle';
+
+  // Загружаем модель Haru из assets Flutter
+  async function loadModel() {
+    try {
+      status.textContent = 'Загрузка Haru...';
+      // Flutter assets доступны через flutter_assets/
+      model = await PIXI.live2d.Live2DModel.from(
+        'flutter_assets/assets/models/Haru/Haru.model3.json',
+        { autoInteract: false }
+      );
+
+      // Центрируем модель
+      app.stage.addChild(model);
+      model.anchor.set(0.5, 0.5);
+      model.position.set(app.screen.width / 2, app.screen.height * 0.55);
+      const scale = Math.min(app.screen.width, app.screen.height) / model.internalModel.originalWidth * 0.9;
+      model.scale.set(scale);
+
+      // Автоматически запускаем idle анимацию
+      playMotion('Idle');
+      status.textContent = '';
+
+      // Обработчик тапа
+      model.on('tap', (hitAreas) => {
+        if (hitAreas.includes('head')) playMotion('FlickHead');
+        else if (hitAreas.includes('body')) playMotion('TapBody');
+        else playMotion('TapBody');
+        if (window.FlutterChannel) FlutterChannel.postMessage('tap');
+      });
+
+      // Ресайз
+      window.addEventListener('resize', () => {
+        model.position.set(app.screen.width / 2, app.screen.height * 0.55);
+        const s = Math.min(app.screen.width, app.screen.height) / model.internalModel.originalWidth * 0.9;
+        model.scale.set(s);
+      });
+
+    } catch(e) {
+      status.textContent = 'Ошибка: ' + e.message;
+      console.error(e);
+    }
+  }
+
+  function playMotion(group) {
+    if (!model) return;
+    try {
+      model.motion(group);
+      currentMotionGroup = group;
+    } catch(e) { console.warn('motion error', e); }
+  }
+
+  function playExpression(name) {
+    if (!model) return;
+    try { model.expression(name); } catch(e) {}
+  }
+
+  // API для Flutter MethodChannel
+  window.setAikaState = function(state) {
+    switch(state) {
+      case 'listening':  playMotion('FlickHead'); break;
+      case 'thinking':   playMotion('FlickHead'); playExpression('F04'); break;
+      case 'talking':    playMotion('TapBody'); break;
+      case 'greeting':   playMotion('TapBody'); break;
+      case 'dance':      playMotion('TapBody'); break;
+      case 'sad':        playExpression('F07'); break;
+      default:           playMotion('Idle'); playExpression('F01'); break;
+    }
+  };
+
+  window.setAikaExpression = function(expr) { playExpression(expr); };
+
+  await loadModel();
+})();
+</script>
+</body>
+</html>
