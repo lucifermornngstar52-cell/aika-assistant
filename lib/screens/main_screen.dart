@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
+import '../widgets/aika_3d_avatar.dart';
 import 'settings_screen.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
@@ -110,6 +111,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Timer? _idleTimer;      // Таймер бездействия → stretch
   String _assistantName = 'Aika';
   String _userName = '';
+  bool _show3DAvatar = true; // Показывать 3D аватар
 
   AikaState get _avatarState {
     if (_isDancing)    return AikaState.dance;
@@ -1618,6 +1620,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     ],
                   ),
                 ],
+              ),
+            ),
+
+            // ── 3D Avatar ──────────────────────────────────────────
+            GestureDetector(
+              onTap: () => setState(() => _show3DAvatar = !_show3DAvatar),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOut,
+                height: _show3DAvatar ? 260 : 0,
+                child: _show3DAvatar
+                    ? Center(
+                        child: Aika3DAvatar(
+                          state: _avatarState,
+                          size: 220,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ),
 
