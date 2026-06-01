@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 
 /// Entry point для overlay — запускается отдельным Flutter Engine
-/// поверх всех приложений через AikaOverlayService.
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,9 +16,14 @@ void overlayMain() {
 class _OverlayApp extends StatelessWidget {
   const _OverlayApp();
   @override
-  Widget build(BuildContext context) => const MaterialApp(
+  Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: _AikaOverlayPage(),
+        // КРИТИЧНО: прозрачный фон чтобы не было чёрного квадрата
+        theme: ThemeData(
+          scaffoldBackgroundColor: Colors.transparent,
+          colorScheme: const ColorScheme.dark(),
+        ),
+        home: const _AikaOverlayPage(),
       );
 }
 
@@ -36,10 +43,23 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
 
   InAppWebViewController? _webCtrl;
 
+  // Путь к текущей модели (null = встроенная Haru)
+  String? _customModelPath;
+  bool _webViewReady = false;
+
   @override
   void initState() {
     super.initState();
     _channel.setMethodCallHandler(_handleNative);
+    _loadSavedModel();
+  }
+
+  Future<void> _loadSavedModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('custom_model_path');
+    if (saved != null && File(saved).existsSync()) {
+      setState(() => _customModelPath = saved);
+    }
   }
 
   Future<dynamic> _handleNative(MethodCall call) async {
@@ -47,13 +67,13 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
       case 'setState':
         final s = call.arguments as String? ?? 'idle';
         if (mounted) setState(() => _state = s);
-        _webCtrl?.evaluateJavascript(source: "window.setAikaState('$s')");
+        _sendState(s);
         break;
       case 'setMusicPlaying':
         final playing = call.arguments as bool? ?? false;
         final s = playing ? 'dance' : 'idle';
         if (mounted) setState(() => _state = s);
-        _webCtrl?.evaluateJavascript(source: "window.setAikaState('$s')");
+        _sendState(s);
         break;
       case 'setConfig':
         final args = call.arguments as Map? ?? {};
@@ -65,18 +85,27 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
         break;
       case 'onTap':
         if (mounted) setState(() => _state = 'greeting');
-        _webCtrl?.evaluateJavascript(source: "window.setAikaState('greeting')");
+        _sendState('greeting');
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) setState(() => _state = 'idle');
-          _webCtrl?.evaluateJavascript(source: "window.setAikaState('idle')");
+          _sendState('idle');
         });
         break;
       case 'playAnimation':
         final anim = call.arguments as String? ?? 'idle';
         final mapped = _animToState(anim);
         if (mounted) setState(() => _state = mapped);
-        _webCtrl?.evaluateJavascript(source: "window.setAikaState('$mapped')");
+        _sendState(mapped);
         break;
+      case 'pickModel':
+        await _pickCustomModel();
+        break;
+    }
+  }
+
+  void _sendState(String state) {
+    if (_webViewReady) {
+      _webCtrl?.evaluateJavascript(source: "window.setAikaState('\$state')");
     }
   }
 
@@ -87,6 +116,43 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
       case 'headShake':  return 'thinking';
       default:           return 'idle';
     }
+  }
+
+  // Выбор своей модели через file picker
+  Future<void> _pickCustomModel() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Выбери файл модели (.model3.json)',
+      );
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        if (path.endsWith('model3.json') || path.endsWith('model.json')) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('custom_model_path', path);
+          setState(() {
+            _customModelPath = path;
+            _webViewReady = false;
+          });
+          // Перезагружаем WebView с новой моделью
+          _webCtrl?.reload();
+        }
+      }
+    } catch (e) {
+      debugPrint('FilePicker error: \$e');
+    }
+  }
+
+  // Сброс к стандартной модели
+  Future<void> _resetModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('custom_model_path');
+    setState(() {
+      _customModelPath = null;
+      _webViewReady = false;
+    });
+    _webCtrl?.reload();
   }
 
   @override
@@ -121,6 +187,8 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
           allowUniversalAccessFromFileURLs: true,
           mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
           useHybridComposition: true,
+          // Отключаем дефолтный белый/чёрный фон WebView
+          disableDefaultErrorPage: true,
         ),
         onWebViewCreated: (ctrl) {
           _webCtrl = ctrl;
@@ -130,14 +198,36 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
               final msg = args.isNotEmpty ? args[0].toString() : '';
               if (msg == 'tap') {
                 _channel.invokeMethod('onTap');
+              } else if (msg == 'pick_model') {
+                _pickCustomModel();
+              } else if (msg == 'reset_model') {
+                _resetModel();
               }
             },
           );
+          // Передаём путь к кастомной модели если есть
+          if (_customModelPath != null) {
+            ctrl.addJavaScriptHandler(
+              handlerName: 'getCustomModelPath',
+              callback: (_) => _customModelPath,
+            );
+          }
         },
         onLoadStop: (ctrl, url) {
-          Future.delayed(const Duration(milliseconds: 800), () {
-            ctrl.evaluateJavascript(source: "window.setAikaState('${_state}')");
+          setState(() => _webViewReady = true);
+          Future.delayed(const Duration(milliseconds: 500), () {
+            // Передаём кастомный путь если есть
+            if (_customModelPath != null) {
+              ctrl.evaluateJavascript(
+                source: "window.loadCustomModel('file://\$_customModelPath')"
+              );
+            } else {
+              ctrl.evaluateJavascript(source: "window.setAikaState('\$_state')");
+            }
           });
+        },
+        onLoadError: (ctrl, url, code, message) {
+          debugPrint('WebView error: \$code \$message');
         },
       ),
     );

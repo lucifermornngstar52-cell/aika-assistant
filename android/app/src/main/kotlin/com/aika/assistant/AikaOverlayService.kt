@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -19,6 +20,7 @@ import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 import io.flutter.FlutterInjector
+import io.flutter.embedding.android.FlutterSurfaceView
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -68,7 +70,6 @@ class AikaOverlayService : Service() {
         setupOverlay()
     }
 
-    // ── Flutter Engine — запускаем overlayMain() ──────────────────────────────
     private fun initFlutterEngine() {
         val cached = FlutterEngineCache.getInstance().get(ENGINE_ID)
         if (cached != null) {
@@ -78,8 +79,6 @@ class AikaOverlayService : Service() {
         }
 
         val engine = FlutterEngine(this)
-
-        // Правильный способ вызвать именованный entrypoint
         val loader = FlutterInjector.instance().flutterLoader()
         val appBundlePath = loader.findAppBundlePath()
         engine.dartExecutor.executeDartEntrypoint(
@@ -91,7 +90,6 @@ class AikaOverlayService : Service() {
         methodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, FL_CHANNEL)
     }
 
-    // ── Overlay Window ────────────────────────────────────────────────────────
     private fun setupOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val dp = resources.displayMetrics.density
@@ -109,7 +107,7 @@ class AikaOverlayService : Service() {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            PixelFormat.TRANSLUCENT
+            PixelFormat.TRANSPARENT  // ФИКС: TRANSPARENT вместо TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = (20 * dp).roundToInt()
@@ -117,11 +115,16 @@ class AikaOverlayService : Service() {
         }
 
         val engine = flutterEngine ?: return
-        val fv = FlutterView(this)
-        fv.attachToFlutterEngine(engine)
+
+        // ФИКС: используем FlutterSurfaceView с прозрачным фоном
+        val surfaceView = FlutterSurfaceView(this, true) // true = transparent
+        val fv = FlutterView(this, surfaceView)
+        fv.setBackgroundColor(Color.TRANSPARENT)  // КРИТИЧНО
         fv.alpha = 0f
+        fv.attachToFlutterEngine(engine)
 
         val frame = FrameLayout(this)
+        frame.setBackgroundColor(Color.TRANSPARENT)  // КРИТИЧНО
         frame.addView(fv, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -159,10 +162,11 @@ class AikaOverlayService : Service() {
 
         try {
             windowManager?.addView(frame, params)
+            // ФИКС: ждём дольше пока WebView прогрузит модель, только потом показываем
             handler.postDelayed({
-                fv.animate().alpha(1f).setDuration(600).start()
+                fv.animate().alpha(1f).setDuration(400).start()
                 methodChannel?.invokeMethod("setState", currentState)
-            }, 1500)
+            }, 2500)
         } catch (e: Exception) { e.printStackTrace() }
     }
 
@@ -176,41 +180,21 @@ class AikaOverlayService : Service() {
                 currentState = "idle"; methodChannel?.invokeMethod("setState", "idle")
             }
             ACTION_CONFIG -> {
-                val size  = intent.getFloatExtra(EXTRA_SIZE, 170f)
-                val side  = intent.getStringExtra(EXTRA_SIDE) ?: "left"
-                val alpha = intent.getFloatExtra(EXTRA_OPACITY, 1f)
-                handler.post { applyWindowConfig(size, side, alpha) }
+                val size    = intent.getFloatExtra(EXTRA_SIZE, 0f)
+                val opacity = intent.getFloatExtra(EXTRA_OPACITY, 1f)
+                val args = mapOf("size" to size, "opacity" to opacity)
+                handler.post { methodChannel?.invokeMethod("setConfig", args) }
             }
             ACTION_MUSIC -> {
                 val playing = intent.getBooleanExtra(EXTRA_PLAYING, false)
-                handler.post {
-                    methodChannel?.invokeMethod("setMusicPlaying", playing)
-                    if (playing) currentState = "dance"
-                    else if (currentState == "dance") currentState = "idle"
-                }
+                handler.post { methodChannel?.invokeMethod("setMusicPlaying", playing) }
             }
             ACTION_ANIM -> {
-                val animName = intent.getStringExtra(EXTRA_ANIM) ?: "idle"
-                handler.post { methodChannel?.invokeMethod("playAnimation", animName) }
+                val anim = intent.getStringExtra(EXTRA_ANIM) ?: "idle"
+                handler.post { methodChannel?.invokeMethod("playAnimation", anim) }
             }
         }
         return START_STICKY
-    }
-
-    fun applyWindowConfig(sizeDp: Float, side: String, alpha: Float) {
-        val dp = resources.displayMetrics.density
-        val w = (sizeDp * dp).toInt()
-        val h = (sizeDp * 1.5f * dp).toInt()
-        params?.let { p ->
-            p.width = w; p.height = h
-            val screenW = resources.displayMetrics.widthPixels
-            p.x = if (side == "right") screenW - w - (16 * dp).toInt() else (16 * dp).toInt()
-            try { overlayRoot?.let { windowManager?.updateViewLayout(it, p) } } catch (_: Exception) {}
-        }
-        flutterView?.alpha = alpha
-        methodChannel?.invokeMethod("setConfig", mapOf(
-            "size" to sizeDp, "opacity" to alpha, "mirror" to (side == "right")
-        ))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
