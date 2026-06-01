@@ -67,6 +67,11 @@ flutter:
     - assets/live2d_viewer.html
     - assets/live2d/
     - assets/models/
+    - assets/models/Haru/
+    - assets/models/Haru/Haru.2048/
+    - assets/models/Haru/motions/
+    - assets/models/Haru/expressions/
+    - assets/models/Haru/sounds/
     - assets/images/chat_wallpaper.jpg
     - assets/images/aika_avatar.png
     - assets/images/aika_chibi.png
