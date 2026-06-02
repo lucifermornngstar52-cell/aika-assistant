@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import '../services/app_launcher_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -106,7 +107,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
-  bool _screenCommentsEnabled = true;
+  bool _screenCommentsEnabled = true
+  String _bgPresetId = 'none';
+  String? _bgCustomImage;;
   bool _hasNotifPermission = false;
   bool _isDancing = false;
   bool _isStretching = false;
@@ -126,6 +129,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isThinking)   return AikaState.thinking;
     if (_isStretching) return AikaState.stretch;
     return AikaState.idle;
+  }
+
+  List<Color> _bgGradient(String id) {
+    const map = {
+      'night':  [Color(0xFF0D0D2B), Color(0xFF1A0533)],
+      'aurora': [Color(0xFF001F3F), Color(0xFF00A86B)],
+      'sunset': [Color(0xFF1A0533), Color(0xFFFF6B35)],
+      'ocean':  [Color(0xFF001B4A), Color(0xFF00B4D8)],
+      'cherry': [Color(0xFF1A0020), Color(0xFFFF69B4)],
+      'cyber':  [Color(0xFF0A0014), Color(0xFF7B00FF)],
+    };
+    final colors = map[id];
+    if (colors == null) return [const Color(0xFF0F0F0F), const Color(0xFF0F0F0F)];
+    return colors;
   }
 
   String get _avatarStateString {
@@ -559,6 +576,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     setState(() {
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
+      _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
+      _bgCustomImage = prefs.getString('bg_custom_image');
     });
     // Восстанавливаем историю чата из памяти
     final savedHistory = await _memoryService.getHistory();
