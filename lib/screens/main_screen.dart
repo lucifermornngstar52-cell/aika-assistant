@@ -30,6 +30,7 @@ import 'model_picker_screen.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
 import '../services/message_sender_service.dart';
+import '../services/media_control_service.dart';
 import '../services/url_launcher_service.dart';
 import '../services/weather_service.dart';
 import '../services/device_security_service.dart';
@@ -712,6 +713,67 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
 
   /// Сбрасывает таймер бездействия. Вызывается после каждого действия.
+  /// Парсит команду вида "напиши [контакту] в [приложение] [текст]"
+  Map<String, String>? _parseSendMessageCommand(String text) {
+    final t = text.toLowerCase().trim();
+
+    // Ключевые слова отправки
+    final sendWords = ['напиши', 'отправь', 'скажи', 'написать', 'отправить',
+                       'send', 'напиши сообщение', 'отправь сообщение'];
+    if (!sendWords.any((w) => t.contains(w))) return null;
+
+    // Определяем приложение
+    String app = 'whatsapp'; // дефолт
+    if (t.contains('телеграм') || t.contains('telegram') || t.contains('тг')) {
+      app = 'telegram';
+    } else if (t.contains('инстаграм') || t.contains('instagram') || t.contains('инста')) {
+      app = 'instagram';
+    } else if (t.contains('вконтакте') || t.contains('вк') || t.contains('vk')) {
+      app = 'vkontakte';
+    } else if (t.contains('ватсап') || t.contains('вацап') || t.contains('whatsapp') || t.contains('вотсап')) {
+      app = 'whatsapp';
+    }
+
+    // Паттерны для извлечения контакта и текста:
+    // "напиши Диме в ватсап привет как дела"
+    // "напиши в телеграм Маше привет"
+    // "отправь сообщение Пете привет"
+
+    final patterns = [
+      // напиши [контакт] в [приложение] [текст]
+      RegExp(r'(?:напиши|отправь|скажи|написать|отправить)\s+([а-яёА-ЯЁa-zA-Z]+(?:\s+[а-яёА-ЯЁa-zA-Z]+)?)\s+(?:в|через)\s+(?:ватсап|вацап|вотсап|whatsapp|телеграм|telegram|тг|инстаграм|instagram|вконтакте|вк)\s+(.+)', caseSensitive: false),
+      // напиши в [приложение] [контакт] [текст]
+      RegExp(r'(?:напиши|отправь|скажи)\s+(?:в|через)\s+(?:ватсап|вацап|вотсап|whatsapp|телеграм|telegram|тг)\s+([а-яёА-ЯЁa-zA-Z]+)\s+(.+)', caseSensitive: false),
+      // напиши [контакт] [текст] (без упоминания приложения)
+      RegExp(r'(?:напиши|отправь|скажи)\s+([а-яёА-ЯЁa-zA-Z]{2,20})\s+(.{5,})', caseSensitive: false),
+    ];
+
+    for (final p in patterns) {
+      final m = p.firstMatch(text);
+      if (m != null) {
+        final contact = m.group(1)?.trim() ?? '';
+        final message = m.group(2)?.trim() ?? '';
+        if (contact.isNotEmpty && message.isNotEmpty && message.length > 2) {
+          // Исключаем служебные слова как "контакт"
+          final skipWords = ['сообщение', 'message', 'текст'];
+          if (skipWords.any((w) => contact.toLowerCase() == w)) continue;
+          return {'app': app, 'contact': contact, 'message': message};
+        }
+      }
+    }
+    return null;
+  }
+
+  String _appDisplayName(String app) {
+    switch (app) {
+      case 'whatsapp':   return 'WhatsApp';
+      case 'telegram':   return 'Telegram';
+      case 'instagram':  return 'Instagram';
+      case 'vkontakte':  return 'ВКонтакте';
+      default:           return app;
+    }
+  }
+
   void _startFeelingsTimers() {
     final personality = PersonalityService.current.name;
     AikaFeelingsService.startIdleTimers(
@@ -1492,6 +1554,50 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         _moodService.onUserSpoke();
         return;
       }
+    }
+
+    // ── Медиа-команды (Spotify, play/pause/next) ────────────────────────
+    final mediaResult = await MediaControlService.tryHandleCommand(text);
+    if (mediaResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: mediaResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(mediaResult);
+      return;
+    }
+
+    // ── Отправка сообщений ("напиши Диме в ватсап ...") ─────────────────
+    final msgResult = _parseSendMessageCommand(text);
+    if (msgResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      final r = await MessageSenderService.sendMessage(
+        app: msgResult['app']!,
+        contact: msgResult['contact']!,
+        message: msgResult['message']!,
+      );
+      final reply = 'Отправляю "${msgResult['message']}" → ${msgResult['contact']} в ${_appDisplayName(msgResult['app']!)} 📨';
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(reply);
+      return;
     }
 
     // ── Сначала проверяем локальные команды запуска приложений ──
