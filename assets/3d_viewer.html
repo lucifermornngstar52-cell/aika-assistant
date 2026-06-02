@@ -40,23 +40,27 @@ var resetTimer = null;
 // aika_model.glb (robot): Dance, Death, Idle, Jump, No, Punch, ...
 
 var ANIM_MAP = {
-  // robot / aika_model
-  idle:         ['Idle',       'idle',    'Survey'],
-  listening:    ['Idle',       'idle'],
-  thinking:     ['sneak_pose', 'No',      'Idle'],
-  talking:      ['Yes',        'agree',   'Idle'],
-  greeting:     ['WaveHello',  'agree',   'Walk'],
-  dance:        ['Dance',      'SambaDance', 'Idle'],
-  music:        ['Dance',      'SambaDance', 'Idle'],
-  notification: ['Yes',        'agree',   'Jump'],
-  alarm:        ['Jump',       'run',     'Run'],
-  vk:           ['WalkForward','walk',    'Walk'],
-  youtube:      ['WalkForward','walk',    'Walk'],
-  telegram:     ['Yes',        'agree',   'Idle'],
-  happy:        ['ThumbsUp',   'agree',   'Jump'],
-  sad:          ['sad_pose',   'Death',   'Idle'],
-  surprised:    ['Jump',       'Yes',     'Idle'],
-  stretch:      ['sneak_pose', 'Idle'],
+  // Каждый список — приоритет слева направо по доступности в конкретной модели
+  // robot/aika: Dance, Idle, Jump, No, Punch, Running, ThumbsUp, Walking, Wave, Yes
+  // anime_girl: SambaDance, agree, headShake, idle, run, sad_pose, sneak_pose, walk
+  // xbot:       agree, headShake, idle, run, sad_pose, sneak_pose, walk
+  // soldier:    Idle, Run, Walk
+  idle:         ['idle',       'Idle',       'sneak_pose', 'Survey'],
+  listening:    ['idle',       'Idle',       'sneak_pose'],
+  thinking:     ['sneak_pose', 'No',         'headShake',  'Idle',  'idle'],
+  talking:      ['agree',      'Yes',        'idle',       'Idle'],
+  greeting:     ['Wave',       'agree',      'WaveHello',  'walk',  'Walk'],
+  dance:        ['SambaDance', 'Dance',      'run',        'idle'],
+  music:        ['SambaDance', 'Dance',      'run',        'idle'],
+  notification: ['agree',      'Yes',        'Jump',       'idle'],
+  alarm:        ['run',        'Run',        'Jump',       'idle'],
+  vk:           ['walk',       'Walk',       'WalkForward','idle'],
+  youtube:      ['walk',       'Walk',       'WalkForward','idle'],
+  telegram:     ['agree',      'Yes',        'idle',       'Idle'],
+  happy:        ['agree',      'ThumbsUp',   'SambaDance', 'idle'],
+  sad:          ['sad_pose',   'Death',      'sneak_pose', 'idle'],
+  surprised:    ['headShake',  'Jump',       'No',         'idle'],
+  stretch:      ['sneak_pose', 'sad_pose',   'Idle',       'idle'],
 };
 
 // Состояния которые сбрасываются к idle через N секунд
