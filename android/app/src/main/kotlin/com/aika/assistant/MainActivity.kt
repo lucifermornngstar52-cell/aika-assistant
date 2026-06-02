@@ -291,6 +291,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startOverlay(intent: Intent) {
+        // Если сервис уже запущен — просто шлём ему интент (не создаём новый)
+        // Иначе каждый вызов создавал бы новый WebView поверх старого
+        if (AikaOverlayService.isRunning) {
+            startService(intent)
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {
