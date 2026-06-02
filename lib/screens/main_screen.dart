@@ -265,6 +265,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await HabitMemoryService.load();
     await RelationshipService.load();
     await AssistantMoodService.load();
+    await _loadChatHistory();
     _sendGreeting();
     // Init Telegram Bot
     TelegramBotService.onSecurityCommand = (text, chatId) async {
@@ -769,6 +770,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     OverlayService().show(state: 'greeting');
   }
 
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('chat_history');
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List;
+        final loaded = list.map((m) => ChatMessage.fromJson(m)).toList();
+        if (mounted) setState(() => _messages = loaded);
+      }
+    } catch (_) {}
+  }
+
   void _addMessage(ChatMessage msg) {
     setState(() => _messages.add(msg));
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -780,6 +794,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         );
       }
     });
+    // Сохраняем историю в SharedPreferences под ключом 'chat_history'
+    // чтобы ChatHistoryScreen мог её прочитать
+    _persistHistory();
+  }
+
+  Future<void> _persistHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Храним последние 200 сообщений
+      final toSave = _messages.length > 200
+          ? _messages.sublist(_messages.length - 200)
+          : _messages;
+      final encoded = jsonEncode(toSave.map((m) => m.toJson()).toList());
+      await prefs.setString('chat_history', encoded);
+    } catch (_) {}
   }
 
   Future<void> _speak(String text) async {
