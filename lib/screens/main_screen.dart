@@ -656,8 +656,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
     final greeting = _userName.isNotEmpty
-        ? 'Привет, \$_userName! Я \$_assistantName. Чем могу помочь?'
-        : 'Привет! Я \$_assistantName. Чем могу помочь?';
+        ? "Привет, \$_userName! Я \$_assistantName. Чем могу помочь?"
+        : "Привет! Я \$_assistantName. Чем могу помочь?";
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       role: MessageRole.aika,
@@ -1584,9 +1584,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         children: [
           // ── Аниме аватар на весь экран ──────────────────────────────────
           Positioned.fill(
-            child: AikaAvatar(
-              state: _avatarState,
-              size: MediaQuery.of(context).size.width,
+            child: Live2DWidget(
+              width: MediaQuery.of(context).size.width,
+              height: MediaQuery.of(context).size.height,
+              state: _avatarStateString,
             ),
           ),
 
