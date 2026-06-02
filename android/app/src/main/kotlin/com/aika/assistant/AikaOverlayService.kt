@@ -180,6 +180,10 @@ class AikaOverlayService : Service() {
                 val state = intent.getStringExtra(EXTRA_STATE) ?: "idle"
                 handler.post {
                     currentState = state
+                    // Если overlay окно пропало (например после перезагрузки) — пересоздаём
+                    if (overlayRoot == null || overlayRoot?.windowToken == null) {
+                        setupOverlay()
+                    }
                     methodChannel?.invokeMethod("setState", state)
                 }
             }
