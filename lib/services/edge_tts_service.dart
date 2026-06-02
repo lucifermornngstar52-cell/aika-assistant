@@ -7,14 +7,12 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-/// Edge TTS — Microsoft Neural Voices
-/// Стриминг: начинает воспроизводить сразу как получает первые чанки аудио
+/// Edge TTS — Microsoft Neural Voices (стриминг через WebSocket)
+/// Исправлено: _edgeEnabled не сбрасывается, автоматический реконнект.
 class EdgeTtsService extends ChangeNotifier {
-  // ── Синглтон — один экземпляр на всё приложение ──────────────────────
   static EdgeTtsService? _instance;
   factory EdgeTtsService() => _instance ??= EdgeTtsService._internal();
   EdgeTtsService._internal();
-  // ─────────────────────────────────────────────────────────────────────
 
   static const _defaultVoice = 'ru-RU-DariyaNeural';
   static const _trustedToken = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
@@ -25,15 +23,17 @@ class EdgeTtsService extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
 
   bool _isSpeaking = false;
-  bool _edgeEnabled = true;
+  // ФИКС: не отключаем EdgeTTS навсегда — при ошибке делаем реконнект и пробуем снова
+  bool _edgeFailed = false;
   String _voice = _defaultVoice;
   double _rate = 0.0;
-  double _pitch = 5.0;
+  double _pitch = 0.0;
 
-  // Персистентное WS соединение — переиспользуем между запросами
   WebSocket? _ws;
   bool _wsReady = false;
   Timer? _wsKeepalive;
+  int _failCount = 0; // счётчик ошибок подряд
+  static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
 
   bool get isSpeaking => _isSpeaking;
   String get voice => _voice;
@@ -50,23 +50,24 @@ class EdgeTtsService extends ChangeNotifier {
   ];
 
   Future<void> initialize() async {
+    await _initSystemTts();
+    _player.onPlayerComplete.listen((_) { _isSpeaking = false; notifyListeners(); });
+    _warmupConnection();
+  }
+
+  Future<void> _initSystemTts() async {
     await _systemTts.setLanguage('ru-RU');
     await _systemTts.setSpeechRate(0.85);
     await _systemTts.setVolume(1.0);
     await _systemTts.setPitch(1.15);
     _systemTts.setCompletionHandler(() { _isSpeaking = false; notifyListeners(); });
     _systemTts.setErrorHandler((_) { _isSpeaking = false; notifyListeners(); });
-    _player.onPlayerComplete.listen((_) { _isSpeaking = false; notifyListeners(); });
-
-    // Прогреваем соединение заранее
-    _warmupConnection();
   }
 
   void setVoice(String voiceId) { _voice = voiceId; notifyListeners(); }
   void setRate(double rate) => _rate = rate;
   void setPitch(double pitch) => _pitch = pitch;
 
-  /// Load rate and pitch from SharedPreferences (called automatically before each speak)
   Future<void> _loadEdgeSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -77,43 +78,42 @@ class EdgeTtsService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Прогрев WS соединения — вызывается при инициализации
   Future<void> _warmupConnection() async {
     try {
       await _connectWs();
-      debugPrint('[EdgeTTS] ✅ WS соединение прогрето');
+      debugPrint('[EdgeTTS] ✅ WS прогрет');
     } catch (e) {
-      debugPrint('[EdgeTTS] Прогрев не удался: $e');
+      debugPrint('[EdgeTTS] прогрев не удался: $e');
     }
   }
 
   Future<void> _connectWs() async {
-    _ws?.close();
+    try { _ws?.close(); } catch (_) {}
     _ws = null;
     _wsReady = false;
+    _wsKeepalive?.cancel();
 
     final connId = _genUuid();
     final uri = Uri.parse('$_wsUrl?TrustedClientToken=$_trustedToken&ConnectionId=$connId');
+
     _ws = await WebSocket.connect(uri.toString(), headers: {
       'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-          'Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41',
+          'Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
     }).timeout(const Duration(seconds: 8));
 
     _wsReady = true;
 
-    // Keepalive — пинг каждые 25 сек чтобы соединение не закрылось
-    _wsKeepalive?.cancel();
-    _wsKeepalive = Timer.periodic(const Duration(seconds: 25), (_) {
+    // Keepalive пинг каждые 20 сек
+    _wsKeepalive = Timer.periodic(const Duration(seconds: 20), (_) {
       if (_ws?.readyState == WebSocket.open) {
-        _ws?.add('');
+        try { _ws?.add(''); } catch (_) { _wsReady = false; }
       } else {
         _wsReady = false;
         _wsKeepalive?.cancel();
       }
     });
 
-    // Если сервер закрыл — сбрасываем флаг
     _ws!.done.then((_) { _wsReady = false; });
   }
 
@@ -124,48 +124,69 @@ class EdgeTtsService extends ChangeNotifier {
     _isSpeaking = true;
     notifyListeners();
 
-    if (_edgeEnabled) {
+    // ФИКС: пробуем EdgeTTS если ошибок было меньше MAX
+    final canUseEdge = _failCount < _maxFails;
+
+    if (canUseEdge) {
       try {
         await _speakEdgeStreaming(text);
-        // _isSpeaking уже сброшен внутри _speakEdgeStreaming
+        _failCount = 0; // успех — сбрасываем счётчик
         return;
       } catch (e) {
-        debugPrint('[EdgeTTS] ошибка: $e → системный TTS');
-        _edgeEnabled = false;
-        _isSpeaking = true;
+        _failCount++;
+        debugPrint('[EdgeTTS] ошибка $_failCount/$_maxFails: $e');
+        if (_failCount >= _maxFails) {
+          debugPrint('[EdgeTTS] переключаемся на системный TTS на 30 сек');
+          // Через 30 сек автоматически пробуем снова
+          Timer(const Duration(seconds: 30), () {
+            _failCount = 0;
+            _wsReady = false;
+            _warmupConnection();
+          });
+        }
+        _isSpeaking = true; // восстанавливаем для системного TTS
       }
+    } else {
+      debugPrint('[EdgeTTS] пауза — системный TTS');
     }
 
-    // Системный TTS — ждём завершения
-    final sysDone = Completer<void>();
+    // Системный TTS fallback
+    await _speakSystem(text);
+  }
+
+  Future<void> _speakSystem(String text) async {
+    final done = Completer<void>();
     _systemTts.setCompletionHandler(() {
-      _isSpeaking = false;
-      notifyListeners();
-      if (!sysDone.isCompleted) sysDone.complete();
+      _isSpeaking = false; notifyListeners();
+      if (!done.isCompleted) done.complete();
     });
     _systemTts.setErrorHandler((_) {
+      _isSpeaking = false; notifyListeners();
+      if (!done.isCompleted) done.complete();
+    });
+    try {
+      await _systemTts.speak(text);
+      await done.future.timeout(
+        Duration(seconds: (text.length / 8).ceil() + 5),
+        onTimeout: () { _isSpeaking = false; notifyListeners(); },
+      );
+    } catch (e) {
+      debugPrint('[SystemTTS] error: $e');
       _isSpeaking = false;
       notifyListeners();
-      if (!sysDone.isCompleted) sysDone.complete();
-    });
-    await _systemTts.speak(text);
-    await sysDone.future.timeout(
-      Duration(seconds: (text.length / 8).ceil() + 5),
-      onTimeout: () { _isSpeaking = false; notifyListeners(); },
-    );
+    }
   }
 
   Future<void> stop() async {
-    await _player.stop();
-    await _systemTts.stop();
+    try { await _player.stop(); } catch (_) {}
+    try { await _systemTts.stop(); } catch (_) {}
     _isSpeaking = false;
     notifyListeners();
   }
 
-  /// Стриминговое воспроизведение — начинает играть сразу как получает первые байты
   Future<void> _speakEdgeStreaming(String text) async {
-    // Переиспользуем существующее соединение или создаём новое
-    if (!_wsReady || _ws?.readyState != WebSocket.open) {
+    // Реконнект если WS не готов
+    if (!_wsReady || _ws == null || _ws!.readyState != WebSocket.open) {
       await _connectWs();
     }
 
@@ -180,20 +201,16 @@ class EdgeTtsService extends ChangeNotifier {
         '<prosody rate="$rateStr" pitch="$pitchStr">${_escapeXml(text)}</prosody>'
         '</voice></speak>';
 
-    // Отправляем конфиг
     _ws!.add(
       'X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n'
       '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false",'
       '"wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}'
     );
-
-    // Отправляем SSML
     _ws!.add(
       'X-RequestId:$reqId\r\nContent-Type:application/ssml+xml\r\n'
       'X-Timestamp:$ts\r\nPath:ssml\r\n\r\n$ssml'
     );
 
-    // Собираем аудио байты — стриминг
     final audioBytes = <int>[];
     final done = Completer<void>();
     bool playbackStarted = false;
@@ -207,25 +224,21 @@ class EdgeTtsService extends ChangeNotifier {
     sub = _ws!.listen(
       (data) async {
         if (data is List<int>) {
-          // Парсим бинарный фрейм — пропускаем заголовок
           int start = 0;
           for (int i = 0; i < data.length - 3; i++) {
-            if (data[i] == 0x0d && data[i + 1] == 0x0a &&
-                data[i + 2] == 0x0d && data[i + 3] == 0x0a) {
-              start = i + 4;
-              break;
+            if (data[i] == 0x0d && data[i+1] == 0x0a &&
+                data[i+2] == 0x0d && data[i+3] == 0x0a) {
+              start = i + 4; break;
             }
           }
           if (start < data.length) {
             final chunk = data.sublist(start);
             audioBytes.addAll(chunk);
             sink.add(chunk);
-
-            // Начинаем воспроизведение сразу после первых ~8KB (~0.25 сек аудио)
             if (!playbackStarted && audioBytes.length > 8192) {
               playbackStarted = true;
               await sink.flush();
-              debugPrint('[EdgeTTS] ▶ стриминг старт (${audioBytes.length} bytes)');
+              debugPrint('[EdgeTTS] ▶ стриминг (${audioBytes.length}b)');
               await _player.play(DeviceFileSource(filePath));
             }
           }
@@ -243,16 +256,12 @@ class EdgeTtsService extends ChangeNotifier {
 
     await done.future.timeout(const Duration(seconds: 15));
 
-    // Если аудио маленькое — не успело запуститься стримингом
     if (!playbackStarted && audioBytes.isNotEmpty) {
-      await sink.close();
+      try { await sink.close(); } catch (_) {}
       await _player.play(DeviceFileSource(filePath));
       playbackStarted = true;
     }
 
-    // ── ФИКС: ждём завершения воспроизведения ──────────────────────────
-    // speak() не должен возвращаться пока плеер играет — иначе isSpeaking
-    // сбрасывается раньше времени и wake word стартует поверх речи
     if (playbackStarted) {
       final playDone = Completer<void>();
       late StreamSubscription playSub;
@@ -260,19 +269,17 @@ class EdgeTtsService extends ChangeNotifier {
         if (!playDone.isCompleted) playDone.complete();
         playSub.cancel();
       });
-      // Таймаут: длина текста / 8 символов в секунду + 5 сек запас
-      final timeoutSec = (text.length / 8).ceil() + 5;
-      await playDone.future.timeout(Duration(seconds: timeoutSec), onTimeout: () {});
+      final secs = (text.length / 8).ceil() + 5;
+      await playDone.future.timeout(Duration(seconds: secs), onTimeout: () {});
     }
 
     _isSpeaking = false;
     notifyListeners();
 
-    // После завершения — прогреваем новое соединение для следующего запроса
-    Future.delayed(const Duration(milliseconds: 300), _warmupConnection);
+    // Прогреваем следующее соединение
+    Future.delayed(const Duration(milliseconds: 500), _warmupConnection);
   }
 
-  // ── Утилиты ─────────────────────────────────────────────────────────────
   String _genUuid() {
     final r = Random.secure();
     final b = List<int>.generate(16, (_) => r.nextInt(256));
@@ -283,14 +290,11 @@ class EdgeTtsService extends ChangeNotifier {
 
   String _timestamp() {
     final d = DateTime.now().toUtc();
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${days[d.weekday - 1]}, ${d.day.toString().padLeft(2, '0')} '
-        '${months[d.month - 1]} ${d.year} '
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')} GMT';
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${days[d.weekday-1]}, ${d.day.toString().padLeft(2,'0')} '
+        '${months[d.month-1]} ${d.year} '
+        '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}:${d.second.toString().padLeft(2,'0')} GMT';
   }
 
   String _escapeXml(String s) => s
@@ -302,10 +306,9 @@ class EdgeTtsService extends ChangeNotifier {
   @override
   void dispose() {
     _wsKeepalive?.cancel();
-    _ws?.close();
+    try { _ws?.close(); } catch (_) {}
     _player.dispose();
     _systemTts.stop();
     super.dispose();
   }
 }
-
