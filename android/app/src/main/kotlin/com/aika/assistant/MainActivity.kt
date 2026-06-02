@@ -9,6 +9,7 @@ import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.util.Log
 
 class MainActivity : FlutterActivity() {
 
@@ -16,6 +17,43 @@ class MainActivity : FlutterActivity() {
         private const val OVERLAY_CHANNEL      = "com.aika.assistant/overlay"
         private const val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
         private const val AUDIO_CHANNEL        = "aika/audio"
+    }
+
+    // ── Автостарт overlay при запуске приложения ─────────────────────────────
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        autoStartOverlay()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // При возврате в приложение — если overlay не запущен, стартуем
+        if (!AikaOverlayService.isRunning) {
+            autoStartOverlay()
+        }
+    }
+
+    private fun autoStartOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                Log.d("Aika", "Overlay permission not granted — skipping auto-start")
+                return
+            }
+        }
+        try {
+            val intent = Intent(this, AikaOverlayService::class.java).apply {
+                action = AikaOverlayService.ACTION_SHOW
+                putExtra(AikaOverlayService.EXTRA_STATE, "idle")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            Log.d("Aika", "Overlay auto-started")
+        } catch (e: Exception) {
+            Log.e("Aika", "Failed to auto-start overlay: ${e.message}")
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
