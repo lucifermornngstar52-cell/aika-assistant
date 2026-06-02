@@ -120,7 +120,8 @@ class AikaOverlayService : Service() {
             wPx, hPx,
             overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSPARENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -183,7 +184,9 @@ class AikaOverlayService : Service() {
                     dragStartY   = params!!.y
                     touchStartX  = ev.rawX
                     touchStartY  = ev.rawY
-                    // передаём событие в WebView для анимаций
+                    // Пропускаем касания в прозрачных краях (верх 20%, низ 10%)
+                    val relY = ev.y / wv.height.toFloat()
+                    if (relY < 0.18f) return@setOnTouchListener false
                     false
                 }
                 MotionEvent.ACTION_MOVE -> {
