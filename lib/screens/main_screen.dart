@@ -326,10 +326,31 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     };
     await SmartAlarmService.initialize();
 
-    // Notification reader - озвучивать уведомления вслух
+    // Notification reader — озвучивать + предлагать ответить
     NotificationReaderService.onSpeak = (text) async {
       await _speak(text);
       return text;
+    };
+    NotificationReaderService.onOverlayState = (state) {
+      OverlayService().asyncState(state);
+    };
+    NotificationReaderService.onSuggestReply = (appName, sender, text) async {
+      if (!mounted) return null;
+      // Предлагаем ответить — добавляем в чат
+      final prompt = 'Пришло сообщение от  в : "". Хочешь я предложу ответ?';
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: prompt,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(prompt);
+      // Сохраняем ожидание ответа
+      setState(() {
+        _pendingReplyNotif = {'pkg': '', 'title': sender, 'text': text, 'app': appName};
+        _awaitingReplyConfirm = true;
+      });
+      return null;
     };
     _alarmService.onAlarmFired = (text) {
       _moodService.onAlarmFired();
@@ -398,7 +419,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (mounted) setState(() => _hasAccessibilityPermission = has);
     if (has) {
       ScreenWatcherService.startWatching(
-        onReaction: (reaction) {
+        onReaction: (reaction, overlayState) {
           // Game music auto-trigger
           GameMusicService.onAppChanged(ScreenWatcherService.currentPackage).then((msg) {
             if (msg != null && mounted) {
@@ -421,9 +442,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               timestamp: DateTime.now(),
             ));
             _speak(reaction);
-            OverlayService().asyncState('greeting');
-            Future.delayed(const Duration(seconds: 3), () {
-              OverlayService().asyncState('idle');
+            OverlayService().asyncState(overlayState);
+            Future.delayed(const Duration(seconds: 4), () {
+              if (mounted) OverlayService().asyncState('idle');
             });
           }
         },
