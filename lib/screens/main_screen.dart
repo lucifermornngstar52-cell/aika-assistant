@@ -172,7 +172,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _textController.clear();
       _isThinking = true;
     });
-    await _setAvatarState('thinking');
+    setState(() => _isThinking = true);
     try {
       final apiKey = const String.fromEnvironment('OPENAI_API_KEY');
       final resp = await http.post(
@@ -201,7 +201,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           content: reply,
           timestamp: DateTime.now(),
         ));
-        await _speak(reply);
+        _speak(reply);
       }
     } catch (e) {
       _addMessage(ChatMessage(
@@ -212,7 +212,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
     }
     setState(() => _isThinking = false);
-    await _setAvatarState('idle');
+    setState(() => _isThinking = false);
   }
 
   List<Color> _bgGradient(String id) {
