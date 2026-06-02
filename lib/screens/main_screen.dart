@@ -1374,6 +1374,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final context = await _memoryService.getUserContext();
       final history = await _memoryService.getHistory();
       final memoryCtx   = await _peopleMemory.buildMemoryContext();
+      final longMemory  = context['longMemory'] ?? '';
       final screenCtx   = ScreenWatcherService.currentLabel.isNotEmpty
           ? 'Сейчас на экране: \${ScreenWatcherService.currentLabel} (\${ScreenWatcherService.currentPackage})'
           : '';
