@@ -158,4 +158,22 @@ class OverlayService {
       });
     } catch (_) {}
   }
+
+
+  // ─── Режим модели: live2d / 3d ──────────────────────────────────────
+  static const String modeLive2D = 'live2d';
+  static const String mode3D     = '3d';
+
+  Future<void> setMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('overlay_mode', mode);
+    try {
+      await _overlayChannel.invokeMethod('setModeOverlay', {'mode': mode});
+    } catch (_) {}
+  }
+
+  Future<String> getMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('overlay_mode') ?? 'live2d';
+  }
 }
