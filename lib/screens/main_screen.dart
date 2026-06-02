@@ -1578,266 +1578,347 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
 
     return Scaffold(
-      backgroundColor: AikaTheme.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Header ─────────────────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        children: [
+          // ── Аниме аватар на весь экран ──────────────────────────────────
+          Positioned.fill(
+            child: AikaAvatar(
+              state: _avatarStateString,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
+
+          // ── Тёмный градиент снизу для читаемости чата ──────────────────
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            height: MediaQuery.of(context).size.height * 0.55,
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                color: AikaTheme.surface,
-                border: Border(
-                  bottom: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.2)),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.92),
+                  ],
+                  stops: const [0.0, 0.4, 1.0],
                 ),
               ),
-              child: Row(
-                children: [
-                  // Аватар и имя
-                  Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
-                      ),
-                    ),
-                    child: const Center(
-                      child: Text('A', style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_assistantName,
-                          style: TextStyle(
-                            color: AikaTheme.neonBlue,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            letterSpacing: 1.5,
-                          )),
-                        Text(
-                          _isThinking ? 'думает...' :
-                          _isListening ? 'слушает...' :
-                          _userName.isNotEmpty ? 'Привет, $_userName' : 'AI Ассистент',
-                          style: const TextStyle(color: Colors.white38, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Wake word toggle
-                  GestureDetector(
-                    onTap: _toggleWakeWord,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: _wakeWordEnabled
-                            ? AikaTheme.neonBlue.withOpacity(0.15)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _wakeWordEnabled
-                              ? AikaTheme.neonBlue.withOpacity(0.6)
-                              : Colors.white12,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+            ),
+          ),
+
+          // ── Верхняя панель ──────────────────────────────────────────────
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Row(
+                  children: [
+                    // Имя ассистента
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.hearing, size: 13,
-                              color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38),
-                          const SizedBox(width: 3),
-                          Text(_wakeWordEnabled ? 'ON' : 'OFF',
+                          Text(
+                            _assistantName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          if (_userName.isNotEmpty)
+                            Text(
+                              'Привет, \$_userName',
                               style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _wakeWordEnabled ? AikaTheme.neonBlue : Colors.white38,
-                              )),
+                                color: Colors.white.withOpacity(0.55),
+                                fontSize: 11,
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  // Меню
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: Colors.white54, size: 20),
-                    color: AikaTheme.card,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    onSelected: (val) {
-                      switch (val) {
-                        case 'settings': _openSettings(); break;
-                        case 'currency': _openCurrency(); break;
-                        case 'mood': Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen())); break;
-                        case 'schedule': Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduleScreen())); break;
-                        case 'telegram': Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen())); break;
-                        case 'commands': Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen())); break;
-                        case 'overlay': _showOverlayPermissionDialog(); break;
-                        case 'clear': _memoryService.clearHistory(); setState(() => _messages.clear()); break;
-                        case 'jarvis': _themeSwitcher.toggle(); break;
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      _menuItem('settings', Icons.settings_outlined, 'Настройки'),
-                      _menuItem('currency', Icons.currency_exchange, 'Курс валют'),
-                      _menuItem('mood', Icons.book_outlined, 'Дневник настроения'),
-                      _menuItem('schedule', Icons.calendar_today_outlined, 'Расписание'),
-                      _menuItem('telegram', Icons.telegram, 'Telegram бот'),
-                      _menuItem('commands', Icons.apps_outlined, 'Команды'),
-                      if (!_hasOverlayPermission)
-                        _menuItem('overlay', Icons.face_outlined, 'Показать Айку'),
-                      _menuItem('clear', Icons.delete_outline, 'Очистить чат'),
-                      _menuItem('jarvis', Icons.swap_horiz, 'Режим Jarvis'),
-                    ],
-                  ),
+                    // Wake word
+                    _TopIconBtn(
+                      icon: _wakeWordEnabled ? Icons.hearing : Icons.hearing_disabled,
+                      active: _wakeWordEnabled,
+                      onTap: _toggleWakeWord,
+                    ),
+                    const SizedBox(width: 6),
+                    // Профиль/меню
+                    _TopIconBtn(
+                      icon: Icons.person_outline,
+                      onTap: _openSettings,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── Кнопки справа ───────────────────────────────────────────────
+          Positioned(
+            right: 10,
+            top: 0,
+            bottom: 130,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _SideBtn(icon: Icons.info_outline,         onTap: () => _showAbout()),
+                  _SideBtn(icon: Icons.mic_outlined,          onTap: _toggleListening, active: _isListening),
+                  _SideBtn(icon: Icons.nightlight_round,      onTap: () => _themeSwitcher.toggle()),
+                  _SideBtn(icon: Icons.face_outlined,         onTap: _showOverlayPermissionDialog),
+                  _SideBtn(icon: Icons.settings_outlined,     onTap: _openSettings),
+                  _SideBtn(icon: Icons.delete_outline,        onTap: () {
+                    _memoryService.clearHistory();
+                    setState(() => _messages.clear());
+                  }),
+                  _SideBtn(icon: Icons.tune,                  onTap: _openCurrency),
                 ],
               ),
             ),
+          ),
 
-            // ── Chat Area ────────────────────────────────────────────────────
-            Expanded(
-              child: _messages.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      itemCount: _messages.length,
-                      itemBuilder: (ctx, i) {
-                        final m = _messages[i];
-                        return ChatBubble(
-                          message: m,
-                          onCopy: () {
-                            // Копируем текст
-                          },
-                        );
-                      },
-                    ),
-            ),
+          // ── Чат поверх аватара (нижняя часть экрана) ───────────────────
+          Positioned(
+            left: 0, right: 50, bottom: 70,
+            height: MediaQuery.of(context).size.height * 0.42,
+            child: _messages.isEmpty
+                ? const SizedBox()
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    itemCount: _messages.length,
+                    itemBuilder: (ctx, i) {
+                      final m = _messages[i];
+                      return ChatBubble(message: m);
+                    },
+                  ),
+          ),
 
-            // ── Thinking indicator ───────────────────────────────────────────
-            if (_isThinking)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          // ── Индикатор "думает" ───────────────────────────────────────────
+          if (_isThinking)
+            Positioned(
+              left: 16, bottom: 80,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.4)),
+                ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     SizedBox(
-                      width: 16, height: 16,
+                      width: 14, height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: AikaTheme.neonBlue,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text('$_assistantName думает...',
+                    Text('\$_assistantName думает...',
                         style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12)),
                   ],
                 ),
               ),
+            ),
 
-            // ── Input area ──────────────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              decoration: BoxDecoration(
-                color: AikaTheme.surface,
-                border: Border(
-                  top: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.15)),
+          // ── Поле ввода снизу ────────────────────────────────────────────
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  border: Border(
+                    top: BorderSide(color: Colors.white.withOpacity(0.08)),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: _isListening
+                                ? AikaTheme.neonBlue.withOpacity(0.8)
+                                : Colors.white.withOpacity(0.12),
+                          ),
+                        ),
+                        child: TextField(
+                          controller: _textController,
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          decoration: InputDecoration(
+                            hintText: _isListening ? 'Слушаю...' : 'Спроси что-нибудь',
+                            hintStyle: TextStyle(
+                                color: Colors.white.withOpacity(0.35), fontSize: 13),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                          ),
+                          onSubmitted: (t) {
+                            if (t.trim().isNotEmpty) _sendMessage(t.trim());
+                          },
+                          onChanged: (_) => setState(() {}),
+                          maxLines: 1,
+                          textInputAction: TextInputAction.send,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Mic button
+                    GestureDetector(
+                      onTap: _toggleListening,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 44, height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _isListening
+                              ? AikaTheme.neonPink.withOpacity(0.9)
+                              : Colors.white.withOpacity(0.12),
+                          border: Border.all(
+                            color: _isListening
+                                ? AikaTheme.neonPink
+                                : Colors.white.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Icon(
+                          _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    // Send button
+                    GestureDetector(
+                      onTap: () {
+                        final t = _textController.text.trim();
+                        if (t.isNotEmpty) _sendMessage(t);
+                      },
+                      child: Container(
+                        width: 44, height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _textController.text.trim().isNotEmpty
+                              ? AikaTheme.neonBlue
+                              : Colors.white.withOpacity(0.08),
+                        ),
+                        child: Icon(
+                          Icons.send_rounded,
+                          color: _textController.text.trim().isNotEmpty
+                              ? Colors.white
+                              : Colors.white30,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  // Поле ввода
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AikaTheme.card,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: _isListening
-                              ? AikaTheme.neonBlue.withOpacity(0.8)
-                              : Colors.white12,
-                        ),
-                      ),
-                      child: TextField(
-                        controller: _textController,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: _isListening ? 'Слушаю...' : 'Написать или говорить...',
-                          hintStyle: TextStyle(color: Colors.white30, fontSize: 13),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          suffixIcon: _textController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, color: Colors.white30, size: 16),
-                                  onPressed: () => setState(() => _textController.clear()),
-                                )
-                              : null,
-                        ),
-                        onSubmitted: (text) {
-                          if (text.trim().isNotEmpty) _sendMessage(text.trim());
-                        },
-                        onChanged: (_) => setState(() {}),
-                        maxLines: 3,
-                        minLines: 1,
-                        textInputAction: TextInputAction.send,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Кнопка микрофона
-                  GestureDetector(
-                    onTap: _toggleListening,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: 46, height: 46,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: _isListening
-                            ? LinearGradient(colors: [AikaTheme.neonPink, AikaTheme.neonPurple])
-                            : LinearGradient(colors: [AikaTheme.neonBlue, AikaTheme.neonPurple]),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_isListening ? AikaTheme.neonPink : AikaTheme.neonBlue).withOpacity(0.5),
-                            blurRadius: _isListening ? 16 : 8,
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        _isListening ? Icons.stop_rounded : Icons.mic_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Кнопка отправки
-                  GestureDetector(
-                    onTap: () {
-                      final text = _textController.text.trim();
-                      if (text.isNotEmpty) _sendMessage(text);
-                    },
-                    child: Container(
-                      width: 46, height: 46,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _textController.text.trim().isNotEmpty
-                            ? AikaTheme.neonBlue
-                            : Colors.white12,
-                      ),
-                      child: Icon(
-                        Icons.send_rounded,
-                        color: _textController.text.trim().isNotEmpty
-                            ? Colors.white
-                            : Colors.white30,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAbout() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AikaTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(_assistantName,
+            style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('AI-ассистент на базе GPT-4o',
+                style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            if (_userName.isNotEmpty)
+              Text('Пользователь: \$_userName',
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text('История: \${_messages.length} сообщений',
+                style: TextStyle(color: Colors.white54, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK', style: TextStyle(color: AikaTheme.neonBlue)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AikaTheme.neonBlue),
+          const SizedBox(width: 10),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            _userName.isNotEmpty ? 'Привет, \$_userName!' : 'Привет!',
+            style: const TextStyle(color: Colors.white70, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Я \$_assistantName. Чем могу помочь?',
+            style: TextStyle(color: Colors.white38, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickChip(String label, IconData icon) {
+    return GestureDetector(
+      onTap: () => _sendMessage(label),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AikaTheme.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: AikaTheme.neonBlue),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
           ],
         ),
       ),
@@ -1929,14 +2010,67 @@ class _SendCommand {
   const _SendCommand({required this.app, required this.contact, required this.message});
 }
 
+// ── Вспомогательные виджеты ────────────────────────────────────────────────
 
+class _TopIconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+  const _TopIconBtn({required this.icon, required this.onTap, this.active = false});
 
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38, height: 38,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active
+              ? AikaTheme.neonBlue.withOpacity(0.25)
+              : Colors.black.withOpacity(0.45),
+          border: Border.all(
+            color: active
+                ? AikaTheme.neonBlue.withOpacity(0.7)
+                : Colors.white.withOpacity(0.18),
+          ),
+        ),
+        child: Icon(icon,
+          color: active ? AikaTheme.neonBlue : Colors.white70,
+          size: 18),
+      ),
+    );
+  }
+}
 
+class _SideBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+  const _SideBtn({required this.icon, required this.onTap, this.active = false});
 
-
-
-
-
-
-
-
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38, height: 38,
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active
+              ? AikaTheme.neonBlue.withOpacity(0.25)
+              : Colors.black.withOpacity(0.5),
+          border: Border.all(
+            color: active
+                ? AikaTheme.neonBlue.withOpacity(0.6)
+                : Colors.white.withOpacity(0.15),
+          ),
+        ),
+        child: Icon(icon,
+          color: active ? AikaTheme.neonBlue : Colors.white60,
+          size: 17),
+      ),
+    );
+  }
+}
