@@ -145,7 +145,15 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
-                    "showOverlay" -> {
+                    "setModeOverlay" -> {
+                    val mode = call.argument<String>("mode") ?: "live2d"
+                    startService(Intent(this, AikaOverlayService::class.java).apply {
+                        action = AikaOverlayService.ACTION_SET_MODE
+                        putExtra(AikaOverlayService.EXTRA_MODE, mode)
+                    })
+                    result.success(null)
+                }
+                "showOverlay" -> {
                         val state = call.argument<String>("state") ?: "idle"
                         startOverlay(Intent(this, AikaOverlayService::class.java).apply {
                             action = AikaOverlayService.ACTION_SHOW
