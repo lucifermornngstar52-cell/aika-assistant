@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 import 'dart:io';
 import '../services/app_launcher_service.dart';
 import 'package:flutter/material.dart';
@@ -108,6 +111,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
   bool _screenCommentsEnabled = true;
+  String? _pendingImagePath; // Фото ожидающее отправки
+  String? _pendingImageBase64;
   String _bgPresetId = 'none';
   String? _bgCustomImage;
   bool _hasNotifPermission = false;
@@ -129,6 +134,85 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isThinking)   return AikaState.thinking;
     if (_isStretching) return AikaState.stretch;
     return AikaState.idle;
+  }
+
+  // Выбор фото из галереи для отправки в чат
+  Future<void> _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        dialogTitle: 'Выбери фото',
+      );
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        final bytes = await File(path).readAsBytes();
+        final b64 = base64Encode(bytes);
+        setState(() {
+          _pendingImagePath = path;
+          _pendingImageBase64 = b64;
+        });
+      }
+    } catch (e) {
+      debugPrint('FilePicker: $e');
+    }
+  }
+
+  // Отправка сообщения с прикреплённым изображением
+  Future<void> _sendMessageWithImage(String text, String b64) async {
+    final userText = text.isNotEmpty ? text : 'Посмотри на это фото';
+    _addMessage(ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      role: MessageRole.user,
+      content: '📷 $userText',
+      timestamp: DateTime.now(),
+    ));
+    setState(() {
+      _pendingImagePath = null;
+      _pendingImageBase64 = null;
+      _textController.clear();
+      _isThinking = true;
+    });
+    await _setAvatarState('thinking');
+    try {
+      final apiKey = const String.fromEnvironment('OPENAI_API_KEY');
+      final resp = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {'Authorization': 'Bearer \$apiKey', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'model': 'gpt-4o-mini',
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': userText},
+                {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,\$b64'}},
+              ],
+            }
+          ],
+          'max_tokens': 1000,
+        }),
+      );
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final reply = data['choices'][0]['message']['content'] as String;
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.aika,
+          content: reply,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(reply);
+      }
+    } catch (e) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: 'Не смогла обработать изображение: \$e',
+        timestamp: DateTime.now(),
+      ));
+    }
+    setState(() => _isThinking = false);
+    await _setAvatarState('idle');
   }
 
   List<Color> _bgGradient(String id) {
@@ -1797,7 +1881,56 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                                 : Colors.white.withOpacity(0.12),
                           ),
                         ),
-                        child: TextField(
+                        child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Превью прикреплённого фото
+                        if (_pendingImagePath != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                            child: Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.file(
+                                    File(_pendingImagePath!),
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 2, right: 2,
+                                  child: GestureDetector(
+                                    onTap: () => setState(() {
+                                      _pendingImagePath = null;
+                                      _pendingImageBase64 = null;
+                                    }),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.close, color: Colors.white, size: 14),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Row(children: [
+                          // Кнопка фото
+                          IconButton(
+                            icon: Icon(Icons.image_outlined,
+                              color: _pendingImagePath != null
+                                  ? AikaTheme.neonBlue
+                                  : Colors.white38,
+                              size: 22),
+                            onPressed: _pickImage,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36),
+                          ),
+                          Expanded(child: TextField(
                           controller: _textController,
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           decoration: InputDecoration(
@@ -1809,12 +1942,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                                 horizontal: 16, vertical: 10),
                           ),
                           onSubmitted: (t) {
-                            if (t.trim().isNotEmpty) _sendMessage(t.trim());
+                            if (_pendingImageBase64 != null) {
+                              _sendMessageWithImage(t.trim(), _pendingImageBase64!);
+                            } else if (t.trim().isNotEmpty) {
+                              _sendMessage(t.trim());
+                            }
                           },
                           onChanged: (_) => setState(() {}),
                           maxLines: 1,
                           textInputAction: TextInputAction.send,
                         ),
+                      )),
+                        ]),
+                      ],
+                    ),
                       ),
                     ),
                     const SizedBox(width: 8),
