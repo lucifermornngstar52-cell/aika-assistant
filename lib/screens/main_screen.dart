@@ -1601,12 +1601,31 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // ── Аниме аватар на весь экран ──────────────────────────────────
+          // ── Фон + Live2D аватар на весь экран ──────────────────────
           Positioned.fill(
-            child: Live2DWidget(
-              width: MediaQuery.of(context).size.width,
-              height: MediaQuery.of(context).size.height,
-              state: _avatarStateString,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Фон
+                if (_bgPresetId == 'custom' && _bgCustomImage != null)
+                  Image.file(File(_bgCustomImage!), fit: BoxFit.cover)
+                else if (_bgPresetId != 'none')
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: _bgGradient(_bgPresetId),
+                      ),
+                    ),
+                  ),
+                // Live2D модель поверх фона
+                Live2DWidget(
+                  width: MediaQuery.of(context).size.width,
+                  height: MediaQuery.of(context).size.height,
+                  state: _avatarStateString,
+                ),
+              ],
             ),
           ),
 
