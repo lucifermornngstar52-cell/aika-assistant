@@ -99,4 +99,18 @@ class OverlayService {
       debugPrint('[Overlay] updateLive2DConfig error: $e');
     }
   }
+
+  // ── Instance-обёртки (для совместимости с main_screen.dart) ─────────────
+
+  /// Обновить состояние аватара (instance-версия)
+  Future<void> asyncState(String state) =>
+      OverlayService.updateState(state);
+
+  /// Показать оверлей (instance-версия)
+  Future<void> show({String state = 'idle'}) =>
+      OverlayService.showOverlay(state: state);
+
+  /// Скрыть оверлей (instance-версия)
+  Future<void> hide() => OverlayService.hideOverlay();
+
 }
