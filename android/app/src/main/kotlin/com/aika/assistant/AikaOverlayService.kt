@@ -60,6 +60,8 @@ class AikaOverlayService : Service() {
         var isRunning = false
 
         const val ACTION_SWITCH_MODEL  = "com.aika.SWITCH_MODEL"
+        const val ACTION_DRAG_ENABLED  = "com.aika.DRAG_ENABLED"
+        const val EXTRA_DRAG_ENABLED   = "drag_enabled"
         const val EXTRA_MODEL_PATH     = "model_path"
     }
 
@@ -69,6 +71,7 @@ class AikaOverlayService : Service() {
     private var webView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
 
+    private var dragEnabled  = true
     private var currentState = "idle"
     private var sizeDp       = 200f
     private var opacity      = 1f
@@ -215,7 +218,7 @@ class AikaOverlayService : Service() {
                     val dx = ev.rawX - dragTouchX
                     val dy = ev.rawY - dragTouchY
                     if (abs(dx) > 6 || abs(dy) > 6) wasDragging = true
-                    if (wasDragging) {
+                    if (wasDragging && dragEnabled) {
                         params!!.x = (dragInitX + dx).roundToInt()
                         params!!.y = (dragInitY + dy).roundToInt()
                         try { windowManager?.updateViewLayout(frame, params) } catch (_: Exception) {}
@@ -279,6 +282,10 @@ class AikaOverlayService : Service() {
                 handler.post {
                     webView?.evaluateJavascript("window.setAikaState('$anim')", null)
                 }
+            }
+            ACTION_DRAG_ENABLED -> {
+                val enabled = intent.getBooleanExtra(EXTRA_DRAG_ENABLED, true)
+                dragEnabled = enabled
             }
             ACTION_SWITCH_MODEL -> {
                 val path = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
