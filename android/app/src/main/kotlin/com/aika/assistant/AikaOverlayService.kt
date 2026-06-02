@@ -27,8 +27,11 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.embedding.engine.plugins.util.GeneratedPluginRegister
 import io.flutter.plugin.common.MethodChannel
+import android.view.ScaleGestureDetector
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.max
+import kotlin.math.min
 
 class AikaOverlayService : Service() {
 
@@ -276,14 +279,39 @@ class AikaOverlayService : Service() {
         var onTap: (() -> Unit)? = null
         var getParamsAndWm: (() -> Pair<WindowManager.LayoutParams?, WindowManager?>)? = null
 
-        // Порог в пикселях — меньше этого считается тапом, больше — drag
         private val DRAG_PX = (10 * context.resources.displayMetrics.density)
+        private val dp = context.resources.displayMetrics.density
 
         private var downX = 0f
         private var downY = 0f
         private var startParamX = 0
         private var startParamY = 0
         private var isDragging = false
+        private var baseW = 0
+        private var baseH = 0
+
+        // Scale gesture — pinch to resize overlay
+        private val scaleDetector = ScaleGestureDetector(context,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
+                    val pair = getParamsAndWm?.invoke() ?: return false
+                    baseW = pair.first?.width ?: return false
+                    baseH = pair.first?.height ?: return false
+                    return true
+                }
+                override fun onScale(d: ScaleGestureDetector): Boolean {
+                    val pair = getParamsAndWm?.invoke() ?: return false
+                    val p = pair.first ?: return false
+                    val wm = pair.second ?: return false
+                    val newW = (baseW * d.scaleFactor).toInt().coerceIn((80 * dp).toInt(), (400 * dp).toInt())
+                    val newH = (newW * 1.5f).toInt()
+                    p.width = newW
+                    p.height = newH
+                    try { wm.updateViewLayout(this@DraggableFrame, p) } catch (_: Exception) {}
+                    return true
+                }
+            }
+        )
 
         // Перехватываем touch только когда это точно drag (превышен порог)
         // Это позволяет WebView внутри получать tap/click события нормально
@@ -296,7 +324,7 @@ class AikaOverlayService : Service() {
                     startParamX = pair?.first?.x ?: 0
                     startParamY = pair?.first?.y ?: 0
                     isDragging = false
-                    return false // не перехватываем DOWN — WebView должен его получить
+                    return false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!isDragging) {
@@ -322,31 +350,61 @@ class AikaOverlayService : Service() {
 
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    scaleDetector.onTouchEvent(ev)
                     downX = ev.rawX
                     downY = ev.rawY
                     startParamX = p.x
                     startParamY = p.y
                     isDragging = false
-                    animate().scaleX(0.93f).scaleY(0.93f).setDuration(80).start()
+                    if (ev.pointerCount == 1) {
+                        animate().scaleX(0.93f).scaleY(0.93f).setDuration(80).start()
+                    }
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    scaleDetector.onTouchEvent(ev)
+                    if (ev.pointerCount >= 2) {
+                        // Pinch — только масштаб, не drag
+                        return true
+                    }
                     val dx = ev.rawX - downX
                     val dy = ev.rawY - downY
                     if (!isDragging && (abs(dx) > DRAG_PX || abs(dy) > DRAG_PX)) {
                         isDragging = true
                     }
                     if (isDragging) {
-                        p.x = (startParamX + dx).roundToInt()
-                        p.y = (startParamY + dy).roundToInt()
+                        // Ограничиваем позицию экраном
+                        val screenW = resources.displayMetrics.widthPixels
+                        val screenH = resources.displayMetrics.heightPixels
+                        p.x = (startParamX + dx).roundToInt().coerceIn(0, screenW - p.width)
+                        p.y = (startParamY + dy).roundToInt().coerceIn(0, screenH - p.height)
                         try { wm.updateViewLayout(this, p) } catch (_: Exception) {}
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
+                    scaleDetector.onTouchEvent(ev)
                     animate().scaleX(1f).scaleY(1f).setDuration(200)
                         .setInterpolator(OvershootInterpolator()).start()
-                    if (!isDragging) onTap?.invoke()
+                    if (!isDragging) {
+                        onTap?.invoke()
+                    } else {
+                        // Snap to nearest edge
+                        val screenW = resources.displayMetrics.widthPixels
+                        val midX = screenW / 2
+                        val targetX = if (p.x + p.width / 2 < midX) (8 * dp).toInt()
+                                      else screenW - p.width - (8 * dp).toInt()
+                        // Плавная анимация к краю
+                        val startX = p.x
+                        val anim = android.animation.ValueAnimator.ofInt(startX, targetX)
+                        anim.duration = 250
+                        anim.interpolator = android.view.animation.DecelerateInterpolator()
+                        anim.addUpdateListener { va ->
+                            p.x = va.animatedValue as Int
+                            try { wm.updateViewLayout(this, p) } catch (_: Exception) {}
+                        }
+                        anim.start()
+                    }
                     isDragging = false
                     return true
                 }
