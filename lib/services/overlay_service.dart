@@ -123,6 +123,13 @@ class OverlayService {
     await _sendConfig();
   }
 
+  /// Включить/выключить перетаскивание оверлея
+  Future<void> setDragEnabled(bool enabled) async {
+    try {
+      await _overlayChannel.invokeMethod('setDragEnabled', {'enabled': enabled});
+    } catch (_) {}
+  }
+
   /// Переключить модель в оверлее
   Future<void> switchModel(String assetPath) async {
     try {
