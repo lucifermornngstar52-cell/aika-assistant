@@ -84,20 +84,29 @@ class AikaAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        val pkg = event.packageName?.toString() ?: return
-        if (pkg != "com.aika.assistant") {
-            currentPackage = pkg
-            currentAppLabel = try {
-                packageManager.getApplicationLabel(
-                    packageManager.getApplicationInfo(pkg, 0)
-                ).toString()
-            } catch (e: Exception) { pkg }
+        // Отслеживаем ТОЛЬКО смену окна/приложения
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString() ?: return
 
-            val broadcast = Intent(ACTION_SCREEN_EVENT).apply {
-                putExtra("package", pkg)
-                putExtra("label", currentAppLabel)
+            // Игнорируем системные оверлеи и само приложение
+            if (pkg == "com.aika.assistant") return
+            if (pkg.startsWith("android") || pkg == "com.android.systemui") return
+
+            // Отправляем broadcast только если пакет реально сменился
+            if (pkg != currentPackage) {
+                currentPackage = pkg
+                currentAppLabel = try {
+                    packageManager.getApplicationLabel(
+                        packageManager.getApplicationInfo(pkg, 0)
+                    ).toString()
+                } catch (e: Exception) { pkg }
+
+                val broadcast = Intent(ACTION_SCREEN_EVENT).apply {
+                    putExtra("package", pkg)
+                    putExtra("label", currentAppLabel)
+                }
+                sendBroadcast(broadcast)
             }
-            sendBroadcast(broadcast)
         }
 
         if (sendStep != "idle") {
