@@ -34,18 +34,9 @@ class ChatBubble extends StatelessWidget {
                   bottomRight: Radius.circular(isUser ? 4 : 18),
                 ),
                 border: Border.all(
-                  color: isUser
-                      ? AikaTheme.neonPurple.withOpacity(0.3)
-                      : AikaTheme.neonBlue.withOpacity(0.3),
+                  color: Colors.white.withOpacity(0.06),
                   width: 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (isUser ? AikaTheme.neonPurple : AikaTheme.neonBlue)
-                        .withOpacity(0.1),
-                    blurRadius: 10,
-                  ),
-                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
