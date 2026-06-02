@@ -5,8 +5,9 @@ import '../theme/app_theme.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
+  final VoidCallback? onCopy;
 
-  const ChatBubble({super.key, required this.message});
+  const ChatBubble({super.key, required this.message, this.onCopy});
 
   @override
   Widget build(BuildContext context) {
