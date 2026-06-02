@@ -10,7 +10,7 @@ class AikaTheme {
   static const Color glassWhite = Color(0x1AFFFFFF);
   static const Color textPrimary = Color(0xFFE8F4FF);
   static const Color textSecondary = Color(0xFF8899AA);
-  static const Color userBubble = Color(0xFF1A2744);
+  static const Color userBubble = Color(0xFF1C1E2A);
   static const Color aikaBubble = Color(0xFF0D1F3C);
 
   static ThemeData get theme => ThemeData(
