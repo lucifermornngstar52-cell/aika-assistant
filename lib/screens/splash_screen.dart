@@ -82,35 +82,25 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Avatar glow
+            // Glow orb — без PNG
             Container(
-              width: 160,
-              height: 160,
+              width: 120,
+              height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                gradient: const RadialGradient(
+                  colors: [AikaTheme.neonBlue, AikaTheme.neonPurple, Colors.transparent],
+                  stops: [0.0, 0.6, 1.0],
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AikaTheme.neonBlue.withOpacity(0.5),
+                    color: AikaTheme.neonBlue.withOpacity(0.6),
                     blurRadius: 60,
-                    spreadRadius: 20,
+                    spreadRadius: 10,
                   ),
                 ],
               ),
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/images/aika_chibi.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
-                      ),
-                    ),
-                    child: const Icon(Icons.star, color: Colors.white, size: 80),
-                  ),
-                ),
-              ),
+              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 52),
             )
                 .animate()
                 .scale(duration: 800.ms, curve: Curves.elasticOut)
