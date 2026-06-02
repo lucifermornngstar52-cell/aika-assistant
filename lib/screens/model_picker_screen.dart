@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live2d_widget.dart';
+import '../services/overlay_service.dart';
 
 /// Встроенные модели из assets/models/
 class BuiltinModel {
@@ -13,6 +14,19 @@ class BuiltinModel {
   final String emoji;
   BuiltinModel({required this.id, required this.name, required this.assetPath, required this.emoji});
 }
+
+// 3D модели
+class Model3D {
+  final String id;
+  final String name;
+  final String assetPath;
+  final String emoji;
+  Model3D({required this.id, required this.name, required this.assetPath, required this.emoji});
+}
+
+final _builtin3DModels = [
+  Model3D(id: 'aika_glb', name: 'Aika 3D', assetPath: 'models/aika_model.glb', emoji: '🤖'),
+];
 
 final _builtinModels = [
   BuiltinModel(id: 'natori', name: 'Natori',  assetPath: 'models/Natori/Natori.model3.json', emoji: '🌟'),
@@ -32,6 +46,8 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   String? _customModelPath;
   String _previewState = 'idle';
   bool _loading = false;
+  String _mode = 'live2d'; // 'live2d' | '3d'
+  final _overlaySvc = OverlayService();
 
   @override
   void initState() {
@@ -44,6 +60,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     setState(() {
       _selectedId = prefs.getString('live2d_model_id') ?? 'natori';
       _customModelPath = prefs.getString('custom_model_path');
+      _mode = prefs.getString('overlay_mode') ?? 'live2d';
     });
   }
 
@@ -208,6 +225,68 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
                       await _save(m.id);
                     },
                   )),
+
+                  const SizedBox(height: 20),
+
+                  // ── Режим аватара ──────────────────────────────────────
+                  Text('РЕЖИМ АВАТАРА',
+                    style: TextStyle(color: AikaTheme.neonBlue, fontSize: 11,
+                        letterSpacing: 2, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(child: GestureDetector(
+                      onTap: () async {
+                        setState(() => _mode = 'live2d');
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('overlay_mode', 'live2d');
+                        await _overlaySvc.setMode('live2d');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _mode == 'live2d'
+                              ? AikaTheme.neonBlue.withOpacity(0.15)
+                              : Colors.white.withOpacity(0.04),
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                          border: Border.all(
+                            color: _mode == 'live2d' ? AikaTheme.neonBlue : Colors.white12),
+                        ),
+                        child: Column(children: [
+                          Text('🌸', style: const TextStyle(fontSize: 22)),
+                          const SizedBox(height: 4),
+                          Text('Live2D', style: TextStyle(
+                            color: _mode == 'live2d' ? AikaTheme.neonBlue : Colors.white54,
+                            fontSize: 12, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                    )),
+                    Expanded(child: GestureDetector(
+                      onTap: () async {
+                        setState(() => _mode = '3d');
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('overlay_mode', '3d');
+                        await _overlaySvc.setMode('3d');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _mode == '3d'
+                              ? AikaTheme.neonBlue.withOpacity(0.15)
+                              : Colors.white.withOpacity(0.04),
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                          border: Border.all(
+                            color: _mode == '3d' ? AikaTheme.neonBlue : Colors.white12),
+                        ),
+                        child: Column(children: [
+                          Text('🤖', style: const TextStyle(fontSize: 22)),
+                          const SizedBox(height: 4),
+                          Text('3D модель', style: TextStyle(
+                            color: _mode == '3d' ? AikaTheme.neonBlue : Colors.white54,
+                            fontSize: 12, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                    )),
+                  ]),
 
                   const SizedBox(height: 20),
 
