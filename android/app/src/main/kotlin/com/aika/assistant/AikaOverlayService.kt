@@ -44,6 +44,8 @@ class AikaOverlayService : Service() {
         const val ACTION_ANIM         = "com.aika.ANIM"
         const val ACTION_SWITCH_MODEL = "com.aika.SWITCH_MODEL"
         const val ACTION_DRAG_ENABLED = "com.aika.DRAG_ENABLED"
+        const val ACTION_SET_MODE    = "com.aika.SET_MODE"   // "live2d" | "3d"
+        const val EXTRA_MODE         = "mode"
 
         const val EXTRA_STATE       = "state"
         const val EXTRA_SIZE        = "size"
@@ -70,6 +72,11 @@ class AikaOverlayService : Service() {
 
     private var dragEnabled  = true
     private var currentState = "idle"
+    private var currentMode  = "live2d"  // "live2d" | "3d"
+
+    private fun getHtmlPath(): String =
+        if (currentMode == "3d") "file:///android_asset/flutter_assets/assets/3d_viewer.html"
+        else getHtmlPath()
     private var sizeDp       = 200f
     private var opacity      = 1f
     private var side         = "left"
@@ -278,6 +285,13 @@ class AikaOverlayService : Service() {
                 val path = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
                 handler.post {
                     webView?.evaluateJavascript("window.switchModel('$path')", null)
+                }
+            }
+            ACTION_SET_MODE -> {
+                val mode = intent.getStringExtra(EXTRA_MODE) ?: "live2d"
+                currentMode = mode
+                handler.post {
+                    webView?.loadUrl(getHtmlPath())
                 }
             }
             ACTION_DRAG_ENABLED -> {
