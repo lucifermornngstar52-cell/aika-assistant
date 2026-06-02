@@ -84,8 +84,9 @@ class AiService {
     final habitContext = HabitMemoryService.getContextForAI();
     final relationshipMod = RelationshipService.getPromptModifier(PersonalityService.current.name);
     final internalMoodMod = AssistantMoodService.getPromptModifier();
+    final feelingsMod = AikaFeelingsService.getPromptHint();
     final memPart = longMemory.isNotEmpty ? "\n\n== ЧТО ТЫ ЗНАЕШЬ О ПОЛЬЗОВАТЕЛЕ ==\n\$longMemory" : '';
-    return "Ты \$assistantName — аниме AI-ассистент для Android\$userPart. Говоришь кратко, умно. Отвечаешь по-русски.\$personalityPrompt\$relationshipMod\$internalMoodMod\n\n"
+    return "Ты \$assistantName — аниме AI-ассистент для Android\$userPart. Говоришь кратко, умно. Отвечаешь по-русски.\$personalityPrompt\$relationshipMod\$internalMoodMod\$feelingsMod\n\n"
         "\${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}\$memPart\n\n"
         "[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]\n"
         "[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]\n"
