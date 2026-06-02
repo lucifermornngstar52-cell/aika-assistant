@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# Отменяем предыдущий билд если пришёл новый коммит
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,14 +28,14 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.29.0'
           channel: 'stable'
           cache: true
 
       - name: Install NDK
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "ndk;27.2.12479018"
+            "ndk;26.3.11579264"
 
       - name: Get dependencies
         run: flutter pub get
@@ -38,6 +43,7 @@ jobs:
       - name: Build APK
         run: |
           flutter build apk --release \
+            --dart-define=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
             --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload APK
