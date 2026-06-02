@@ -9,83 +9,14 @@
     width:100%; height:100%;
     background:transparent !important;
     overflow:hidden;
-    transition: background 0.4s ease;
   }
   canvas { display:block; width:100%; height:100%; background:transparent; }
-
-  /* ── Состояния — визуальные эффекты ───────────────────────────── */
-  #glow {
-    position:fixed; bottom:0; left:50%; transform:translateX(-50%);
-    width:80%; height:30%;
-    border-radius:50%;
-    pointer-events:none;
-    opacity:0;
-    transition: opacity 0.5s, background 0.5s;
-    filter:blur(20px);
-    z-index:1;
-  }
-  #glow.listening { opacity:0.55; background:radial-gradient(ellipse, #00cfff 0%, transparent 70%); animation: pulse 1.2s ease-in-out infinite; }
-  #glow.thinking  { opacity:0.45; background:radial-gradient(ellipse, #a855f7 0%, transparent 70%); animation: pulse 1.8s ease-in-out infinite; }
-  #glow.talking   { opacity:0.45; background:radial-gradient(ellipse, #34d399 0%, transparent 70%); animation: pulse 0.7s ease-in-out infinite; }
-  #glow.dance     { opacity:0.7;  background:radial-gradient(ellipse, #f472b6 0%, transparent 70%); animation: party 0.5s linear infinite; }
-  #glow.greeting  { opacity:0.5;  background:radial-gradient(ellipse, #fbbf24 0%, transparent 70%); animation: pulse 0.9s ease-in-out infinite; }
-
-  @keyframes pulse  { 0%,100%{transform:translateX(-50%) scale(1)} 50%{transform:translateX(-50%) scale(1.15)} }
-  @keyframes party  { 0%{filter:blur(20px) hue-rotate(0deg)} 100%{filter:blur(20px) hue-rotate(360deg)} }
-
-  /* ── Индикатор состояния ───────────────────────────────────────── */
-  #state-label {
-    position:fixed; top:6px; left:50%; transform:translateX(-50%);
-    padding:2px 10px; border-radius:10px;
-    font:bold 10px sans-serif; color:#fff;
-    pointer-events:none; z-index:100;
-    opacity:0; transition: opacity 0.3s;
-    background: rgba(0,0,0,0.5);
-    letter-spacing:1px;
-  }
-
-  /* ── Dots для thinking ─────────────────────────────────────────── */
-  #dots {
-    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-    display:none; pointer-events:none; z-index:100;
-  }
-  #dots span {
-    display:inline-block; width:8px; height:8px; margin:0 3px;
-    background:#a855f7; border-radius:50%;
-    animation: dotBounce 1.2s ease-in-out infinite;
-  }
-  #dots span:nth-child(2){animation-delay:0.2s}
-  #dots span:nth-child(3){animation-delay:0.4s}
-  @keyframes dotBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-
-  #log {
-    position:fixed; bottom:4px; left:4px; right:4px;
-    color:rgba(0,255,255,0.85); font:9px monospace;
-    pointer-events:none; white-space:pre-wrap; z-index:9999;
-    text-shadow:0 0 3px #000;
-  }
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
-<div id="glow"></div>
-<div id="state-label" id="slbl"></div>
-<div id="dots"><span></span><span></span><span></span></div>
-<div id="log"></div>
 <script>
 'use strict';
-
-var logEl   = document.getElementById('log');
-var glowEl  = document.getElementById('glow');
-var dotsEl  = document.getElementById('dots');
-var _lines  = [];
-
-function log(m) {
-  _lines.push(m);
-  if (_lines.length > 6) _lines.shift();
-  logEl.textContent = _lines.join('\n');
-}
-function hideLog() { setTimeout(function(){ logEl.style.display='none'; }, 6000); }
 
 var BASE = (function() {
   var h = window.location.href;
@@ -93,136 +24,77 @@ var BASE = (function() {
 })();
 
 var app = null, model = null, currentState = 'idle';
-var motionGroups = [], expressions = [], idleTimer = null;
-var danceTimer = null;
+var motionGroups = [], expressions = [], idleTimer = null, danceTimer = null;
 
-// ── Выражения лица по состоянию (для моделей с expressions) ──────
-var EXPR_MAP = {
-  'idle':      null,
-  'listening': 1,    // внимательное
-  'thinking':  2,    // задумчивое
-  'talking':   0,    // улыбка
-  'greeting':  0,    // улыбка
-  'dance':     0,    // радость
-  'happy':     0,
-  'sad':       3,
-  'excited':   0,
-};
-
-// ── Маппинг motion group ──────────────────────────────────────────
 function getMotionGroup(state) {
-  // TapBody — активная анимация
-  var active = ['talking','greeting','dance','happy','excited','stretch'];
-  var group  = (active.indexOf(state) >= 0 && motionGroups.indexOf('TapBody') >= 0)
-               ? 'TapBody' : 'Idle';
-  // Фоллбэк — берём первую доступную группу
-  if (motionGroups.indexOf(group) < 0) group = motionGroups[0] || 'Idle';
-  return group;
+  var active = ['talking','greeting','dance','happy','excited'];
+  var prefer = (active.indexOf(state) >= 0 && motionGroups.indexOf('TapBody') >= 0) ? 'TapBody' : 'Idle';
+  return (motionGroups.indexOf(prefer) >= 0) ? prefer : (motionGroups[0] || 'Idle');
 }
 
 function getMotionIndex(state, groupSize) {
-  // Разные индексы для разных состояний чтобы анимации отличались
-  var map = { idle:0, listening:1, thinking:2, talking:0, greeting:0, dance:0, sad:3 };
-  var idx = map[state] !== undefined ? map[state] : 0;
+  var map = { thinking:1, sad:3 };
+  var idx = (map[state] !== undefined) ? map[state] : 0;
   return Math.min(idx, groupSize - 1);
 }
 
-// ── Визуальные эффекты ────────────────────────────────────────────
-function applyVisual(state) {
-  glowEl.className = '';
-  dotsEl.style.display = 'none';
-  clearInterval(danceTimer);
-
-  if (state === 'listening') {
-    glowEl.className = 'listening';
-  } else if (state === 'thinking') {
-    glowEl.className = 'thinking';
-    dotsEl.style.display = 'block';
-  } else if (state === 'talking') {
-    glowEl.className = 'talking';
-  } else if (state === 'dance') {
-    glowEl.className = 'dance';
-    // Циклически меняем TapBody анимации
-    var di = 0;
-    danceTimer = setInterval(function() {
-      if (!model || currentState !== 'dance') { clearInterval(danceTimer); return; }
-      try {
-        var s = model.internalModel.settings;
-        var grp = 'TapBody';
-        var sz = (s.motions[grp] || []).length || 1;
-        model.motion(grp, di % sz, PIXI.live2d.MotionPriority.NORMAL);
-        di++;
-      } catch(e) {}
-    }, 3000);
-  } else if (state === 'greeting') {
-    glowEl.className = 'greeting';
-  }
-}
-
-// ── Воспроизведение анимации ──────────────────────────────────────
 function playMotion(state) {
   if (!model) return;
   clearTimeout(idleTimer);
-
-  applyVisual(state);
+  clearInterval(danceTimer);
 
   try {
+    if (state === 'dance') {
+      var di = 0;
+      var doPlay = function() {
+        if (!model || currentState !== 'dance') return;
+        var group = (motionGroups.indexOf('TapBody') >= 0) ? 'TapBody' : (motionGroups[0] || 'Idle');
+        var sz = 1;
+        try { sz = (model.internalModel.settings.motions[group] || []).length || 1; } catch(e) {}
+        model.motion(group, di % sz, PIXI.live2d.MotionPriority.NORMAL);
+        di++;
+        danceTimer = setTimeout(doPlay, 2800);
+      };
+      doPlay();
+      return;
+    }
+
     var group = getMotionGroup(state);
-    var groupSize = 1;
-    try {
-      var s = model.internalModel.settings;
-      groupSize = (s.motions[group] || []).length || 1;
-    } catch(e) {}
+    var sz = 1;
+    try { sz = (model.internalModel.settings.motions[group] || []).length || 1; } catch(e) {}
+    var idx = (state === 'idle' || state === 'listening')
+      ? Math.floor(Math.random() * sz)
+      : getMotionIndex(state, sz);
+    var priority = (state === 'idle')
+      ? PIXI.live2d.MotionPriority.IDLE
+      : PIXI.live2d.MotionPriority.NORMAL;
+    model.motion(group, idx, priority);
 
-    var idx = getMotionIndex(state, groupSize);
-    // idle и listening — рандомный idle
-    if (state === 'idle' || state === 'listening') {
-      idx = Math.floor(Math.random() * groupSize);
-    }
-
-    var priority = (state === 'idle') ? PIXI.live2d.MotionPriority.IDLE : PIXI.live2d.MotionPriority.NORMAL;
-    if (state !== 'dance') {  // dance управляется своим таймером
-      model.motion(group, idx, priority);
-    }
-    log('▶ ' + state + ' → ' + group + '[' + idx + '/' + groupSize + ']');
-
-    // Выражение лица
+    // Выражения лица
     if (expressions.length > 0) {
-      var expIdx = EXPR_MAP[state];
-      if (expIdx !== null && expIdx !== undefined && expIdx < expressions.length) {
-        try { model.expression(expIdx); } catch(e) {}
+      var exprMap = { talking:0, greeting:0, dance:0, thinking:1, listening:2, sad:3 };
+      var ei = exprMap[state];
+      if (ei !== undefined && ei < expressions.length) {
+        try { model.expression(ei); } catch(e) {}
       }
     }
 
-    // Возврат в idle после активной анимации
+    // Авто-возврат к idle после реакции
     if (state !== 'idle' && state !== 'listening' && state !== 'thinking' && state !== 'dance') {
-      idleTimer = setTimeout(function() { window.setAikaState('idle'); }, 4000);
+      idleTimer = setTimeout(function() {
+        currentState = 'idle';
+        playMotion('idle');
+      }, 4000);
     }
-
-  } catch(e) { log('motion err: ' + e.message); }
+  } catch(e) {}
 }
 
-// ── Определение групп ─────────────────────────────────────────────
-function detectGroups(m) {
-  motionGroups = []; expressions = [];
-  try {
-    var s = m.internalModel && m.internalModel.settings;
-    if (s && s.motions)     motionGroups = Object.keys(s.motions);
-    if (s && s.expressions) expressions  = s.expressions.map(function(_,i){ return i; });
-    log('groups: ' + motionGroups.join(', ') + ' | expr: ' + expressions.length);
-  } catch(e) {
-    motionGroups = ['Idle', 'TapBody'];
-    log('detectGroups fallback');
-  }
-}
-
-// ── Подгон размера модели ─────────────────────────────────────────
 function fitModel() {
   if (!model || !app) return;
   try {
     var w = app.screen.width, h = app.screen.height;
     model.x = w * 0.5;
-    model.y = h * 0.62;
+    model.y = h * 0.6;
     var origW = (model.internalModel && model.internalModel.originalWidth)  || 1000;
     var origH = (model.internalModel && model.internalModel.originalHeight) || 1000;
     var scale = Math.min(w / origW, h / origH) * 1.35;
@@ -230,116 +102,96 @@ function fitModel() {
   } catch(e) {}
 }
 
-// ── Загрузка модели ───────────────────────────────────────────────
+function detectGroups(m) {
+  motionGroups = []; expressions = [];
+  try {
+    var s = m.internalModel && m.internalModel.settings;
+    if (s && s.motions)     motionGroups = Object.keys(s.motions);
+    if (s && s.expressions) expressions  = s.expressions.map(function(_,i){ return i; });
+  } catch(e) { motionGroups = ['Idle','TapBody']; }
+}
+
 function loadModelFromPath(path) {
-  log('load: ' + path.split('/').slice(-3).join('/'));
   if (model) {
     try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
     model = null; motionGroups = []; expressions = [];
   }
-  return PIXI.live2d.Live2DModel.from(path, {
-    autoInteract: false,
-    autoUpdate:   true,
-  }).then(function(m) {
-    model = m;
-    app.stage.addChild(model);
-    model.anchor.set(0.5, 0.5);
-    fitModel();
-    window.removeEventListener('resize', fitModel);
-    window.addEventListener('resize', fitModel);
-    detectGroups(model);
-
-    model.interactive = true;
-    model.on('pointerdown', function() {
-      window.setAikaState('greeting');
-      try { AndroidBridge.onTap(); } catch(e) {}
-    });
-
-    playMotion('idle');
-    log('✓ ready');
-    hideLog();
-
-    try { AndroidBridge.onModelLoaded(); } catch(e) {}
-    window.setAikaState(currentState);
-
-  }).catch(function(e) {
-    log('ERR: ' + (e.message || String(e)));
-  });
+  return PIXI.live2d.Live2DModel.from(path, { autoInteract:false, autoUpdate:true })
+    .then(function(m) {
+      model = m;
+      app.stage.addChild(model);
+      model.anchor.set(0.5, 0.5);
+      fitModel();
+      window.removeEventListener('resize', fitModel);
+      window.addEventListener('resize', fitModel);
+      detectGroups(model);
+      model.interactive = true;
+      model.on('pointerdown', function() {
+        window.setAikaState('greeting');
+        try { AndroidBridge.onTap(); } catch(e) {}
+      });
+      playMotion('idle');
+      try { AndroidBridge.onModelLoaded(); } catch(e) {}
+      window.setAikaState(currentState);
+    })
+    .catch(function(e) {});
 }
 
-// ── Загрузка скриптов ─────────────────────────────────────────────
 function loadScript(src) {
   return new Promise(function(resolve, reject) {
     var s = document.createElement('script');
-    s.src = src; s.onload = resolve;
-    s.onerror = function() { reject(new Error('Cannot load: ' + src.split('/').pop())); };
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = function() { reject(new Error('fail: ' + src)); };
     document.head.appendChild(s);
   });
 }
 
-// ── Инициализация ─────────────────────────────────────────────────
 function initLive2D() {
-  log('init...');
   var _mod = window.module, _exp = window.exports;
   window.module = undefined; window.exports = undefined;
 
   loadScript(BASE + 'live2d/live2dcubismcore.min.js')
-  .then(function() {
-    return loadScript(BASE + 'live2d/pixi.min.js');
-  })
-  .then(function() {
-    log('PIXI ' + (window.PIXI ? PIXI.VERSION : '?'));
-    if (!window.PIXI) throw new Error('PIXI not loaded');
-    return loadScript(BASE + 'live2d/pixi-live2d-display.min.js');
-  })
-  .then(function() {
-    window.module = _mod; window.exports = _exp;
-    if (!window.PIXI || !PIXI.live2d || !PIXI.live2d.Live2DModel) {
-      throw new Error('PIXI.live2d not found');
-    }
-    log('pixi-live2d OK');
+    .then(function() { return loadScript(BASE + 'live2d/pixi.min.js'); })
+    .then(function() {
+      if (!window.PIXI) throw new Error('no PIXI');
+      return loadScript(BASE + 'live2d/pixi-live2d-display.min.js');
+    })
+    .then(function() {
+      window.module = _mod; window.exports = _exp;
+      if (!PIXI.live2d || !PIXI.live2d.Live2DModel) throw new Error('no live2d');
 
-    app = new PIXI.Application({
-      view: document.getElementById('canvas'),
-      autoStart: true,
-      backgroundAlpha: 0,
-      transparent: true,
-      resizeTo: window,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
+      app = new PIXI.Application({
+        view: document.getElementById('canvas'),
+        autoStart: true,
+        backgroundAlpha: 0,
+        transparent: true,
+        resizeTo: window,
+        antialias: true,
+        resolution: window.devicePixelRatio || 1,
+      });
+      try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch(e) {}
+
+      return loadModelFromPath(BASE + 'models/Hiyori/Hiyori.model3.json');
+    })
+    .catch(function(e) {
+      window.module = _mod; window.exports = _exp;
     });
-
-    try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch(e) {}
-
-    return loadModelFromPath(BASE + 'models/Hiyori/Hiyori.model3.json');
-  })
-  .catch(function(e) {
-    log('INIT ERR: ' + (e.message || String(e)));
-    window.module = _mod; window.exports = _exp;
-  });
 }
 
-// ── Публичный API ─────────────────────────────────────────────────
+// Public API — вызывается из Android
 window.setAikaState = function(state) {
   currentState = state || 'idle';
   playMotion(currentState);
 };
-
 window.loadCustomModel = function(url) {
-  if (!app) { log('app not ready'); return; }
-  return loadModelFromPath(url);
+  if (app) return loadModelFromPath(url);
 };
-
-window.switchBuiltinModel = function(assetPath) {
-  if (!app) { log('app not ready'); return; }
-  return loadModelFromPath(BASE + assetPath);
+window.switchBuiltinModel = function(p) {
+  if (app) return loadModelFromPath(BASE + p);
 };
+window.switchModel = window.switchBuiltinModel;
 
-window.switchModel = function(assetPath) {
-  return window.switchBuiltinModel(assetPath);
-};
-
-// ── Старт ─────────────────────────────────────────────────────────
 setTimeout(initLive2D, 300);
 </script>
 </body>
