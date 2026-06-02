@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<!-- Локальный model-viewer — работает без интернета -->
+<script type="module" src="./model-viewer.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:100%; height:100%; background:transparent !important; overflow:hidden; }
@@ -33,18 +34,7 @@ var mv = document.getElementById('mv');
 var currentState = 'idle';
 var resetTimer = null;
 
-// Маппинг состояний → анимации
-// robot.glb:   Dance, Death, Idle, Jump, No, Punch, ThumbsUp, WalkForward, WaveHello, Yes
-// xbot.glb:    agree, headShake, idle, run, sad_pose, sneak_pose, walk
-// soldier.glb: Idle, Run, TPose, Walk
-// aika_model.glb (robot): Dance, Death, Idle, Jump, No, Punch, ...
-
 var ANIM_MAP = {
-  // Каждый список — приоритет слева направо по доступности в конкретной модели
-  // robot/aika: Dance, Idle, Jump, No, Punch, Running, ThumbsUp, Walking, Wave, Yes
-  // anime_girl: SambaDance, agree, headShake, idle, run, sad_pose, sneak_pose, walk
-  // xbot:       agree, headShake, idle, run, sad_pose, sneak_pose, walk
-  // soldier:    Idle, Run, Walk
   idle:         ['idle',       'Idle',       'sneak_pose', 'Survey'],
   listening:    ['idle',       'Idle',       'sneak_pose'],
   thinking:     ['sneak_pose', 'No',         'headShake',  'Idle',  'idle'],
@@ -63,26 +53,27 @@ var ANIM_MAP = {
   stretch:      ['sneak_pose', 'sad_pose',   'Idle',       'idle'],
 };
 
-// Состояния которые сбрасываются к idle через N секунд
 var ONE_SHOT = {
   greeting:4000, notification:4000, alarm:5000,
   happy:4000, surprised:3000, telegram:4000,
   vk:4000, youtube:4000
 };
 
-// Доступные анимации в текущей модели
 var availableAnims = [];
 
-mv.addEventListener('load', function() {
-  // Собираем доступные анимации
+function onModelLoaded() {
   availableAnims = [];
   try {
     var anims = mv.availableAnimations;
     if (anims) availableAnims = Array.from(anims);
   } catch(e) {}
   try { AndroidBridge.onModelLoaded(); } catch(e) {}
+  // Уведомляем Flutter через JavaScriptHandler
+  try { window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded'); } catch(e) {}
   playState(currentState);
-});
+}
+
+mv.addEventListener('load', onModelLoaded);
 
 mv.addEventListener('click', function() {
   playState('greeting');
@@ -94,7 +85,6 @@ function findAnim(state) {
   for (var i = 0; i < candidates.length; i++) {
     if (availableAnims.indexOf(candidates[i]) >= 0) return candidates[i];
   }
-  // Фолбэк — первая доступная
   return availableAnims[0] || 'Idle';
 }
 
@@ -106,16 +96,29 @@ function playState(state) {
     mv.animationName = anim;
     mv.play({ repetitions: Infinity });
   } catch(e) {}
-  // Авто-сброс
   if (ONE_SHOT[state]) {
     resetTimer = setTimeout(function() { playState('idle'); }, ONE_SHOT[state]);
   }
 }
 
-// Public API
+// Public API вызываемый из Flutter
 window.setAikaState = function(state) { playState(state || 'idle'); };
-window.loadCustomModel = function(url) { availableAnims = []; mv.src = url; };
-window.switchModel = function(p) { availableAnims = []; mv.src = './' + p; };
+
+window.loadCustomModel = function(url) {
+  availableAnims = [];
+  mv.src = '';
+  setTimeout(function() { mv.src = url; }, 50);
+};
+
+window.switchModel = function(p) {
+  availableAnims = [];
+  var newSrc = './' + p;
+  // Принудительный перезапуск: сбрасываем src в пустое и ставим новое
+  mv.src = '';
+  setTimeout(function() {
+    mv.src = newSrc;
+  }, 100);
+};
 </script>
 </body>
 </html>
