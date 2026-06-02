@@ -44,6 +44,9 @@ dependencies:
   # File picker (для выбора Live2D модели)
   file_picker: ^8.1.2
 
+  # 3D Model viewer
+  model_viewer_plus: ^1.9.3
+
   # Timezone
   timezone: ^0.9.4
 
