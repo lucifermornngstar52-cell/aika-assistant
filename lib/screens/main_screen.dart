@@ -560,6 +560,31 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
     });
+    // Восстанавливаем историю чата из памяти
+    final savedHistory = await _memoryService.getHistory();
+    if (savedHistory.isNotEmpty && _messages.isEmpty) {
+      final restored = <ChatMessage>[];
+      for (final h in savedHistory) {
+        if (h.startsWith('user: ')) {
+          restored.add(ChatMessage(
+            id: '\${DateTime.now().millisecondsSinceEpoch}\${h.hashCode}',
+            content: h.substring(6),
+            role: MessageRole.user,
+            timestamp: DateTime.now(),
+          ));
+        } else if (h.startsWith('assistant: ')) {
+          restored.add(ChatMessage(
+            id: '\${DateTime.now().millisecondsSinceEpoch + 1}\${h.hashCode}',
+            content: h.substring(11),
+            role: MessageRole.aika,
+            timestamp: DateTime.now(),
+          ));
+        }
+      }
+      if (restored.isNotEmpty && mounted) {
+        setState(() => _messages = restored);
+      }
+    }
   }
 
   Future<void> _applyTtsSettings() async {
@@ -625,9 +650,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
 
   void _sendGreeting() {
+    // Если уже есть история — не добавляем приветствие заново
+    if (_messages.isNotEmpty) {
+      OverlayService().show(state: 'idle');
+      return;
+    }
     final greeting = _userName.isNotEmpty
-        ? 'Привет, $_userName! Я $_assistantName. Чем могу помочь?'
-        : 'Привет! Я $_assistantName. Чем могу помочь?';
+        ? 'Привет, \$_userName! Я \$_assistantName. Чем могу помочь?'
+        : 'Привет! Я \$_assistantName. Чем могу помочь?';
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       role: MessageRole.aika,
