@@ -23,6 +23,7 @@ import '../theme/app_theme.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
+import '../widgets/live2d_widget.dart';
 import 'settings_screen.dart';
 import 'personality_screen.dart';
 import 'model_picker_screen.dart';
@@ -1700,8 +1701,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-                // Live2D модель отображается ТОЛЬКО в overlay (AikaOverlayService)
-                // Убрана из главного экрана во избежание дублирования
+                // Live2D модель поверх фона
+                Live2DWidget(
+                  width: MediaQuery.of(context).size.width,
+                  height: MediaQuery.of(context).size.height,
+                  state: _avatarStateString,
+                ),
               ],
             ),
           ),
