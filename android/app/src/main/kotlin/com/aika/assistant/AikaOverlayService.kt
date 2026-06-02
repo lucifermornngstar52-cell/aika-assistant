@@ -84,17 +84,20 @@ class AikaOverlayService : Service() {
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun initFlutterEngine() {
+        // ВАЖНО: не переиспользуем engine из кэша если он уже attached к другому view.
+        // Повторный attach → IllegalStateException → overlay пустой/чёрный.
         val cached = FlutterEngineCache.getInstance().get(ENGINE_ID)
-        if (cached != null && cached.dartExecutor.isExecutingDart) {
-            flutterEngine = cached
-            methodChannel = MethodChannel(cached.dartExecutor.binaryMessenger, FL_CHANNEL)
-            return
+        if (cached != null) {
+            if (cached.dartExecutor.isExecutingDart && flutterView == null) {
+                flutterEngine = cached
+                methodChannel = MethodChannel(cached.dartExecutor.binaryMessenger, FL_CHANNEL)
+                return
+            }
+            try { cached.destroy() } catch (_: Exception) {}
+            FlutterEngineCache.getInstance().remove(ENGINE_ID)
         }
 
         val engine = FlutterEngine(this)
-
-        // ⚡ КРИТИЧНО: регистрируем все плагины в overlay engine
-        // Без этого flutter_inappwebview не работает — WebView пустой
         GeneratedPluginRegister.registerGeneratedPlugins(engine)
 
         val loader = FlutterInjector.instance().flutterLoader()
@@ -163,11 +166,13 @@ class AikaOverlayService : Service() {
         flutterView = fv
 
         try {
+            if (overlayRoot?.windowToken != null) {
+                try { windowManager?.removeView(overlayRoot) } catch (_: Exception) {}
+            }
             windowManager?.addView(frame, params)
-            // Даём WebView время инициализироваться (3 сек) перед отправкой команд
             handler.postDelayed({
                 methodChannel?.invokeMethod("setState", currentState)
-            }, 3000)
+            }, 4000)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -264,10 +269,21 @@ class AikaOverlayService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        handler.removeCallbacksAndMessages(null)
+        try { flutterView?.detachFromFlutterEngine() } catch (_: Exception) {}
         try {
-            flutterView?.detachFromFlutterEngine()
-            overlayRoot?.let { windowManager?.removeView(it) }
+            overlayRoot?.let { v ->
+                if (v.windowToken != null) windowManager?.removeView(v)
+            }
         } catch (_: Exception) {}
+        try {
+            flutterEngine?.destroy()
+            FlutterEngineCache.getInstance().remove(ENGINE_ID)
+        } catch (_: Exception) {}
+        overlayRoot = null
+        flutterView = null
+        flutterEngine = null
+        methodChannel = null
         super.onDestroy()
     }
 
