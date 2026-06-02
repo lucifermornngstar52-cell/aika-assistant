@@ -17,6 +17,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
   String _side    = 'left';
   String _modelId = 'hiyori';
   bool   _dragEnabled = true;
+  String _mode = 'live2d'; // 'live2d' | '3d'
 
   static const _accent = Color(0xFF00E5FF);
   static const _bg     = Color(0xFF0F0F0F);
@@ -60,6 +61,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
       _opacity    = _svc.opacity;
       _side       = _svc.side;
       _modelId    = prefs.getString('overlay_model_id') ?? 'hiyori';
+      _mode       = prefs.getString('overlay_mode') ?? 'live2d';
       _dragEnabled = prefs.getBool('overlay_drag_enabled') ?? true;
     });
   }
@@ -224,6 +226,61 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
           ),
 
           const SizedBox(height: 12),
+
+          // ── Режим: Live2D / 3D ───────────────────────────────────────────────
+          _card(
+            icon: Icons.view_in_ar,
+            title: 'Тип модели',
+            subtitle: _mode == '3d' ? '🤖 3D модель (GLB)' : '🌸 Live2D',
+            child: Row(children: [
+              Expanded(child: GestureDetector(
+                onTap: () async {
+                  setState(() => _mode = 'live2d');
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('overlay_mode', 'live2d');
+                  await _svc.setMode('live2d');
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _mode == 'live2d' ? _accent.withOpacity(0.15) : Colors.white.withOpacity(0.04),
+                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                    border: Border.all(color: _mode == 'live2d' ? _accent : Colors.white12),
+                  ),
+                  child: Column(children: [
+                    const Text('🌸', style: TextStyle(fontSize: 20)),
+                    const SizedBox(height: 4),
+                    Text('Live2D', style: TextStyle(
+                      color: _mode == 'live2d' ? _accent : Colors.white38,
+                      fontSize: 11, fontWeight: FontWeight.bold)),
+                  ]),
+                ),
+              )),
+              Expanded(child: GestureDetector(
+                onTap: () async {
+                  setState(() => _mode = '3d');
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('overlay_mode', '3d');
+                  await _svc.setMode('3d');
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _mode == '3d' ? _accent.withOpacity(0.15) : Colors.white.withOpacity(0.04),
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                    border: Border.all(color: _mode == '3d' ? _accent : Colors.white12),
+                  ),
+                  child: Column(children: [
+                    const Text('🤖', style: TextStyle(fontSize: 20)),
+                    const SizedBox(height: 4),
+                    Text('3D GLB', style: TextStyle(
+                      color: _mode == '3d' ? _accent : Colors.white38,
+                      fontSize: 11, fontWeight: FontWeight.bold)),
+                  ]),
+                ),
+              )),
+            ]),
+          ),
 
           // ── Модель ────────────────────────────────────────────────────────
           _card(
