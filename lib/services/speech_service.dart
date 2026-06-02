@@ -20,6 +20,7 @@ class SpeechService extends ChangeNotifier {
   String _lastWords = '';
   double _soundLevel = 0.0;
   static const String _ruLocaleId = 'ru_RU';
+  String _resolvedLocaleId = 'ru_RU';
 
   bool get isListening => _isListening;
   bool get isSpeaking  => _isSpeaking;
@@ -126,7 +127,7 @@ class SpeechService extends ChangeNotifier {
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 5),
-      localeId: _ruLocaleId,
+      localeId: _resolvedLocaleId,
       onSoundLevelChange: (level) {
         _soundLevel = level;
         notifyListeners();
