@@ -675,14 +675,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       for (final h in savedHistory) {
         if (h.startsWith('user: ')) {
           restored.add(ChatMessage(
-            id: '${DateTime.now().millisecondsSinceEpoch}${h.hashCode}',
+            id: '\${DateTime.now().millisecondsSinceEpoch}\${h.hashCode}',
             content: h.substring(6),
             role: MessageRole.user,
             timestamp: DateTime.now(),
           ));
         } else if (h.startsWith('assistant: ')) {
           restored.add(ChatMessage(
-            id: '${DateTime.now().millisecondsSinceEpoch + 1}${h.hashCode}',
+            id: '\${DateTime.now().millisecondsSinceEpoch + 1}\${h.hashCode}',
             content: h.substring(11),
             role: MessageRole.aika,
             timestamp: DateTime.now(),
@@ -781,7 +781,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       onMessage: (msg) {
         if (!mounted || _isListening || _isThinking) return;
         _addMessage(ChatMessage(
-          id: 'feeling_${DateTime.now().millisecondsSinceEpoch}',
+          id: 'feeling_\${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: msg,
           timestamp: DateTime.now(),
@@ -920,7 +920,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // speak() блокируется до конца воспроизведения — не нужен busy-loop
         await _edgeTts.speak(clean);
         if (wasEnabled && !_isListening) {
-          await Future.delayed(const Duration(milliseconds: 400));
+          await Future.delayed(const Duration(milliseconds: 200));
           await _wakeWordService.resume();
         }
         return;
@@ -1071,10 +1071,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (text.trim().isEmpty) return;
     _textController.clear();
     _resetIdleTimer();
-
-    // Сразу показываем сообщение пользователя в чате
+    // Показываем сообщение пользователя немедленно
     _addMessage(ChatMessage(
-      id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'u${DateTime.now().millisecondsSinceEpoch}',
       role: MessageRole.user,
       content: text,
       timestamp: DateTime.now(),
@@ -1127,7 +1126,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // ── Команды безопасности (голос) ─────────────────────────────────────
     if (DeviceSecurityService.isSecurityVoiceCommand(text)) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       setState(() { _isThinking = true; });
       try {
         final secReply = await DeviceSecurityService.handleVoiceSecurityCommand(text);
@@ -1148,6 +1152,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
         // ── Погода — открываем свой экран ──────────────────────────────────
     if (WeatherService.isWeatherRequest(text)) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       await Navigator.push(context, MaterialPageRoute(builder: (_) => const WeatherScreen()));
       return;
     }
@@ -1190,7 +1200,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     if (isDanceCommand) {
       _startDance();
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1268,7 +1283,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Мини-игры голосом ──
     final gameResult = _gameService.tryHandleGame(text);
     if (gameResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1301,7 +1321,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Будильник ──
     final alarmResult = await _alarmService.tryParseAlarm(text);
     if (alarmResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1318,7 +1343,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() { _isThinking = true; });
       try {
         final briefing = await _briefingService.getMorningBriefing();
-        // user message уже добавлен выше
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.user,
+          content: text,
+          timestamp: DateTime.now(),
+        ));
         _addMessage(ChatMessage(
           id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
           role: MessageRole.aika,
@@ -1358,7 +1388,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Проверяем напоминания/таймеры ──
     final reminderResult = await _reminderService.tryParseReminder(text);
     if (reminderResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1390,7 +1425,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final isMemoryCmd = await _peopleMemory.tryParseMemoryCommand(text);
     if (isMemoryCmd) {
       const reply = 'Запомнила!';
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1405,7 +1445,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Кастомные команды (shortcuts) ──
     final shortcutResult = await _shortcutsService.tryHandle(text);
     if (shortcutResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1420,7 +1465,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Режим фокуса ──
     final focusResult = await FocusModeService.tryHandle(text);
     if (focusResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1435,7 +1485,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Дневник настроения ──
     final moodResult = await _moodDiaryService.tryHandle(text);
     if (moodResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1459,7 +1514,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Новости ──
     final newsResult = await _newsService.tryParseNews(text);
     if (newsResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1471,13 +1531,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    try { // ── Защитный try для всего блока AI-обработки ──────────────────────
     // ── Реакция на возврат / комплимент (AikaFeelings) ─────────────────
     final feelingReaction = await AikaFeelingsService.onUserMessage(
         PersonalityService.current.name);
     if (feelingReaction != null && mounted) {
       _addMessage(ChatMessage(
-        id: 'feel_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'feel_\${DateTime.now().millisecondsSinceEpoch}',
         role: MessageRole.aika,
         content: feelingReaction,
         timestamp: DateTime.now(),
@@ -1493,7 +1552,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           PersonalityService.current.name);
       if (cReaction != null && mounted) {
         _addMessage(ChatMessage(
-          id: 'compl_${DateTime.now().millisecondsSinceEpoch}',
+          id: 'compl_\${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: cReaction,
           timestamp: DateTime.now(),
@@ -1507,7 +1566,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Медиа-команды (Spotify, play/pause/next) ────────────────────────
     final mediaResult = await MediaControlService.tryHandleCommand(text);
     if (mediaResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1521,7 +1585,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Отправка сообщений ("напиши Диме в ватсап ...") ─────────────────
     final msgResult = _parseSendMessageCommand(text);
     if (msgResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       final r = await MessageSenderService.sendMessage(
         app: msgResult['app']!,
         contact: msgResult['contact']!,
@@ -1541,7 +1610,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Сначала проверяем локальные команды запуска приложений ──
     final appLaunchResult = await AppLauncherService.tryLaunch(text);
     if (appLaunchResult != null) {
-      // user message уже добавлен выше
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
@@ -1553,7 +1627,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // user message уже добавлен выше
+    _addMessage(ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      role: MessageRole.user,
+      content: text,
+      timestamp: DateTime.now(),
+    ));
     setState(() { _isThinking = true; _isDancing = false; });
     OverlayService().asyncState('thinking');
 
@@ -1628,7 +1707,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final memoryCtx   = await _peopleMemory.buildMemoryContext();
       final longMemory  = context['longMemory'] ?? '';
       final screenCtx   = ScreenWatcherService.currentLabel.isNotEmpty
-          ? 'Сейчас на экране: ${ScreenWatcherService.currentLabel} (${ScreenWatcherService.currentPackage})'
+          ? 'Сейчас на экране: \${ScreenWatcherService.currentLabel} (\${ScreenWatcherService.currentPackage})'
           : '';
       final _prefs = await SharedPreferences.getInstance();
       final _openAiKey = _prefs.getString('openai_api_key') ?? '';
@@ -1637,7 +1716,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           PersonalityService.current.name);
       if (moodRefusal != null && mounted) {
         _addMessage(ChatMessage(
-          id: 'mood_${DateTime.now().millisecondsSinceEpoch}',
+          id: 'mood_\${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: moodRefusal,
           timestamp: DateTime.now(),
@@ -1653,7 +1732,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           text, PersonalityService.current.name);
       if (relationReaction != null && mounted) {
         _addMessage(ChatMessage(
-          id: 'rel_${DateTime.now().millisecondsSinceEpoch}',
+          id: 'rel_\${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: relationReaction,
           timestamp: DateTime.now(),
@@ -1703,13 +1782,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       await _speechService.stopListening();
       setState(() => _isListening = false);
       OverlayService().asyncState('idle');
-      // Возобновляем wake word после ручной остановки
       if (_wakeWordEnabled) {
         _wakeWordService.setDialogOpen(false);
         await _wakeWordService.resume();
       }
     } else {
-      // Паузируем wake word чтобы не конкурировать за микрофон
       await _wakeWordService.pause();
       _wakeWordService.setDialogOpen(true);
       setState(() { _isListening = true; _isDancing = false; });
@@ -1718,7 +1795,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         (text) {
           setState(() => _isListening = false);
           OverlayService().asyncState('idle');
-          // Возобновляем wake word
           _wakeWordService.setDialogOpen(false);
           if (_wakeWordEnabled) _wakeWordService.resume();
           if (text.isNotEmpty) _sendMessage(text);
@@ -2170,7 +2246,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               Text("Пользователь: \$_userName",
                   style: TextStyle(color: Colors.white54, fontSize: 13)),
             const SizedBox(height: 4),
-            Text("История: ${_messages.length} сообщений",
+            Text("История: \${_messages.length} сообщений",
                 style: TextStyle(color: Colors.white54, fontSize: 13)),
           ],
         ),
