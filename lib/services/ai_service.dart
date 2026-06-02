@@ -24,6 +24,7 @@ class AiService {
     String memoryContext = '',
     String screenContext = '',
     String openAiKey = '',
+    String longMemory = '',
   }) async {
     // GPT is primary, Gemini is fallback
     final effectiveKey = openAiKey.isNotEmpty ? openAiKey : _openAiKey;
@@ -37,6 +38,7 @@ class AiService {
           memoryContext: memoryContext,
           screenContext: screenContext,
           openAiKey: effectiveKey,
+          longMemory: longMemory,
         );
       } catch (e) {
         final errStr = e.toString();
@@ -50,6 +52,7 @@ class AiService {
               history: history,
               memoryContext: memoryContext,
               screenContext: screenContext,
+              longMemory: longMemory,
             );
           } catch (e2) {
             throw Exception('AI недоступен: GPT — $e | Gemini — $e2');
@@ -68,20 +71,22 @@ class AiService {
         history: history,
         memoryContext: memoryContext,
         screenContext: screenContext,
+        longMemory: longMemory,
       );
     } catch (e) {
       throw Exception('AI недоступен: $e');
     }
   }
 
-  String _buildSystemPrompt(String userName, String assistantName) {
+  String _buildSystemPrompt(String userName, String assistantName, {String longMemory = ''}) {
     final userPart = userName.isNotEmpty ? ', пользователя зовут $userName' : '';
     final personalityPrompt = PersonalityService.systemPromptAddition;
     final habitContext = HabitMemoryService.getContextForAI();
     final relationshipMod = RelationshipService.getPromptModifier(PersonalityService.current.name);
     final internalMoodMod = AssistantMoodService.getPromptModifier();
-    return "Ты $assistantName — аниме AI-ассистент для Android$userPart. Говоришь кратко, умно. Отвечаешь по-русски.$personalityPrompt$relationshipMod$internalMoodMod\n\n"
-        "${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}"
+    final memPart = longMemory.isNotEmpty ? "\n\n== ЧТО ТЫ ЗНАЕШЬ О ПОЛЬЗОВАТЕЛЕ ==\n\$longMemory" : '';
+    return "Ты \$assistantName — аниме AI-ассистент для Android\$userPart. Говоришь кратко, умно. Отвечаешь по-русски.\$personalityPrompt\$relationshipMod\$internalMoodMod\n\n"
+        "\${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}\$memPart\n\n"
         "[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]\n"
         "[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]\n"
         "[ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR]\n"
@@ -99,8 +104,9 @@ class AiService {
     List<String> history = const [],
     String memoryContext = '',
     String screenContext = '',
+    String longMemory = '',
   }) async {
-    final systemPrompt = _buildSystemPrompt(userName, assistantName)
+    final systemPrompt = _buildSystemPrompt(userName, assistantName, longMemory: longMemory)
         + (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '')
         + (screenContext.isNotEmpty ? '\n\n== СЕЙЧАС НА ЭКРАНЕ ==\n$screenContext' : '');
 
@@ -144,8 +150,9 @@ class AiService {
     String memoryContext = '',
     String screenContext = '',
     required String openAiKey,
+    String longMemory = '',
   }) async {
-    final systemPrompt = _buildSystemPrompt(userName, assistantName)
+    final systemPrompt = _buildSystemPrompt(userName, assistantName, longMemory: longMemory)
         + (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '')
         + (screenContext.isNotEmpty ? '\n\n== СЕЙЧАС НА ЭКРАНЕ ==\n$screenContext' : '');
 
