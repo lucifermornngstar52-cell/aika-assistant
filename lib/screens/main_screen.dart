@@ -26,7 +26,6 @@ import '../widgets/aika_avatar.dart';
 import 'settings_screen.dart';
 import 'personality_screen.dart';
 import 'model_picker_screen.dart';
-import '../widgets/live2d_widget.dart';
 import 'currency_screen.dart';
 import '../services/music_detector_service.dart';
 import '../services/message_sender_service.dart';
@@ -1701,12 +1700,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-                // Live2D модель поверх фона
-                Live2DWidget(
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height,
-                  state: _avatarStateString,
-                ),
+                // Live2D модель отображается ТОЛЬКО в overlay (AikaOverlayService)
+                // Убрана из главного экрана во избежание дублирования
               ],
             ),
           ),
