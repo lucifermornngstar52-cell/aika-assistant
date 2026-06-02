@@ -36,6 +36,7 @@ import '../services/device_security_service.dart';
 import 'weather_screen.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
+import '../services/aika_feelings_service.dart';
 import '../services/notification_service.dart';
 import '../services/people_memory_service.dart';
 import '../services/reminder_service.dart';
@@ -358,6 +359,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     });
     // Автозапуск постоянного прослушивания wake word
     Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
+
+    // Загружаем состояние эмоций Айки и запускаем таймеры обиды
+    await AikaFeelingsService.load();
+    _startFeelingsTimers();
   }
 
   Future<void> _autoStartWakeWord() async {
@@ -707,6 +712,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
 
   /// Сбрасывает таймер бездействия. Вызывается после каждого действия.
+  void _startFeelingsTimers() {
+    final personality = PersonalityService.current.name;
+    AikaFeelingsService.startIdleTimers(
+      personality: personality,
+      onMessage: (msg) {
+        if (!mounted || _isListening || _isThinking) return;
+        _addMessage(ChatMessage(
+          id: 'feeling_\${DateTime.now().millisecondsSinceEpoch}',
+          role: MessageRole.aika,
+          content: msg,
+          timestamp: DateTime.now(),
+        ));
+        _speak(msg);
+        OverlayService().asyncState('greeting');
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) OverlayService().asyncState('idle');
+        });
+      },
+    );
+  }
+
   void _resetIdleTimer() {
     _idleTimer?.cancel();
     if (mounted && _isStretching) {
@@ -1436,6 +1462,38 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── Реакция на возврат / комплимент (AikaFeelings) ─────────────────
+    final feelingReaction = await AikaFeelingsService.onUserMessage(
+        PersonalityService.current.name);
+    if (feelingReaction != null && mounted) {
+      _addMessage(ChatMessage(
+        id: 'feel_\${DateTime.now().millisecondsSinceEpoch}',
+        role: MessageRole.aika,
+        content: feelingReaction,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(feelingReaction);
+    }
+    // Перезапускаем таймеры обиды после каждого сообщения
+    _startFeelingsTimers();
+
+    // Проверяем комплимент
+    if (AikaFeelingsService.isCompliment(text)) {
+      final cReaction = await AikaFeelingsService.onCompliment(
+          PersonalityService.current.name);
+      if (cReaction != null && mounted) {
+        _addMessage(ChatMessage(
+          id: 'compl_\${DateTime.now().millisecondsSinceEpoch}',
+          role: MessageRole.aika,
+          content: cReaction,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(cReaction);
+        _moodService.onUserSpoke();
+        return;
+      }
+    }
+
     // ── Сначала проверяем локальные команды запуска приложений ──
     final appLaunchResult = await AppLauncherService.tryLaunch(text);
     if (appLaunchResult != null) {
@@ -1668,6 +1726,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _tts.stop();
     _musicTimer?.cancel();
     _idleTimer?.cancel();
+    AikaFeelingsService.stopIdleTimers();
     _deviceService.dispose();
     _wakeWordService.stop();
     SmartAlarmService.dispose();
