@@ -136,6 +136,15 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "switchModel" -> {
+                        val path = call.argument<String>("path") ?: "models/Hiyori/Hiyori.model3.json"
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_SWITCH_MODEL
+                            putExtra(AikaOverlayService.EXTRA_MODEL_PATH, path)
+                        })
+                        result.success(null)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
@@ -253,6 +262,15 @@ class MainActivity : FlutterActivity() {
                         result.success(svc.getScreenSize())
                     }
 
+                    "switchModel" -> {
+                        val path = call.argument<String>("path") ?: "models/Hiyori/Hiyori.model3.json"
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_SWITCH_MODEL
+                            putExtra(AikaOverlayService.EXTRA_MODEL_PATH, path)
+                        })
+                        result.success(null)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
@@ -265,6 +283,15 @@ class MainActivity : FlutterActivity() {
                         val am = getSystemService(AUDIO_SERVICE) as AudioManager
                         result.success(am.isMusicActive)
                     }
+                    "switchModel" -> {
+                        val path = call.argument<String>("path") ?: "models/Hiyori/Hiyori.model3.json"
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_SWITCH_MODEL
+                            putExtra(AikaOverlayService.EXTRA_MODEL_PATH, path)
+                        })
+                        result.success(null)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
