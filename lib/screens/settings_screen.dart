@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/memory_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_theme.dart';
@@ -302,6 +303,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
     );
+  }
+
+  Future<void> _clearHistory() async {
+    final mem = MemoryService();
+    await mem.clearHistory();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('История чата очищена ✓')),
+      );
+    }
+  }
+
+  Future<void> _clearLongMemory() async {
+    final mem = MemoryService();
+    await mem.setLongMemory('');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Память очищена ✓')),
+      );
+    }
   }
 
   @override
