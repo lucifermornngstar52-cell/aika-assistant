@@ -123,6 +123,18 @@ class OverlayService {
     await _sendConfig();
   }
 
+  /// Переключить модель в оверлее
+  Future<void> switchModel(String assetPath) async {
+    try {
+      await _overlayChannel.invokeMethod('switchModel', {'path': assetPath});
+    } catch (_) {
+      // fallback через modelChannel
+      try {
+        await _modelChannel.invokeMethod('switchModel', assetPath);
+      } catch (_) {}
+    }
+  }
+
   Future<void> _sendConfig() async {
     try {
       // Обновляем WindowManager размер через overlay channel
