@@ -276,8 +276,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() => _hasOverlayPermission = has);
     }
     if (has && mounted) {
-      // Небольшая задержка чтобы FlutterEngine overlay успел инициализироваться
-      await Future.delayed(const Duration(milliseconds: 800));
       await OverlayService().show(state: 'idle');
     }
     // Диалог показываем ОДИН раз за сессию, не при каждом resume
