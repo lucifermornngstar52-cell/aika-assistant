@@ -13,21 +13,14 @@
     --progress-bar-color: transparent;
     --progress-mask: transparent;
   }
-  #glow {
-    position:fixed; inset:0; pointer-events:none;
-    border-radius:50%;
-    transition: box-shadow 0.4s ease;
-  }
 </style>
 </head>
 <body>
-<div id="glow"></div>
 <model-viewer
   id="mv"
   src="./models/aika_model.glb"
   autoplay
-  animation-name="idle"
-  camera-controls
+  animation-name="Idle"
   disable-zoom
   disable-pan
   touch-action="none"
@@ -37,97 +30,88 @@
 
 <script>
 var mv = document.getElementById('mv');
-var glow = document.getElementById('glow');
 var currentState = 'idle';
-var danceTimer = null;
+var resetTimer = null;
 
-// Маппинг состояний → анимации GLB
+// Маппинг состояний → анимации
+// robot.glb:   Dance, Death, Idle, Jump, No, Punch, ThumbsUp, WalkForward, WaveHello, Yes
+// xbot.glb:    agree, headShake, idle, run, sad_pose, sneak_pose, walk
+// soldier.glb: Idle, Run, TPose, Walk
+// aika_model.glb (robot): Dance, Death, Idle, Jump, No, Punch, ...
+
 var ANIM_MAP = {
-  idle:         'idle',
-  listening:    'idle',
-  thinking:     'sneak_pose',
-  talking:      'agree',
-  greeting:     'walk',
-  dance:        'SambaDance',
-  music:        'SambaDance',
-  notification: 'agree',
-  alarm:        'run',
-  vk:           'walk',
-  youtube:      'walk',
-  telegram:     'walk',
-  happy:        'agree',
-  sad:          'sad_pose',
-  surprised:    'agree',
-  stretch:      'sad_pose',
+  // robot / aika_model
+  idle:         ['Idle',       'idle',    'Survey'],
+  listening:    ['Idle',       'idle'],
+  thinking:     ['sneak_pose', 'No',      'Idle'],
+  talking:      ['Yes',        'agree',   'Idle'],
+  greeting:     ['WaveHello',  'agree',   'Walk'],
+  dance:        ['Dance',      'SambaDance', 'Idle'],
+  music:        ['Dance',      'SambaDance', 'Idle'],
+  notification: ['Yes',        'agree',   'Jump'],
+  alarm:        ['Jump',       'run',     'Run'],
+  vk:           ['WalkForward','walk',    'Walk'],
+  youtube:      ['WalkForward','walk',    'Walk'],
+  telegram:     ['Yes',        'agree',   'Idle'],
+  happy:        ['ThumbsUp',   'agree',   'Jump'],
+  sad:          ['sad_pose',   'Death',   'Idle'],
+  surprised:    ['Jump',       'Yes',     'Idle'],
+  stretch:      ['sneak_pose', 'Idle'],
 };
 
-// Цвет свечения по состоянию
-var GLOW_MAP = {
-  idle:         '0 0 18px 4px rgba(0,176,255,0.25)',
-  listening:    '0 0 28px 8px rgba(0,176,255,0.55)',
-  thinking:     '0 0 22px 6px rgba(206,147,216,0.5)',
-  talking:      '0 0 28px 8px rgba(0,230,118,0.5)',
-  greeting:     '0 0 28px 8px rgba(0,230,118,0.5)',
-  dance:        '0 0 32px 10px rgba(255,64,129,0.6)',
-  music:        '0 0 32px 10px rgba(255,64,129,0.6)',
-  notification: '0 0 26px 8px rgba(255,215,64,0.55)',
-  alarm:        '0 0 30px 10px rgba(255,82,82,0.6)',
-  sad:          '0 0 18px 5px rgba(120,144,156,0.4)',
-  happy:        '0 0 28px 8px rgba(0,230,118,0.5)',
+// Состояния которые сбрасываются к idle через N секунд
+var ONE_SHOT = {
+  greeting:4000, notification:4000, alarm:5000,
+  happy:4000, surprised:3000, telegram:4000,
+  vk:4000, youtube:4000
 };
 
-function getAnim(state) {
-  return ANIM_MAP[state] || 'idle';
-}
+// Доступные анимации в текущей модели
+var availableAnims = [];
 
-function setGlow(state) {
-  glow.style.boxShadow = GLOW_MAP[state] || GLOW_MAP['idle'];
-}
-
-function playState(state) {
-  if (!mv) return;
-  currentState = state;
-  clearTimeout(danceTimer);
-
-  var animName = getAnim(state);
+mv.addEventListener('load', function() {
+  // Собираем доступные анимации
+  availableAnims = [];
   try {
-    mv.animationName = animName;
-    mv.play({ repetitions: Infinity });
+    var anims = mv.availableAnimations;
+    if (anims) availableAnims = Array.from(anims);
   } catch(e) {}
+  try { AndroidBridge.onModelLoaded(); } catch(e) {}
+  playState(currentState);
+});
 
-  setGlow(state);
-
-  // Авто-сброс к idle для одноразовых реакций
-  var oneShot = ['notification','alarm','greeting','happy','surprised','telegram','vk','youtube'];
-  if (oneShot.indexOf(state) >= 0) {
-    danceTimer = setTimeout(function() {
-      playState('idle');
-    }, 4000);
-  }
-}
-
-// Тап по модели — greeting
 mv.addEventListener('click', function() {
   playState('greeting');
   try { AndroidBridge.onTap(); } catch(e) {}
 });
 
-// Ждём загрузки модели
-mv.addEventListener('load', function() {
-  try { AndroidBridge.onModelLoaded(); } catch(e) {}
-  playState(currentState);
-});
+function findAnim(state) {
+  var candidates = ANIM_MAP[state] || ['Idle', 'idle'];
+  for (var i = 0; i < candidates.length; i++) {
+    if (availableAnims.indexOf(candidates[i]) >= 0) return candidates[i];
+  }
+  // Фолбэк — первая доступная
+  return availableAnims[0] || 'Idle';
+}
 
-// Public API — те же методы что и у live2d_viewer
-window.setAikaState = function(state) {
-  playState(state || 'idle');
-};
-window.loadCustomModel = function(url) {
-  mv.src = url;
-};
-window.switchModel = function(p) {
-  mv.src = './' + p;
-};
+function playState(state) {
+  clearTimeout(resetTimer);
+  currentState = state;
+  var anim = findAnim(state);
+  try {
+    mv.animationName = anim;
+    mv.play({ repetitions: Infinity });
+  } catch(e) {}
+  // Авто-сброс
+  if (ONE_SHOT[state]) {
+    resetTimer = setTimeout(function() { playState('idle'); }, ONE_SHOT[state]);
+  }
+}
+
+// Public API
+window.setAikaState = function(state) { playState(state || 'idle'); };
+window.loadCustomModel = function(url) { availableAnims = []; mv.src = url; };
+window.switchModel = function(p) { availableAnims = []; mv.src = './' + p; };
 </script>
 </body>
 </html>
