@@ -1,3 +1,4 @@
+import 'aika_feelings_service.dart';
 import 'personality_service.dart';
 import 'habit_memory_service.dart';
 import 'assistant_mood_service.dart';
