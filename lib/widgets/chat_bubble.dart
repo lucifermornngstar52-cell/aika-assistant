@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
@@ -23,7 +24,18 @@ class ChatBubble extends StatelessWidget {
           if (!isUser) _buildAikaIcon(),
           const SizedBox(width: 8),
           Flexible(
-            child: Container(
+            child: GestureDetector(
+              onLongPress: () {
+                Clipboard.setData(ClipboardData(text: _cleanText(message.content)));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Скопировано'),
+                    duration: Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: isUser ? AikaTheme.userBubble : AikaTheme.aikaBubble,
@@ -59,6 +71,7 @@ class ChatBubble extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
             ),
           ),
           const SizedBox(width: 8),
