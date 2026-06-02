@@ -501,7 +501,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _onWakeWordDetected() async {
     _resetIdleTimer();
-    // Приостанавливаем wake word пока обрабатываем команду
+    // Приостанавливаем wake word — пользователь будет говорить
+    _wakeWordService.setDialogOpen(true);
     await _wakeWordService.pause();
     await OverlayService().show(state: 'listening');
     await _speak('Да?');
@@ -545,7 +546,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         OverlayService().asyncState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
         OverlayService().asyncState('idle');
-        // Возобновляем wake word после команды
+        // Диалог закрыт — wake word возобновляется
+        _wakeWordService.setDialogOpen(false);
         if (_wakeWordEnabled) await _wakeWordService.resume();
       },
 
@@ -659,9 +661,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _ttsCompleter?.complete();
     _ttsCompleter = null;
 
-    // Пауза wake word на время речи
+    // Пауза wake word на время речи ассистента
     final wasEnabled = _wakeWordEnabled;
     if (wasEnabled) await _wakeWordService.pause();
+    _wakeWordService.setDialogOpen(false); // речь ассистента — не диалог пользователя
 
     // ── Пробуем EdgeTTS (Microsoft Neural Voice) ──
     if (_useEdgeTts) {
