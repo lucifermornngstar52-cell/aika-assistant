@@ -25,7 +25,10 @@ class Model3D {
 }
 
 final _builtin3DModels = [
-  Model3D(id: 'aika_glb', name: 'Aika 3D', assetPath: 'models/aika_model.glb', emoji: '🤖'),
+  Model3D(id: 'aika_glb',   name: 'Aika',     assetPath: 'models/aika_model.glb', emoji: '🤖'),
+  Model3D(id: 'robot_glb',  name: 'Robot',    assetPath: 'models/robot.glb',      emoji: '🦾'),
+  Model3D(id: 'xbot_glb',   name: 'X-Bot',    assetPath: 'models/xbot.glb',       emoji: '🧬'),
+  Model3D(id: 'soldier_glb',name: 'Soldier',  assetPath: 'models/soldier.glb',    emoji: '⚔️'),
 ];
 
 final _builtinModels = [
@@ -223,6 +226,32 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
                     onTap: () async {
                       setState(() => _selectedId = m.id);
                       await _save(m.id);
+                    },
+                  )),
+
+                  const SizedBox(height: 20),
+
+                  // ── 3D GLB модели ──────────────────────────────────────
+                  Text('3D МОДЕЛИ (GLB)',
+                    style: TextStyle(color: Color(0xFFFF80AB), fontSize: 11,
+                        letterSpacing: 2, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('Анимации привязаны к состояниям Айки',
+                    style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const SizedBox(height: 10),
+                  ..._builtin3DModels.map((m) => _buildModelCard(
+                    id: m.id,
+                    emoji: m.emoji,
+                    name: m.name,
+                    desc: '3D GLB • встроенная',
+                    onTap: () async {
+                      setState(() { _selectedId = m.id; _mode = '3d'; });
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('overlay_mode', '3d');
+                      await _overlaySvc.setMode('3d');
+                      await _save(m.id, customPath: m.assetPath);
+                      // Переключаем модель в оверлее
+                      await _overlaySvc.switchModel(m.assetPath);
                     },
                   )),
 
