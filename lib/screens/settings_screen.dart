@@ -5,6 +5,7 @@ import 'settings_voice_screen.dart';
 import 'model_picker_screen.dart';
 import 'settings_background_screen.dart';
 import 'personality_screen.dart';
+import 'chat_history_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -60,6 +61,13 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.landscape_outlined,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsBackgroundScreen())),
+          ),
+          _SettingsCard(
+            title: 'История чата',
+            subtitle: 'Все прошлые сообщения, очистка',
+            icon: Icons.history,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ChatHistoryScreen())),
           ),
           _SettingsCard(
             title: 'Общие',
