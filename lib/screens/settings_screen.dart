@@ -6,6 +6,7 @@ import 'model_picker_screen.dart';
 import 'settings_background_screen.dart';
 import 'personality_screen.dart';
 import 'chat_history_screen.dart';
+import 'settings_overlay_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -34,6 +35,13 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
           const SizedBox(height: 8),
+          _SettingsCard(
+            title: 'Оверлей',
+            subtitle: 'Размер модели, перетаскивание, прозрачность',
+            icon: Icons.picture_in_picture_alt_rounded,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SettingsOverlayScreen())),
+          ),
           _SettingsCard(
             title: 'Персонаж',
             subtitle: 'Имя ассистента, личность и характер',
