@@ -45,7 +45,7 @@ dependencies:
   file_picker: ^8.1.2
 
   # 3D Model viewer
-  model_viewer_plus: ^1.7.0
+  model_viewer_plus: ^1.6.1
 
   # Timezone
   timezone: ^0.9.4
