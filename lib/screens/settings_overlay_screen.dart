@@ -20,7 +20,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
 
   static const _accent = Color(0xFF00E5FF);
   static const _bg     = Color(0xFF0F0F0F);
-  static const _card   = Color(0xFF1C1C1E);
+  static const _cardBg = Color(0xFF1C1C1E);
 
   static const _models = [
     {'id': 'hiyori', 'label': '🌸 Hiyori'},
@@ -302,7 +302,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
-        color: _card,
+        color: _cardBg,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -332,7 +332,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(18)),
+      decoration: BoxDecoration(color: _cardBg, borderRadius: BorderRadius.circular(18)),
       child: Row(children: [
         Icon(icon, color: _accent, size: 20),
         const SizedBox(width: 12),
