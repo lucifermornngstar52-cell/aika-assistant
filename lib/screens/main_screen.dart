@@ -759,8 +759,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
     final greeting = _userName.isNotEmpty
-        ? "Привет, \$_userName! Я \$_assistantName. Чем могу помочь?"
-        : "Привет! Я \$_assistantName. Чем могу помочь?";
+        ? "Привет, $_userName! Я $_assistantName. Чем могу помочь?"
+        : "Привет! Я $_assistantName. Чем могу помочь?";
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       role: MessageRole.aika,
@@ -1758,7 +1758,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           ),
                           if (_userName.isNotEmpty)
                             Text(
-                              "Привет, \$_userName",
+                              "Привет, $_userName",
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.55),
                                 fontSize: 11,
@@ -2083,7 +2083,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 16),
           Text(
-            _userName.isNotEmpty ? "Привет, \$_userName!" : "Привет!",
+            _userName.isNotEmpty ? "Привет, $_userName!" : "Привет!",
             style: TextStyle(color: AikaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
