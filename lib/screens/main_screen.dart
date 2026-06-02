@@ -1870,59 +1870,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 
-  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
-    return PopupMenuItem<String>(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: AikaTheme.neonBlue),
-          const SizedBox(width: 10),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            _userName.isNotEmpty ? 'Привет, \$_userName!' : 'Привет!',
-            style: const TextStyle(color: Colors.white70, fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Я \$_assistantName. Чем могу помочь?',
-            style: TextStyle(color: Colors.white38, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _quickChip(String label, IconData icon) {
-    return GestureDetector(
-      onTap: () => _sendMessage(label),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AikaTheme.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: AikaTheme.neonBlue),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
 
   PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
     return PopupMenuItem<String>(
