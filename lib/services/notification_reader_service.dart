@@ -1,20 +1,25 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'smart_notifications_service.dart';
 
-/// Сервис чтения уведомлений вслух.
-/// Когда приходит уведомление — Айка озвучивает кто написал и что.
+/// Сервис чтения уведомлений вслух + умный ответ через AI
 class NotificationReaderService {
-  static const _keyEnabled       = 'notif_reader_enabled';
-  static const _keyApps          = 'notif_reader_apps';
-  static const _keyMinInterval   = 'notif_reader_interval';
+  static const _keyEnabled     = 'notif_reader_enabled';
+  static const _keyApps        = 'notif_reader_apps';
+  static const _keyAutoReply   = 'notif_auto_reply_prompt'; // включена ли подсказка ответить
 
-  // Callback: возвращает строку которую нужно озвучить
   static Future<String?> Function(String text)? onSpeak;
+
+  // Callback: предложить ответить на сообщение
+  // Параметры: appName, senderName, messageText
+  // Должен вернуть текст предложенного ответа или null
+  static Future<String?> Function(String appName, String sender, String text)? onSuggestReply;
+
+  // Callback: когда получено новое важное уведомление — обновить оверлей
+  static void Function(String overlayState)? onOverlayState;
 
   static DateTime? _lastSpoken;
   static const _minGap = Duration(seconds: 3);
 
-  // Человекочитаемые имена приложений
   static const Map<String, String> appNames = {
     'org.telegram.messenger':      'Telegram',
     'org.telegram.messenger.web':  'Telegram',
@@ -35,13 +40,21 @@ class NotificationReaderService {
     'com.skype.raider':            'Skype',
   };
 
-  // По умолчанию слушаем эти приложения
   static const List<String> defaultApps = [
     'org.telegram.messenger',
     'com.whatsapp',
     'com.vkontakte.android',
     'com.instagram.android',
     'com.discord',
+  ];
+
+  // Список приложений из которых предлагаем ответить
+  static const List<String> replyApps = [
+    'org.telegram.messenger',
+    'com.whatsapp',
+    'com.vkontakte.android',
+    'com.instagram.android',
+    'com.viber.voip',
   ];
 
   static Future<bool> isEnabled() async {
@@ -56,8 +69,7 @@ class NotificationReaderService {
 
   static Future<List<String>> getEnabledApps() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList(_keyApps);
-    return saved ?? defaultApps;
+    return prefs.getStringList(_keyApps) ?? defaultApps;
   }
 
   static Future<void> setEnabledApps(List<String> apps) async {
@@ -65,7 +77,7 @@ class NotificationReaderService {
     await prefs.setStringList(_keyApps, apps);
   }
 
-  /// Вызывается когда пришло новое уведомление
+  /// Основной обработчик входящего уведомления
   static Future<void> onNotification(Map<String, String> notif) async {
     if (!await isEnabled()) return;
 
@@ -75,42 +87,47 @@ class NotificationReaderService {
 
     if (pkg.isEmpty || title.isEmpty || text.isEmpty) return;
 
-    // Проверяем включено ли для этого приложения
     final enabledApps = await getEnabledApps();
     if (!enabledApps.contains(pkg)) return;
 
-    // Антиспам — не чаще раза в 3 секунды
     final now = DateTime.now();
     if (_lastSpoken != null && now.difference(_lastSpoken!) < _minGap) return;
     _lastSpoken = now;
 
     final appName = appNames[pkg] ?? _extractAppName(pkg);
 
-    // ── Умная фильтрация уведомлений ─────────────────────────────────────
+    // Умная фильтрация
     final important = SmartNotificationsService.isImportant(
       packageName: pkg, title: title, text: text);
 
     if (!important) {
-      // Неважное — копим в буфер для брифинга, не читаем вслух
       await SmartNotificationsService.addToBuffer(
         appName: appName, title: title, text: text);
       return;
     }
 
-    // Формируем фразу для озвучки
+    // Формируем фразу
     String phrase;
     if (title.isNotEmpty && title != appName) {
-      phrase = '$appName: $title написал: $text';
+      phrase = '$appName: $title — $text';
     } else {
       phrase = '$appName: $text';
     }
+    if (phrase.length > 200) phrase = '${phrase.substring(0, 197)}...';
 
-    // Обрезаем длинные сообщения
-    if (phrase.length > 200) {
-      phrase = '\${phrase.substring(0, 197)}...';
-    }
+    // Обновляем оверлей → notification
+    onOverlayState?.call('notification');
 
+    // Озвучиваем
     await onSpeak?.call(phrase);
+
+    // Предлагаем ответить если это мессенджер
+    if (replyApps.contains(pkg) && onSuggestReply != null) {
+      // Небольшая пауза перед предложением ответа
+      await Future.delayed(const Duration(milliseconds: 500));
+      final senderName = title.isNotEmpty ? title : appName;
+      await onSuggestReply?.call(appName, senderName, text);
+    }
   }
 
   static String _extractAppName(String pkg) {
