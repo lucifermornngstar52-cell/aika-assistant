@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live2d_widget.dart';
+import '../widgets/aika_3d_avatar.dart';
 import '../services/overlay_service.dart';
 
 /// Встроенные модели из assets/models/
@@ -408,7 +409,23 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     );
   }
 
+  bool get _is3DSelected {
+    return _builtin3DModels.any((m) => m.id == _selectedId);
+  }
+
   Widget _buildPreviewLive2D() {
+    if (_is3DSelected) {
+      // Превью 3D модели через model_viewer_plus
+      final model3d = _builtin3DModels.firstWhere(
+        (m) => m.id == _selectedId,
+        orElse: () => _builtin3DModels.first,
+      );
+      return Aika3DAvatar(
+        state: _previewState,
+        width: double.infinity,
+        height: 260,
+      );
+    }
     if (_selectedId == 'custom' && _customModelPath != null) {
       return Live2DWidget(
         width: double.infinity,
