@@ -2,18 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Live2D виджет через InAppWebView.
-/// Поддерживает встроенные модели (из assets) и кастомные (с телефона).
+/// Виджет аватара через InAppWebView.
+/// Поддерживает Live2D (.model3.json) и 3D GLB модели.
 class Live2DWidget extends StatefulWidget {
   final double width;
   final double height;
-  final String state; // idle, listening, thinking, talking, greeting, dance
-
-  /// Путь к встроенной модели внутри assets/ (напр. 'models/Hiyori/Hiyori.model3.json')
-  /// Если null — берётся из SharedPreferences или дефолтная Hiyori
+  final String state;
   final String? builtinModelAsset;
-
-  /// Абсолютный путь к кастомной модели на устройстве
   final String? customModelPath;
 
   const Live2DWidget({
@@ -34,17 +29,32 @@ class _Live2DWidgetState extends State<Live2DWidget> {
   String _lastState = '';
   bool _ready = false;
 
-  // Сохранённые настройки модели
-  String _modelId = 'hiyori';
+  String _modelId = 'natori';
+  String _mode = 'live2d'; // 'live2d' | '3d'
   String? _savedCustomPath;
 
-  // Маппинг id -> путь внутри assets/models/
-  static const _builtinPaths = {
+  static const _builtinLive2DPaths = {
     'natori': 'models/Natori/Natori.model3.json',
     'ren':    'models/Ren/Ren.model3.json',
     'hiyori': 'models/Hiyori/Hiyori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
   };
+
+  static const _builtin3DPaths = {
+    'anime_girl':  'models/anime_girl.glb',
+    'michelle':    'models/michelle.glb',
+    'aika_glb':    'models/aika_model.glb',
+    'robot_glb':   'models/robot.glb',
+    'xbot_glb':    'models/xbot.glb',
+    'soldier_glb': 'models/soldier.glb',
+  };
+
+  bool get _is3DModel {
+    if (_mode == '3d') return true;
+    if (_builtin3DPaths.containsKey(_modelId)) return true;
+    final asset = widget.builtinModelAsset ?? '';
+    return asset.endsWith('.glb');
+  }
 
   @override
   void initState() {
@@ -57,6 +67,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
     if (mounted) {
       setState(() {
         _modelId = prefs.getString('live2d_model_id') ?? 'natori';
+        _mode = prefs.getString('overlay_mode') ?? 'live2d';
         _savedCustomPath = prefs.getString('custom_model_path');
       });
     }
@@ -76,19 +87,28 @@ class _Live2DWidgetState extends State<Live2DWidget> {
   }
 
   String _buildInitJS() {
-    // Определяем какую модель загружать
-    final customPath = widget.customModelPath ?? (_modelId == 'custom' ? _savedCustomPath : null);
-    final builtinAsset = widget.builtinModelAsset
-        ?? _builtinPaths[_modelId]
-        ?? _builtinPaths['hiyori']!;
-
-    if (customPath != null) {
-      return "window.loadCustomModel('file://$customPath');";
+    if (_is3DModel) {
+      // 3D режим — switchModel
+      final path = widget.builtinModelAsset
+          ?? _builtin3DPaths[_modelId]
+          ?? _builtin3DPaths['aika_glb']!;
+      return "window.switchModel('$path'); window.setAikaState('${widget.state}');";
     } else {
-      // Встроенная модель — меняем через JS переменную
-      return "window.switchBuiltinModel('$builtinAsset');";
+      // Live2D режим
+      final customPath = widget.customModelPath
+          ?? (_modelId == 'custom' ? _savedCustomPath : null);
+      if (customPath != null) {
+        return "window.loadCustomModel('file://$customPath');";
+      }
+      final assetPath = widget.builtinModelAsset
+          ?? _builtinLive2DPaths[_modelId]
+          ?? _builtinLive2DPaths['natori']!;
+      return "window.switchBuiltinModel('$assetPath');";
     }
   }
+
+  String get _htmlFile =>
+      _is3DModel ? 'assets/3d_viewer.html' : 'assets/live2d_viewer.html';
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +116,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
       width: widget.width,
       height: widget.height,
       child: InAppWebView(
-        initialFile: 'assets/live2d_viewer.html',
+        initialFile: _htmlFile,
         initialSettings: InAppWebViewSettings(
           transparentBackground: true,
           javaScriptEnabled: true,
@@ -106,6 +126,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
           mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
           useHybridComposition: true,
           disableDefaultErrorPage: true,
+          allowContentAccess: true,
         ),
         onWebViewCreated: (ctrl) {
           _ctrl = ctrl;
@@ -115,7 +136,6 @@ class _Live2DWidgetState extends State<Live2DWidget> {
               final msg = args.isNotEmpty ? args[0].toString() : '';
               if (msg == 'modelLoaded') {
                 setState(() => _ready = true);
-                // Устанавливаем начальное состояние после загрузки
                 Future.delayed(const Duration(milliseconds: 300), () {
                   _sendState(widget.state);
                 });
@@ -124,11 +144,14 @@ class _Live2DWidgetState extends State<Live2DWidget> {
           );
         },
         onLoadStop: (ctrl, url) {
-          Future.delayed(const Duration(milliseconds: 800), () {
-            // Сначала переключаем модель если нужно
-            final initJs = _buildInitJS();
-            ctrl.evaluateJavascript(source: initJs);
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted) {
+              ctrl.evaluateJavascript(source: _buildInitJS());
+            }
           });
+        },
+        onReceivedError: (ctrl, req, err) {
+          debugPrint('[Live2DWidget] WebView error: ${err.description}');
         },
       ),
     );
