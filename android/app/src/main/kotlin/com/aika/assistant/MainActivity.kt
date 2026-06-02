@@ -24,6 +24,8 @@ class MainActivity : FlutterActivity() {
         private const val SCREEN_CHANNEL        = "com.aika.assistant/screen"
         private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
         private const val AUDIO_CHANNEL         = "aika/audio"
+        private const val MESSENGER_CHANNEL     = "com.aika.assistant/messenger"
+        private const val MEDIA_CHANNEL         = "com.aika.assistant/media"
     }
 
     // EventChannel sink для отправки событий смены приложений во Flutter
@@ -49,6 +51,37 @@ class MainActivity : FlutterActivity() {
             registerReceiver(screenEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(screenEventReceiver, filter)
+        }
+    }
+
+    private fun sendMediaKey(keyCode: Int) {
+        val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+        audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private fun launchSpotifySearch(query: String) {
+        try {
+            // Пробуем открыть Spotify через deep link с поиском
+            val spotifyPkg = "com.spotify.music"
+            val intent = if (query.isNotEmpty()) {
+                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    data = android.net.Uri.parse("spotify:search:${query}")
+                    setPackage(spotifyPkg)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            } else {
+                packageManager.getLaunchIntentForPackage(spotifyPkg)?.apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            if (intent != null) startActivity(intent)
+            // После запуска нажимаем Play через медиаключ
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+            }, 2000)
+        } catch (e: Exception) {
+            Log.e("Aika", "launchSpotifySearch failed: ${e.message}")
         }
     }
 
@@ -371,6 +404,63 @@ class MainActivity : FlutterActivity() {
             }
 
         // ── 3. Audio channel ──────────────────────────────────────────────────
+        // ── 6. Messenger channel — отправка сообщений через Accessibility ──────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MESSENGER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                val svc = AikaAccessibilityService.instance
+                when (call.method) {
+                    "sendMessage" -> {
+                        val app     = call.argument<String>("app")     ?: ""
+                        val contact = call.argument<String>("contact") ?: ""
+                        val message = call.argument<String>("message") ?: ""
+                        if (svc == null) {
+                            result.success("NO_ACCESSIBILITY: включи Accessibility в настройках")
+                            return@setMethodCallHandler
+                        }
+                        if (app.isEmpty() || contact.isEmpty() || message.isEmpty()) {
+                            result.success("ERROR: app/contact/message не указаны")
+                            return@setMethodCallHandler
+                        }
+                        svc.startSendMessage(app, contact, message)
+                        result.success("Отправляю сообщение для $contact...")
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── 7. Media channel — управление музыкой ──────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "playPause" -> {
+                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                        result.success(true)
+                    }
+                    "next" -> {
+                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+                        result.success(true)
+                    }
+                    "prev" -> {
+                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+                        result.success(true)
+                    }
+                    "play" -> {
+                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+                        result.success(true)
+                    }
+                    "pause" -> {
+                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)
+                        result.success(true)
+                    }
+                    "launchSpotifyAndPlay" -> {
+                        val query = call.argument<String>("query") ?: ""
+                        launchSpotifySearch(query)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
