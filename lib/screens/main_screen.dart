@@ -1585,9 +1585,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           // ── Аниме аватар на весь экран ──────────────────────────────────
           Positioned.fill(
             child: AikaAvatar(
-              state: _avatarStateString,
-              width: double.infinity,
-              height: double.infinity,
+              state: _avatarState,
+              size: MediaQuery.of(context).size.width,
             ),
           ),
 
