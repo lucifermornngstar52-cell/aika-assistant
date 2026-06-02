@@ -136,6 +136,15 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "setDragEnabled" -> {
+                        val enabled = call.argument<Boolean>("enabled") ?: true
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_DRAG_ENABLED
+                            putExtra(AikaOverlayService.EXTRA_DRAG_ENABLED, enabled)
+                        })
+                        result.success(null)
+                    }
+
                     "switchModel" -> {
                         val path = call.argument<String>("path") ?: "models/Hiyori/Hiyori.model3.json"
                         startService(Intent(this, AikaOverlayService::class.java).apply {
