@@ -1,6 +1,9 @@
 package com.aika.assistant
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -8,21 +11,50 @@ import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import android.util.Log
 
 class MainActivity : FlutterActivity() {
 
     companion object {
-        private const val OVERLAY_CHANNEL      = "com.aika.assistant/overlay"
+        private const val OVERLAY_CHANNEL       = "com.aika.assistant/overlay"
         private const val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
-        private const val AUDIO_CHANNEL        = "aika/audio"
+        private const val LAUNCHER_CHANNEL      = "com.aika.assistant/launcher"
+        private const val SCREEN_CHANNEL        = "com.aika.assistant/screen"
+        private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
+        private const val AUDIO_CHANNEL         = "aika/audio"
+    }
+
+    // EventChannel sink для отправки событий смены приложений во Flutter
+    private var screenEventSink: EventChannel.EventSink? = null
+
+    // BroadcastReceiver — получает события от AikaAccessibilityService
+    private val screenEventReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != AikaAccessibilityService.ACTION_SCREEN_EVENT) return
+            val pkg   = intent.getStringExtra("package") ?: return
+            val label = intent.getStringExtra("label")   ?: ""
+            screenEventSink?.success(mapOf("package" to pkg, "label" to label))
+        }
     }
 
     // ── Автостарт overlay при запуске приложения ─────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         autoStartOverlay()
+        // Регистрируем ресивер событий смены приложений
+        val filter = IntentFilter(AikaAccessibilityService.ACTION_SCREEN_EVENT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(screenEventReceiver, filter)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(screenEventReceiver) } catch (_: Exception) {}
     }
 
     override fun onResume() {
@@ -157,6 +189,68 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // ── 3. App launcher channel ─────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LAUNCHER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "launchApp" -> {
+                        val pkg = call.argument<String>("package") ?: ""
+                        if (pkg.isEmpty()) { result.success(false); return@setMethodCallHandler }
+                        try {
+                            val intent = packageManager.getLaunchIntentForPackage(pkg)
+                            if (intent != null) {
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(intent)
+                                result.success(true)
+                            } else {
+                                result.success(false)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Aika", "launchApp failed: ${e.message}")
+                            result.success(false)
+                        }
+                    }
+                    "isInstalled" -> {
+                        val pkg = call.argument<String>("package") ?: ""
+                        val installed = try {
+                            packageManager.getApplicationInfo(pkg, 0)
+                            true
+                        } catch (_: Exception) { false }
+                        result.success(installed)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── 4. Screen accessibility channel ──────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isAccessibilityEnabled" -> {
+                        val enabled = AikaAccessibilityService.instance != null
+                        result.success(enabled)
+                    }
+                    "openAccessibilitySettings" -> {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── 5. Screen events EventChannel (app switch notifications) ──────────
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    screenEventSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    screenEventSink = null
+                }
+            })
 
         // ── 2. Screen reader channel ──────────────────────────────────────────
         // Все вызовы делегируются в AikaAccessibilityService.instance
