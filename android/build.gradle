@@ -23,6 +23,15 @@ allprojects {
         google()
         mavenCentral()
     }
+    // Фиксируем версию Kotlin чтобы транзитивные зависимости не тянули более новую
+    configurations.all {
+        resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+            if (details.requested.group == 'org.jetbrains.kotlin') {
+                details.useVersion '2.1.0'
+                details.because 'Pin Kotlin to match kotlin-gradle-plugin version'
+            }
+        }
+    }
 }
 
 // Fix for plugins that rely on flutter.compileSdkVersion
