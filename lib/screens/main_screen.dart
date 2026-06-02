@@ -111,6 +111,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _isDancing = false;
   bool _isStretching = false;
   Timer? _musicTimer;
+
+  // ── Флаги показа диалогов разрешений (показываем ОДИН раз за сессию) ─────
+  bool _overlayDialogShown      = false;
+  bool _accessibilityDialogShown = false;
+  bool _notifDialogShown        = false;
   Timer? _idleTimer;      // Таймер бездействия → stretch
   String _assistantName = 'Aika';
   String _userName = '';
@@ -271,10 +276,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() => _hasOverlayPermission = has);
     }
     if (has && mounted) {
+      // Небольшая задержка чтобы FlutterEngine overlay успел инициализироваться
+      await Future.delayed(const Duration(milliseconds: 800));
       await OverlayService().show(state: 'idle');
     }
-    if (!has && mounted) {
-      Future.delayed(const Duration(seconds: 2), () {
+    // Диалог показываем ОДИН раз за сессию, не при каждом resume
+    if (!has && mounted && !_overlayDialogShown) {
+      _overlayDialogShown = true;
+      Future.delayed(const Duration(seconds: 3), () {
         if (mounted && !_hasOverlayPermission) _showOverlayPermissionDialog();
       });
     }
@@ -316,9 +325,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         },
       );
     } else {
-      Future.delayed(const Duration(seconds: 4), () {
-        if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
-      });
+      // Диалог показываем ОДИН раз за сессию
+      if (!_accessibilityDialogShown) {
+        _accessibilityDialogShown = true;
+        Future.delayed(const Duration(seconds: 8), () {
+          if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
+        });
+      }
     }
   }
 
@@ -353,10 +366,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         },
       );
     } else {
-      // Попросим через 6 секунд если нет разрешения
-      Future.delayed(const Duration(seconds: 6), () {
-        if (mounted && !_hasNotifPermission) _showNotifPermissionDialog();
-      });
+      // Диалог ОДИН раз, через 12 сек (после overlay и accessibility диалогов)
+      if (!_notifDialogShown) {
+        _notifDialogShown = true;
+        Future.delayed(const Duration(seconds: 12), () {
+          if (mounted && !_hasNotifPermission) _showNotifPermissionDialog();
+        });
+      }
     }
   }
 
