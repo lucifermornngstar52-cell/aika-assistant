@@ -24,6 +24,7 @@ import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
 import '../widgets/live2d_widget.dart';
+import '../widgets/aika_3d_avatar.dart';
 import 'settings_screen.dart';
 import 'personality_screen.dart';
 import 'model_picker_screen.dart';
@@ -1944,6 +1945,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   _SideBtn(icon: Icons.mic_outlined,          onTap: _toggleListening, active: _isListening),
                   _SideBtn(icon: Icons.nightlight_round,      onTap: () => _themeSwitcher.toggle()),
                   _SideBtn(icon: Icons.face_outlined,         onTap: _showOverlayPermissionDialog),
+                  _SideBtn(icon: Icons.view_in_ar,             onTap: _openModelPicker),
                   _SideBtn(icon: Icons.settings_outlined,     onTap: _openSettings),
                   _SideBtn(icon: Icons.delete_outline,        onTap: () {
                     _memoryService.clearHistory();
