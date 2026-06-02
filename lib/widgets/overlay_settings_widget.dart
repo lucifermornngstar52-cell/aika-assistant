@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/overlay_service.dart';
 
 class OverlaySettingsWidget extends StatefulWidget {
@@ -10,138 +11,173 @@ class OverlaySettingsWidget extends StatefulWidget {
 class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
   final _svc = OverlayService();
 
-  double _size    = 170.0;
+  double _size    = 200.0;
   double _opacity = 1.0;
   String _side    = 'left';
-  bool   _mirror  = false;
+  String _modelId = 'hiyori';
 
-  static const _anims = [
-    {'id': 'idle',       'label': '🧍 Idle'},
-    {'id': 'SambaDance', 'label': '💃 Самба'},
-    {'id': 'agree',      'label': '👍 Кивок'},
-    {'id': 'headShake',  'label': '🤔 Отказ'},
-    {'id': 'walk',       'label': '🚶 Ходьба'},
-    {'id': 'run',        'label': '🏃 Бег'},
-    {'id': 'sad_pose',   'label': '😢 Грусть'},
-    {'id': 'sneak_pose', 'label': '🥷 Тихо'},
+  static const _models = [
+    {'id': 'hiyori', 'label': '🌸 Hiyori'},
+    {'id': 'natori', 'label': '🌟 Natori'},
+    {'id': 'haru',   'label': '⚡ Haru'},
+    {'id': 'ren',    'label': '🔥 Ren'},
+  ];
+
+  static const _modelPaths = {
+    'hiyori': 'models/Hiyori/Hiyori.model3.json',
+    'natori': 'models/Natori/Natori.model3.json',
+    'haru':   'models/Haru/Haru.model3.json',
+    'ren':    'models/Ren/Ren.model3.json',
+  };
+
+  static const _states = [
+    {'id': 'idle',      'label': '😴 Idle'},
+    {'id': 'greeting',  'label': '👋 Привет'},
+    {'id': 'thinking',  'label': '🤔 Думает'},
+    {'id': 'listening', 'label': '👂 Слушает'},
+    {'id': 'talking',   'label': '💬 Говорит'},
+    {'id': 'dance',     'label': '💃 Танец'},
   ];
 
   @override
   void initState() {
     super.initState();
-    _size    = _svc.sizeDp;
-    _opacity = _svc.opacity;
-    _side    = _svc.side;
-    _mirror  = _svc.mirror;
+    _load();
+  }
+
+  Future<void> _load() async {
+    await _svc.init();
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() {
+      _size    = _svc.sizeDp;
+      _opacity = _svc.opacity;
+      _side    = _svc.side;
+      _modelId = prefs.getString('overlay_model_id') ?? 'hiyori';
+    });
+  }
+
+  Future<void> _switchModel(String id) async {
+    setState(() => _modelId = id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('overlay_model_id', id);
+    final path = _modelPaths[id] ?? _modelPaths['hiyori']!;
+    // Отправляем команду оверлею переключить модель
+    await _svc.switchModel(path);
   }
 
   @override
   Widget build(BuildContext context) {
+    const accent = Color(0xFF00E5FF);
+    const bg     = Color(0xFF0D1117);
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1117),
+        color: bg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.2)),
+        border: Border.all(color: accent.withOpacity(0.2)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Заголовок
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
             child: Row(children: const [
-              Text('🤖', style: TextStyle(fontSize: 20)),
+              Text('🤖', style: TextStyle(fontSize: 18)),
               SizedBox(width: 8),
-              Text('Настройки 3D модели',
-                  style: TextStyle(color: Color(0xFF00E5FF),
-                      fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Live2D оверлей',
+                style: TextStyle(color: accent, fontSize: 15, fontWeight: FontWeight.bold)),
             ]),
           ),
-          const Divider(color: Colors.white12),
+          const Divider(color: Colors.white12, height: 1),
 
-          _buildSection(
-            '📐 Размер: \${_size.round()} dp',
+          // Размер
+          _section(
+            '📐 Размер: ${_size.round()} dp',
             Slider(
-              value: _size, min: 80, max: 350, divisions: 27,
-              activeColor: const Color(0xFF00E5FF),
-              inactiveColor: Colors.white12,
+              value: _size, min: 100, max: 400, divisions: 30,
+              activeColor: accent, inactiveColor: Colors.white12,
               onChanged: (v) => setState(() => _size = v),
-              onChangeEnd: (v) async { setState(() => _size = v); await _svc.setSize(v); },
+              onChangeEnd: (v) async {
+                setState(() => _size = v);
+                await _svc.setSize(v);
+              },
             ),
           ),
 
-          _buildSection(
-            '👁 Прозрачность: \${(_opacity * 100).round()}%',
+          // Прозрачность
+          _section(
+            '👁 Прозрачность: ${(_opacity * 100).round()}%',
             Slider(
               value: _opacity, min: 0.2, max: 1.0, divisions: 16,
-              activeColor: const Color(0xFF00E5FF),
-              inactiveColor: Colors.white12,
+              activeColor: accent, inactiveColor: Colors.white12,
               onChanged: (v) => setState(() => _opacity = v),
-              onChangeEnd: (v) async { setState(() => _opacity = v); await _svc.setOpacity(v); },
+              onChangeEnd: (v) async {
+                setState(() => _opacity = v);
+                await _svc.setOpacity(v);
+              },
             ),
           ),
 
+          // Позиция
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             child: Row(children: [
-              const Text('📌 Позиция: ',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+              const Text('📌 Сторона: ',
+                style: TextStyle(color: Colors.white70, fontSize: 13)),
               const SizedBox(width: 8),
-              _sideBtn('◀ Лево', 'left'),
+              _chip('◀ Лево', _side == 'left', () async {
+                setState(() => _side = 'left');
+                await _svc.setSide('left');
+              }),
               const SizedBox(width: 8),
-              _sideBtn('Право ▶', 'right'),
+              _chip('Право ▶', _side == 'right', () async {
+                setState(() => _side = 'right');
+                await _svc.setSide('right');
+              }),
             ]),
           ),
 
+          const Divider(color: Colors.white12, height: 1),
+
+          // Модель
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('🪞 Зеркало',
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
-                Switch(
-                  value: _mirror,
-                  activeColor: const Color(0xFF00E5FF),
-                  onChanged: (v) async {
-                    setState(() => _mirror = v);
-                    await _svc.setMirror(v);
-                  },
+                const Text('🎭 Модель персонажа',
+                  style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8, runSpacing: 6,
+                  children: _models.map((m) => _chip(
+                    m['label']!,
+                    _modelId == m['id'],
+                    () => _switchModel(m['id']!),
+                  )).toList(),
                 ),
               ],
             ),
           ),
 
-          const Divider(color: Colors.white12),
+          const Divider(color: Colors.white12, height: 1),
 
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text('🎬 Тест анимаций',
-                style: TextStyle(color: Color(0xFF00E5FF),
-                    fontSize: 13, fontWeight: FontWeight.w600)),
-          ),
-
+          // Тест анимаций
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            child: const Text('🎬 Тест анимаций',
+              style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 14),
             child: Wrap(
               spacing: 6, runSpacing: 6,
-              children: _anims.map((anim) {
-                return GestureDetector(
-                  onTap: () => _svc.playAnimation(anim['id']!),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00E5FF).withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                          color: const Color(0xFF00E5FF).withOpacity(0.35)),
-                    ),
-                    child: Text(anim['label']!,
-                        style: const TextStyle(
-                            color: Color(0xFF00E5FF), fontSize: 11)),
-                  ),
-                );
-              }).toList(),
+              children: _states.map((s) => GestureDetector(
+                onTap: () => _svc.setState(s['id']!),
+                child: _chip(s['label']!, false, null),
+              )).toList(),
             ),
           ),
         ],
@@ -149,7 +185,7 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
     );
   }
 
-  Widget _buildSection(String label, Widget child) => Padding(
+  Widget _section(String label, Widget child) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,26 +196,22 @@ class _OverlaySettingsWidgetState extends State<OverlaySettingsWidget> {
     ),
   );
 
-  Widget _sideBtn(String label, String value) {
-    final sel = _side == value;
+  Widget _chip(String label, bool active, VoidCallback? onTap) {
+    const accent = Color(0xFF00E5FF);
     return GestureDetector(
-      onTap: () async {
-        setState(() => _side = value);
-        await _svc.setSide(value);
-      },
+      onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: sel ? const Color(0xFF00E5FF).withOpacity(0.18) : Colors.transparent,
+          color: active ? accent.withOpacity(0.18) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: sel ? const Color(0xFF00E5FF) : Colors.white24),
+          border: Border.all(color: active ? accent : Colors.white24),
         ),
         child: Text(label,
-            style: TextStyle(
-              color: sel ? const Color(0xFF00E5FF) : Colors.white38,
-              fontSize: 12, fontWeight: FontWeight.w500,
-            )),
+          style: TextStyle(
+            color: active ? accent : Colors.white54,
+            fontSize: 12, fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+          )),
       ),
     );
   }
