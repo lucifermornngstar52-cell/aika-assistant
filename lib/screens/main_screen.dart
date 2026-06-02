@@ -107,9 +107,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _wakeWordEnabled = false;
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
-  bool _screenCommentsEnabled = true
+  bool _screenCommentsEnabled = true;
   String _bgPresetId = 'none';
-  String? _bgCustomImage;;
+  String? _bgCustomImage;
   bool _hasNotifPermission = false;
   bool _isDancing = false;
   bool _isStretching = false;
