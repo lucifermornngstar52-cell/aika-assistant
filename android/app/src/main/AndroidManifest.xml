@@ -120,15 +120,10 @@
         <service
             android:name=".AikaOverlayService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback|microphone"
+            android:foregroundServiceType="mediaPlayback"
             android:stopWithTask="false" />
 
-        <!-- Wake word фоновый сервис -->
-        <service
-            android:name=".AikaWakeWordService"
-            android:exported="false"
-            android:foregroundServiceType="microphone"
-            android:stopWithTask="false" />
+        <!-- Wake word: используется в основном Flutter app (не нативный сервис) -->
 
         <!-- Accessibility сервис -->
         <service
