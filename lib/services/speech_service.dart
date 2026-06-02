@@ -107,7 +107,7 @@ class SpeechService extends ChangeNotifier {
     // Если уже слушаем — останавливаем сначала
     if (_stt.isListening) {
       await _stt.stop();
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 400));
     }
 
     _isListening = true;
