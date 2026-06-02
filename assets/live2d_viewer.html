@@ -10,21 +10,19 @@
     background:transparent !important;
     overflow:hidden;
   }
-  #canvas {
-    width:100%; height:100%;
-    display:block;
-    background:transparent;
-  }
+  #canvas { width:100%; height:100%; display:block; background:transparent; }
   #log {
     position:fixed; top:4px; left:4px; right:4px;
-    color:#0ff; font-family:monospace; font-size:11px;
+    color:#0ff; font-family:monospace; font-size:10px;
     pointer-events:none;
     text-shadow:0 0 4px #000;
     white-space:pre-wrap;
     z-index:999;
-    background: rgba(0,0,0,0.4);
-    border-radius: 4px;
-    padding: 2px 4px;
+    background:rgba(0,0,0,0.5);
+    border-radius:4px;
+    padding:2px 4px;
+    max-height:120px;
+    overflow:hidden;
   }
 </style>
 </head>
@@ -32,82 +30,147 @@
 <canvas id="canvas"></canvas>
 <div id="log">Init...</div>
 <script>
-// ─── Логгер ───────────────────────────────────────────────────────────────────
+// ─── Logger ───────────────────────────────────────────────────────────────────
 const logEl = document.getElementById('log');
 const logLines = [];
 function log(msg) {
   const ts = new Date().toISOString().substr(11,8);
-  logLines.push('[' + ts + '] ' + msg);
-  if (logLines.length > 12) logLines.shift();
+  logLines.push('['+ts+'] '+msg);
+  if (logLines.length > 10) logLines.shift();
   logEl.textContent = logLines.join('\n');
-  console.log('[L2D] ' + msg);
+  console.log('[L2D] '+msg);
 }
-function hideLog() {
-  setTimeout(() => { logEl.style.display = 'none'; }, 5000);
-}
+function hideLog() { setTimeout(()=>{ logEl.style.display='none'; }, 6000); }
+function showLog() { logEl.style.display='block'; }
 
-// ─── Базовый путь assets ───────────────────────────────────────────────────────
-// Flutter InAppWebView загружает файл как:
-//   file:///android_asset/flutter_assets/assets/live2d_viewer.html
-// Поэтому BASE = .../assets/
-const BASE = (function() {
+// ─── Base path ────────────────────────────────────────────────────────────────
+const BASE = (function(){
   const href = window.location.href;
-  // Убираем имя файла, оставляем директорию
-  const base = href.substring(0, href.lastIndexOf('/') + 1);
-  log('BASE: ' + base.replace('file:///android_asset/flutter_assets/', '...'));
-  return base;
+  return href.substring(0, href.lastIndexOf('/')+1);
 })();
 
-// ─── Глобальное состояние ─────────────────────────────────────────────────────
+// ─── State ───────────────────────────────────────────────────────────────────
 let app = null;
 let model = null;
 let currentState = 'idle';
+// Реальные группы моций из model3.json — заполняются после загрузки
+let modelMotionGroups = [];
+let modelExpressions = [];
+let modelId = 'hiyori'; // hiyori / haru / natori / ren
 
-// ─── Загрузка скрипта ────────────────────────────────────────────────────────
+// ─── Motion маппинг по состоянию ─────────────────────────────────────────────
+// Используем только группы которые реально есть в модели.
+// Fallback: если группы нет — берём случайную из Idle.
+function getMotionForState(state) {
+  // Карта желаемых групп для каждого состояния (приоритет по порядку)
+  const want = {
+    'idle':      ['Idle'],
+    'listening': ['Idle'],
+    'thinking':  ['Idle'],
+    'talking':   ['TapBody', 'Idle'],
+    'greeting':  ['TapBody', 'Idle'],
+    'dance':     ['TapBody', 'Idle'],
+    'sad':       ['Idle'],
+    'happy':     ['TapBody', 'Idle'],
+    'excited':   ['TapBody', 'Idle'],
+  };
+  const groups = want[state] || ['Idle'];
+  // Возвращаем первую группу которая реально есть в модели
+  for (const g of groups) {
+    if (modelMotionGroups.includes(g)) return g;
+  }
+  // Абсолютный fallback — первая доступная группа
+  return modelMotionGroups[0] || null;
+}
+
+// Индекс motion внутри группы по состоянию
+function getMotionIndex(state, groupSize) {
+  // Для idle — случайный чтобы не повторялся
+  if (state === 'idle' || state === 'sad' || state === 'listening' || state === 'thinking') {
+    return Math.floor(Math.random() * groupSize);
+  }
+  return 0; // для активных анимаций — первый
+}
+
+// Экспрессия (только у Haru — F01..F08)
+function getExpressionForState(state) {
+  if (modelExpressions.length === 0) return null;
+  switch(state) {
+    case 'happy':    case 'greeting': case 'excited': return 0; // F01 — happy
+    case 'thinking':                                   return 3; // F04 — thinking
+    case 'sad':                                        return 4; // F05 — sad
+    case 'listening':                                  return 1; // F02 — curious
+    default: return null; // не меняем
+  }
+}
+
+// ─── loadScript ───────────────────────────────────────────────────────────────
 function loadScript(src) {
-  return new Promise(function(resolve, reject) {
+  return new Promise((resolve, reject) => {
     var s = document.createElement('script');
     s.src = src;
     s.onload = resolve;
-    s.onerror = function() { reject(new Error('Load failed: ' + src.split('/').pop())); };
+    s.onerror = () => reject(new Error('Load failed: '+src.split('/').pop()));
     document.head.appendChild(s);
   });
 }
 
-// ─── Позиционирование модели ──────────────────────────────────────────────────
+// ─── Fit model to canvas ─────────────────────────────────────────────────────
 function fitModel() {
   if (!model || !app) return;
   try {
-    var sw = app.screen.width;
-    var sh = app.screen.height;
+    const sw = app.screen.width;
+    const sh = app.screen.height;
     model.x = sw * 0.5;
-    model.y = sh * 0.65;
-    var origW = (model.internalModel && model.internalModel.originalWidth) || 1000;
-    var origH = (model.internalModel && model.internalModel.originalHeight) || 1000;
-    var scale = Math.min(sw / origW, sh / origH) * 1.2;
+    model.y = sh * 0.62;
+    const origW = (model.internalModel && model.internalModel.originalWidth) || 1000;
+    const origH = (model.internalModel && model.internalModel.originalHeight) || 1000;
+    const scale = Math.min(sw/origW, sh/origH) * 1.25;
     model.scale.set(scale);
-    log('fit: ' + sw + 'x' + sh + ' scale=' + scale.toFixed(2));
+    log('fit: '+sw+'x'+sh+' scale='+scale.toFixed(2));
+  } catch(e) { log('fitModel err: '+e.message); }
+}
+
+// ─── Определяем группы моций из загруженной модели ───────────────────────────
+function detectModelGroups(m) {
+  try {
+    const settings = m.internalModel && m.internalModel.settings;
+    if (settings && settings.motions) {
+      modelMotionGroups = Object.keys(settings.motions);
+      log('Motion groups: '+modelMotionGroups.join(', '));
+    } else {
+      // Пробуем через motion manager
+      modelMotionGroups = ['Idle', 'TapBody'];
+    }
+    // Экспрессии
+    if (settings && settings.expressions) {
+      modelExpressions = settings.expressions.map((e,i) => i);
+      log('Expressions: '+modelExpressions.length);
+    } else {
+      modelExpressions = [];
+    }
   } catch(e) {
-    log('fitModel err: ' + e.message);
+    modelMotionGroups = ['Idle', 'TapBody'];
+    modelExpressions = [];
+    log('detectGroups fallback: '+e.message);
   }
 }
 
-// ─── Загрузка модели ──────────────────────────────────────────────────────────
+// ─── Загрузка модели ─────────────────────────────────────────────────────────
 async function loadModelFromPath(path) {
-  log('Loading: ' + path.split('/').slice(-3).join('/'));
-
-  // Удаляем предыдущую модель
+  log('Loading: '+path.split('/').slice(-3).join('/'));
   if (model) {
-    try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
+    try { app.stage.removeChild(model); model.destroy(); } catch(e){}
     model = null;
   }
+  modelMotionGroups = [];
+  modelExpressions = [];
 
   try {
     model = await PIXI.live2d.Live2DModel.from(path, {
       autoInteract: false,
-      autoUpdate: true,
+      autoUpdate:   true,
     });
-
     app.stage.addChild(model);
     model.anchor.set(0.5, 0.5);
     fitModel();
@@ -115,66 +178,84 @@ async function loadModelFromPath(path) {
     window.removeEventListener('resize', fitModel);
     window.addEventListener('resize', fitModel);
 
-    // Запускаем idle анимацию
-    try { model.motion('Idle', undefined, PIXI.live2d.MotionPriority.IDLE); } catch(e) {}
+    // Определяем доступные группы моций
+    detectModelGroups(model);
 
-    // Обработчик тапа по модели
+    // Idle анимация
+    _playMotion('idle');
+
+    // Tap handler
     model.interactive = true;
-    model.on('pointerdown', function() {
-      try { model.motion('TapBody', undefined, PIXI.live2d.MotionPriority.NORMAL); } catch(e) {}
-      try { window.flutter_inappwebview.callHandler('FlutterChannel', 'tap'); } catch(e) {}
+    model.on('pointerdown', () => {
+      _playMotion('greeting');
+      try { window.flutter_inappwebview.callHandler('FlutterChannel', 'tap'); } catch(e){}
     });
 
-    log('Model ready!');
+    log('Model ready ✓');
     hideLog();
-
-    // Уведомляем Flutter что модель загружена
-    try { window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded'); } catch(e) {}
-
-    // Применяем текущее состояние
+    try { window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded'); } catch(e){}
     window.setAikaState(currentState);
 
   } catch(e) {
-    log('loadModel ERR: ' + (e.message || String(e)));
-    console.error('[L2D] loadModel failed', e);
+    log('loadModel ERR: '+(e.message||String(e)));
+    console.error('[L2D]', e);
   }
 }
 
-// ─── Инициализация ────────────────────────────────────────────────────────────
-async function initLive2D() {
+// ─── Внутренняя функция воспроизведения ──────────────────────────────────────
+function _playMotion(state) {
+  if (!model) return;
   try {
-    // 1. Cubism Core
-    await loadScript(BASE + 'live2d/live2dcubismcore.min.js');
-    log('CubismCore OK');
+    const group = getMotionForState(state);
+    if (!group) return;
 
-    // 2. PIXI — сохраняем/восстанавливаем module чтобы UMD шёл по window пути
-    var _mod = window.module;
-    var _exp = window.exports;
-    window.module = undefined;
-    window.exports = undefined;
+    // Получаем размер группы
+    let groupSize = 1;
+    try {
+      const settings = model.internalModel.settings;
+      groupSize = (settings.motions[group] || []).length || 1;
+    } catch(e) {}
 
-    await loadScript(BASE + 'live2d/pixi.min.js');
-    log('PIXI ' + (window.PIXI ? PIXI.VERSION : 'NOT FOUND'));
+    const idx = getMotionIndex(state, groupSize);
+    const priority = (state === 'idle' || state === 'sad')
+      ? PIXI.live2d.MotionPriority.IDLE
+      : PIXI.live2d.MotionPriority.NORMAL;
 
-    if (!window.PIXI) {
-      window.module = _mod;
-      window.exports = _exp;
-      throw new Error('PIXI not loaded');
+    model.motion(group, idx, priority);
+
+    // Экспрессия (Haru)
+    const expIdx = getExpressionForState(state);
+    if (expIdx !== null && modelExpressions.length > expIdx) {
+      try { model.expression(expIdx); } catch(e){}
     }
 
-    // 3. pixi-live2d-display
-    await loadScript(BASE + 'live2d/pixi-live2d-display.min.js');
+    log('▶ '+state+' → '+group+'['+idx+']'+(expIdx!==null?' expr='+expIdx:''));
+  } catch(e) {
+    log('motion ERR '+state+': '+e.message);
+  }
+}
 
-    window.module = _mod;
-    window.exports = _exp;
+// ─── Инициализация PIXI ───────────────────────────────────────────────────────
+async function initLive2D() {
+  try {
+    await loadScript(BASE+'live2d/live2dcubismcore.min.js');
+    log('CubismCore OK');
+
+    // PIXI UMD fix
+    var _mod = window.module, _exp = window.exports;
+    window.module = undefined; window.exports = undefined;
+    await loadScript(BASE+'live2d/pixi.min.js');
+    log('PIXI '+(window.PIXI ? PIXI.VERSION : 'NOT FOUND'));
+    if (!window.PIXI) { window.module=_mod; window.exports=_exp; throw new Error('PIXI missing'); }
+
+    await loadScript(BASE+'live2d/pixi-live2d-display.min.js');
+    window.module = _mod; window.exports = _exp;
 
     if (!window.PIXI || !PIXI.live2d || !PIXI.live2d.Live2DModel) {
-      log('PIXI.live2d=' + typeof(window.PIXI && PIXI.live2d));
-      throw new Error('PIXI.live2d.Live2DModel not found');
+      throw new Error('PIXI.live2d missing');
     }
     log('pixi-live2d OK');
 
-    // 4. PIXI Application
     app = new PIXI.Application({
       view: document.getElementById('canvas'),
       autoStart: true,
@@ -184,22 +265,14 @@ async function initLive2D() {
       antialias: true,
       resolution: window.devicePixelRatio || 1,
     });
-    log('PIXI App created');
 
-    // 5. Регистрируем ticker для анимаций
-    try {
-      PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker);
-      log('Ticker OK');
-    } catch(e) {
-      log('Ticker warn: ' + e.message);
-    }
+    try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch(e){}
 
-    // 6. Загружаем модель по умолчанию (Hiyori)
-    var defaultModel = BASE + 'models/Hiyori/Hiyori.model3.json';
-    await loadModelFromPath(defaultModel);
+    // Загружаем Hiyori по умолчанию
+    await loadModelFromPath(BASE+'models/Hiyori/Hiyori.model3.json');
 
   } catch(e) {
-    log('INIT ERR: ' + (e.message || String(e)));
+    log('INIT ERR: '+(e.message||String(e)));
     console.error('[L2D] init failed', e);
   }
 }
@@ -208,31 +281,9 @@ async function initLive2D() {
 
 window.setAikaState = function(state) {
   currentState = state || 'idle';
-  if (!model) return;
-  try {
-    switch (state) {
-      case 'listening':
-        try { model.expression && model.expression(0); } catch(e) {}
-        break;
-      case 'thinking':
-        try {
-          model.motion('FlickHead', undefined, PIXI.live2d.MotionPriority.NORMAL);
-        } catch(e) {
-          try { model.motion('Idle'); } catch(e2) {}
-        }
-        break;
-      case 'dance':
-      case 'greeting':
-      case 'talking':
-        try { model.motion('TapBody', undefined, PIXI.live2d.MotionPriority.NORMAL); } catch(e) {}
-        break;
-      default:
-        try { model.motion('Idle', undefined, PIXI.live2d.MotionPriority.IDLE); } catch(e) {}
-        break;
-    }
-  } catch(e) {
-    console.error('[L2D] setAikaState', e);
-  }
+  showLog();
+  _playMotion(currentState);
+  hideLog();
 };
 
 window.loadCustomModel = async function(url) {
@@ -242,13 +293,17 @@ window.loadCustomModel = async function(url) {
 
 window.switchBuiltinModel = async function(assetPath) {
   if (!app) { log('app not ready'); return; }
-  log('Switch -> ' + assetPath);
-  await loadModelFromPath(BASE + assetPath);
+  // Определяем modelId из пути
+  if (assetPath.includes('Haru')) modelId='haru';
+  else if (assetPath.includes('Natori')) modelId='natori';
+  else if (assetPath.includes('Ren')) modelId='ren';
+  else modelId='hiyori';
+  log('Switch → '+modelId);
+  await loadModelFromPath(BASE+assetPath);
 };
 
 // ─── Старт ───────────────────────────────────────────────────────────────────
-// Небольшая задержка — даём WebView время полностью прогрузиться
-setTimeout(initLive2D, 300);
+setTimeout(initLive2D, 400);
 </script>
 </body>
 </html>
