@@ -235,7 +235,7 @@ class AikaOverlayService : Service() {
                 val st = intent.getStringExtra(EXTRA_STATE) ?: "idle"
                 currentState = st
                 handler.post {
-                    if (webView?.windowToken == null) setupWindow()
+                    if (webView == null) setupWindow()
                     else webView?.evaluateJavascript("window.setAikaState('$st')", null)
                 }
             }
