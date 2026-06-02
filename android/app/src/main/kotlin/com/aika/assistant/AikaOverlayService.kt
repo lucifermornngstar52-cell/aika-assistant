@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -25,32 +24,36 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
  * AikaOverlayService — Live2D overlay через Android WebView.
- * Не использует второй FlutterEngine. Стабильно на всех Android 8+.
+ * Окно ровно по размеру модели, не перекрывает UI.
+ * Перетаскивание работает нативно через WindowManager.updateViewLayout.
  */
 class AikaOverlayService : Service() {
 
     companion object {
-        const val ACTION_SHOW   = "com.aika.SHOW"
-        const val ACTION_UPDATE = "com.aika.UPDATE"
-        const val ACTION_HIDE   = "com.aika.HIDE"
-        const val ACTION_CONFIG = "com.aika.CONFIG"
-        const val ACTION_MUSIC  = "com.aika.MUSIC"
-        const val ACTION_ANIM   = "com.aika.ANIM"
-        const val EXTRA_STATE   = "state"
-        const val EXTRA_SIZE    = "size"
-        const val EXTRA_SIDE    = "side"
-        const val EXTRA_OPACITY = "opacity"
-        const val EXTRA_PLAYING = "playing"
-        const val EXTRA_ANIM    = "anim_name"
-        // для совместимости с MainActivity
-        const val ENGINE_ID     = "live2d_overlay_engine"
+        const val ACTION_SHOW         = "com.aika.SHOW"
+        const val ACTION_UPDATE       = "com.aika.UPDATE"
+        const val ACTION_HIDE         = "com.aika.HIDE"
+        const val ACTION_CONFIG       = "com.aika.CONFIG"
+        const val ACTION_MUSIC        = "com.aika.MUSIC"
+        const val ACTION_ANIM         = "com.aika.ANIM"
+        const val ACTION_SWITCH_MODEL = "com.aika.SWITCH_MODEL"
+        const val ACTION_DRAG_ENABLED = "com.aika.DRAG_ENABLED"
+
+        const val EXTRA_STATE       = "state"
+        const val EXTRA_SIZE        = "size"
+        const val EXTRA_SIDE        = "side"
+        const val EXTRA_OPACITY     = "opacity"
+        const val EXTRA_PLAYING     = "playing"
+        const val EXTRA_ANIM        = "anim_name"
+        const val EXTRA_MODEL_PATH  = "model_path"
+        const val EXTRA_DRAG_ENABLED = "drag_enabled"
+        const val ENGINE_ID          = "live2d_overlay_engine"
 
         private const val CHANNEL_ID = "aika_overlay_channel"
         private const val NOTIF_ID   = 1337
@@ -58,16 +61,10 @@ class AikaOverlayService : Service() {
         private const val BASE_URL   = "file:///android_asset/flutter_assets/assets/"
 
         var isRunning = false
-
-        const val ACTION_SWITCH_MODEL  = "com.aika.SWITCH_MODEL"
-        const val ACTION_DRAG_ENABLED  = "com.aika.DRAG_ENABLED"
-        const val EXTRA_DRAG_ENABLED   = "drag_enabled"
-        const val EXTRA_MODEL_PATH     = "model_path"
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private var windowManager: WindowManager? = null
-    private var rootFrame: FrameLayout? = null
+    private var wm: WindowManager? = null
     private var webView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
 
@@ -77,10 +74,12 @@ class AikaOverlayService : Service() {
     private var opacity      = 1f
     private var side         = "left"
 
-    // Drag
-    private var dragInitX = 0; private var dragInitY = 0
-    private var dragTouchX = 0f; private var dragTouchY = 0f
-    private var wasDragging = false
+    // Drag state
+    private var dragStartX  = 0
+    private var dragStartY  = 0
+    private var touchStartX = 0f
+    private var touchStartY = 0f
+    private var isDragging  = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -90,48 +89,50 @@ class AikaOverlayService : Service() {
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
         handler.post { setupWindow() }
-        Log.d(TAG, "onCreate")
     }
 
     override fun onDestroy() {
         isRunning = false
         handler.post {
-            try { rootFrame?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+            try { webView?.let { wm?.removeView(it) } } catch (_: Exception) {}
             webView?.destroy()
             webView = null
-            rootFrame = null
         }
         super.onDestroy()
-        Log.d(TAG, "onDestroy")
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun setupWindow() {
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val dp    = resources.displayMetrics.density
-        val wPx   = (sizeDp * dp).roundToInt()
-        val hPx   = (sizeDp * 1.55f * dp).roundToInt()
+        wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val density = resources.displayMetrics.density
+
+        val wPx = (sizeDp * density).roundToInt()
+        val hPx = (sizeDp * 1.6f * density).roundToInt()
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
+        // FLAG_NOT_FOCUSABLE — не забирает фокус
+        // FLAG_NOT_TOUCH_MODAL — касания вне окна проходят насквозь
+        // УБИРАЕМ FLAG_LAYOUT_IN_SCREEN — он расширяет хит-зону
         params = WindowManager.LayoutParams(
-            wPx, hPx, overlayType,
+            wPx, hPx,
+            overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSPARENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (16 * dp).roundToInt()
-            y = (120 * dp).roundToInt()
+            val screenW = resources.displayMetrics.widthPixels
+            x = if (side == "right") screenW - wPx - (16 * density).roundToInt()
+                else (16 * density).roundToInt()
+            y = (120 * density).roundToInt()
         }
 
-        // ── WebView ──────────────────────────────────────────────────────────
         val wv = WebView(applicationContext)
         webView = wv
-
+        wv.alpha = opacity
         wv.setBackgroundColor(Color.TRANSPARENT)
         wv.background?.alpha = 0
 
@@ -139,10 +140,8 @@ class AikaOverlayService : Service() {
             javaScriptEnabled = true
             allowFileAccess = true
             allowContentAccess = true
-            @Suppress("DEPRECATION")
-            allowFileAccessFromFileURLs = true
-            @Suppress("DEPRECATION")
-            allowUniversalAccessFromFileURLs = true
+            @Suppress("DEPRECATION") allowFileAccessFromFileURLs = true
+            @Suppress("DEPRECATION") allowUniversalAccessFromFileURLs = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             mediaPlaybackRequiresUserGesture = false
             domStorageEnabled = true
@@ -156,104 +155,87 @@ class AikaOverlayService : Service() {
 
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView?, request: WebResourceRequest?
-            ): WebResourceResponse? = null
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                Log.d(TAG, "page loaded: $url")
-                // Ждём инициализации JS
+            override fun shouldInterceptRequest(v: WebView?, r: WebResourceRequest?): WebResourceResponse? = null
+            override fun onPageFinished(v: WebView?, url: String?) {
                 handler.postDelayed({
-                    view?.evaluateJavascript("window.setAikaState('$currentState')", null)
-                }, 3000)
+                    v?.evaluateJavascript("window.setAikaState('$currentState')", null)
+                }, 2500)
             }
         }
 
-        // JS Interface для получения сигнала от Live2D
         wv.addJavascriptInterface(object {
             @JavascriptInterface
             fun onModelLoaded() {
-                Log.d(TAG, "modelLoaded signal from JS")
                 handler.post {
-                    val wvRef = webView ?: return@post
-                    wvRef.evaluateJavascript("window.setAikaState('$currentState')", null)
-                    wvRef.alpha = 1f
+                    webView?.evaluateJavascript("window.setAikaState('$currentState')", null)
                 }
             }
             @JavascriptInterface
-            fun onTap() {
-                Log.d(TAG, "model tapped")
-            }
+            fun onTap() { Log.d(TAG, "tap") }
         }, "AndroidBridge")
 
-        // Загружаем HTML
-        wv.alpha = 0f
-        wv.loadUrl("${BASE_URL}live2d_viewer.html")
-
-        // Показываем через 5 сек в любом случае (fallback)
-        handler.postDelayed({
-            webView?.let { if (it.alpha < 0.5f) it.alpha = 1f }
-        }, 5000)
-
-        // ── Touch: drag ──────────────────────────────────────────────────────
-        val frame = FrameLayout(applicationContext)
-        frame.setBackgroundColor(Color.TRANSPARENT)
-        val lp = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        )
-        frame.addView(wv, lp)
-
-        var downMs = 0L
-        frame.setOnTouchListener { _, ev ->
-            when (ev.action) {
+        // ── Touch handler — перетаскивание прямо на WebView ─────────────────
+        wv.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    wasDragging = false
-                    downMs = System.currentTimeMillis()
-                    dragInitX = params!!.x; dragInitY = params!!.y
-                    dragTouchX = ev.rawX;  dragTouchY = ev.rawY
-                    true
+                    isDragging   = false
+                    dragStartX   = params!!.x
+                    dragStartY   = params!!.y
+                    touchStartX  = ev.rawX
+                    touchStartY  = ev.rawY
+                    // передаём событие в WebView для анимаций
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = ev.rawX - dragTouchX
-                    val dy = ev.rawY - dragTouchY
-                    if (abs(dx) > 6 || abs(dy) > 6) wasDragging = true
-                    if (wasDragging && dragEnabled) {
-                        params!!.x = (dragInitX + dx).roundToInt()
-                        params!!.y = (dragInitY + dy).roundToInt()
-                        try { windowManager?.updateViewLayout(frame, params) } catch (_: Exception) {}
+                    val dx = ev.rawX - touchStartX
+                    val dy = ev.rawY - touchStartY
+                    if (!isDragging && (abs(dx) > 8 || abs(dy) > 8)) {
+                        isDragging = true
                     }
-                    true
+                    if (isDragging && dragEnabled) {
+                        params!!.x = (dragStartX + dx).roundToInt()
+                        params!!.y = (dragStartY + dy).roundToInt()
+                        try { wm?.updateViewLayout(wv, params) } catch (_: Exception) {}
+                        return@setOnTouchListener true
+                    }
+                    false
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!wasDragging && System.currentTimeMillis() - downMs < 350) {
-                        // tap — приветствие
-                        webView?.evaluateJavascript("window.setAikaState('greeting')", null)
+                    if (!isDragging) {
+                        // тап — приветствие
+                        wv.evaluateJavascript("window.setAikaState('greeting')", null)
                         handler.postDelayed({
                             webView?.evaluateJavascript("window.setAikaState('idle')", null)
                         }, 2500)
                     }
-                    true
+                    isDragging = false
+                    false
                 }
                 else -> false
             }
         }
 
-        rootFrame = frame
+        wv.loadUrl("${BASE_URL}live2d_viewer.html")
+
+        // Fallback — показываем через 5 сек если JS не ответил
+        handler.postDelayed({ webView?.let { if (it.alpha < 0.5f) it.alpha = opacity } }, 5000)
+
         try {
-            windowManager?.addView(frame, params)
+            wm?.addView(wv, params)
         } catch (e: Exception) {
             Log.e(TAG, "addView failed: ${e.message}")
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val density = resources.displayMetrics.density
+
         when (intent?.action) {
             ACTION_SHOW, ACTION_UPDATE -> {
                 val st = intent.getStringExtra(EXTRA_STATE) ?: "idle"
                 currentState = st
                 handler.post {
-                    if (rootFrame?.windowToken == null) setupWindow()
+                    if (webView?.windowToken == null) setupWindow()
                     else webView?.evaluateJavascript("window.setAikaState('$st')", null)
                 }
             }
@@ -263,88 +245,72 @@ class AikaOverlayService : Service() {
             }
             ACTION_CONFIG -> {
                 val newSize    = intent.getFloatExtra(EXTRA_SIZE, 0f)
-                val newOpacity = intent.getFloatExtra(EXTRA_OPACITY, 1f)
-                val newSide    = intent.getStringExtra(EXTRA_SIDE) ?: side
-                if (newSize > 0) sizeDp = newSize
-                opacity = newOpacity
-                side    = newSide
-                handler.post { applyConfig() }
-            }
-            ACTION_MUSIC -> {
-                val playing = intent.getBooleanExtra(EXTRA_PLAYING, false)
+                val newOpacity = intent.getFloatExtra(EXTRA_OPACITY, -1f)
+                val newSide    = intent.getStringExtra(EXTRA_SIDE)
                 handler.post {
-                    val st = if (playing) "dance" else "idle"
-                    webView?.evaluateJavascript("window.setAikaState('$st')", null)
+                    val p = params ?: return@post
+                    val wv = webView ?: return@post
+                    var changed = false
+                    if (newSize > 0f) {
+                        sizeDp = newSize
+                        p.width  = (sizeDp * density).roundToInt()
+                        p.height = (sizeDp * 1.6f * density).roundToInt()
+                        changed = true
+                    }
+                    if (newOpacity >= 0f) {
+                        opacity = newOpacity
+                        wv.alpha = opacity
+                    }
+                    if (newSide != null) {
+                        side = newSide
+                        val screenW = resources.displayMetrics.widthPixels
+                        p.x = if (side == "right") screenW - p.width - (16 * density).roundToInt()
+                              else (16 * density).roundToInt()
+                        changed = true
+                    }
+                    if (changed) try { wm?.updateViewLayout(wv, p) } catch (_: Exception) {}
                 }
-            }
-            ACTION_ANIM -> {
-                val anim = intent.getStringExtra(EXTRA_ANIM) ?: "idle"
-                handler.post {
-                    webView?.evaluateJavascript("window.setAikaState('$anim')", null)
-                }
-            }
-            ACTION_DRAG_ENABLED -> {
-                val enabled = intent.getBooleanExtra(EXTRA_DRAG_ENABLED, true)
-                dragEnabled = enabled
             }
             ACTION_SWITCH_MODEL -> {
                 val path = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
                 handler.post {
-                    // Передаём путь относительно assets — JS сам добавит BASE
-                    webView?.evaluateJavascript("window.switchBuiltinModel('$path')", null)
+                    webView?.evaluateJavascript("window.switchModel('$path')", null)
+                }
+            }
+            ACTION_DRAG_ENABLED -> {
+                dragEnabled = intent.getBooleanExtra(EXTRA_DRAG_ENABLED, true)
+            }
+            ACTION_ANIM -> {
+                val anim = intent.getStringExtra(EXTRA_ANIM) ?: return START_STICKY
+                handler.post {
+                    webView?.evaluateJavascript("window.setAikaState('$anim')", null)
+                }
+            }
+            ACTION_MUSIC -> {
+                val playing = intent.getBooleanExtra(EXTRA_PLAYING, false)
+                currentState = if (playing) "listening" else "idle"
+                handler.post {
+                    webView?.evaluateJavascript("window.setAikaState('$currentState')", null)
                 }
             }
         }
         return START_STICKY
     }
 
-    private fun applyConfig() {
-        val dp  = resources.displayMetrics.density
-        val wPx = (sizeDp * dp).roundToInt()
-        val hPx = (sizeDp * 1.55f * dp).roundToInt()
-
-        params?.width  = wPx
-        params?.height = hPx
-
-        // Позиция: лево или право
-        if (side == "right") {
-            val screenW = resources.displayMetrics.widthPixels
-            params?.x = screenW - wPx - (16 * dp).roundToInt()
-        } else {
-            params?.x = (16 * dp).roundToInt()
-        }
-
-        webView?.alpha = opacity
-
-        try {
-            rootFrame?.let { windowManager?.updateViewLayout(it, params) }
-        } catch (e: Exception) {
-            Log.w(TAG, "updateViewLayout: ${e.message}")
-        }
-    }
-
-    // ── Notification ─────────────────────────────────────────────────────────
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(
-                CHANNEL_ID, "Айка оверлей", NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
+            val ch = NotificationChannel(CHANNEL_ID, "Aika Overlay", NotificationManager.IMPORTANCE_MIN)
+            ch.setShowBadge(false)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
     }
 
-    private fun buildNotification(): Notification {
-        val pi = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Айка активна")
-            .setContentText("Live2D аватар поверх экрана")
+    private fun buildNotification(): Notification =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Aika активна")
+            .setContentText("Нажми чтобы открыть")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pi)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
-            .setSilent(true)
             .build()
-    }
 }
