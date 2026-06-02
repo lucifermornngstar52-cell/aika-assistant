@@ -68,6 +68,9 @@ flutter:
     - assets/3d_viewer.html
     - assets/live2d/
     - assets/models/
+    - assets/models/robot.glb
+    - assets/models/xbot.glb
+    - assets/models/soldier.glb
     - assets/models/Haru/
     - assets/models/Haru/Haru.2048/
     - assets/models/Haru/motions/
