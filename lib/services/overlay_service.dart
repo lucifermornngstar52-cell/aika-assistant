@@ -1,116 +1,179 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Controls the floating Live2D overlay that appears over ALL other apps.
-/// Uses MethodChannel → native Android WindowManager + FlutterView.
+/// Сервис управления 3D оверлеем.
+/// Отправляет команды в AikaOverlayService через MethodChannel.
 class OverlayService {
-  static const MethodChannel _channel =
-      MethodChannel('com.aika.assistant/overlay');
+  static final OverlayService _i = OverlayService._();
+  factory OverlayService() => _i;
+  OverlayService._();
 
-  // Дополнительный канал для управления Live2D из overlay engine
-  static const MethodChannel _live2dChannel =
-      MethodChannel('com.aika.assistant/live2d_overlay');
+  static const _overlayChannel = MethodChannel('com.aika.assistant/overlay');
+  static const _modelChannel   = MethodChannel('com.aika.assistant/live2d_overlay');
 
-  static Future<bool> hasPermission() async {
+  // Настройки размера
+  double _sizeDp   = 170.0;
+  double _opacity  = 1.0;
+  bool   _mirror   = false;
+  String _side     = 'left'; // left / right
+  bool   _musicPlaying = false;
+
+  double get sizeDp   => _sizeDp;
+  double get opacity  => _opacity;
+  bool   get mirror   => _mirror;
+  String get side     => _side;
+
+  // ─── Инициализация ──────────────────────────────────────────────────
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _sizeDp  = prefs.getDouble('overlay_size')    ?? 170.0;
+    _opacity = prefs.getDouble('overlay_opacity') ?? 1.0;
+    _mirror  = prefs.getBool('overlay_mirror')    ?? false;
+    _side    = prefs.getString('overlay_side')    ?? 'left';
+  }
+
+  Future<void> _savePrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('overlay_size',    _sizeDp);
+    await prefs.setDouble('overlay_opacity', _opacity);
+    await prefs.setBool('overlay_mirror',    _mirror);
+    await prefs.setString('overlay_side',    _side);
+  }
+
+  // ─── Разрешение и показ ─────────────────────────────────────────────
+  Future<bool> hasPermission() async {
     try {
-      return await _channel.invokeMethod<bool>('hasPermission') ?? false;
-    } catch (e) {
-      debugPrint('[Overlay] hasPermission error: $e');
-      return false;
+      return await _overlayChannel.invokeMethod('hasPermission') ?? false;
+    } catch (_) { return false; }
+  }
+
+  Future<void> requestPermission() async {
+    try { await _overlayChannel.invokeMethod('requestPermission'); } catch (_) {}
+  }
+
+  Future<void> show({String state = 'idle'}) async {
+    try {
+      await _overlayChannel.invokeMethod('showOverlay', {'state': state});
+      await _sendConfig();
+    } catch (_) {}
+  }
+
+  Future<void> hide() async {
+    try { await _overlayChannel.invokeMethod('hideOverlay'); } catch (_) {}
+  }
+
+  // ─── Состояния модели ───────────────────────────────────────────────
+  Future<void> setState(String state) async {
+    try { await _overlayChannel.invokeMethod('updateOverlay', {'state': state}); } catch (_) {}
+  }
+
+  // Sync wrapper для вызова без await (публичный)
+  Future<void> asyncState(String s) => setState(s);
+
+  Future<void> setIdle()      => setState('idle');
+  Future<void> setListening() => setState('listening');
+  Future<void> setThinking()  => setState('thinking');
+  Future<void> setTalking()   => setState('talking');
+  Future<void> setDance()     => setState('dance');
+  Future<void> setGreeting()  => setState('greeting');
+
+  // ─── Музыкальный режим ──────────────────────────────────────────────
+  Future<void> setMusicPlaying(bool playing) async {
+    _musicPlaying = playing;
+    try {
+      await _overlayChannel.invokeMethod('musicOverlay', {'playing': playing});
+    } catch (_) {
+      await setState(playing ? 'dance' : 'idle');
     }
   }
 
-  static Future<void> requestPermission() async {
+  bool get isMusicPlaying => _musicPlaying;
+
+  // ─── Анимация напрямую ──────────────────────────────────────────────
+  Future<void> playAnimation(String animName) async {
     try {
-      await _channel.invokeMethod('requestPermission');
-    } catch (e) {
-      debugPrint('[Overlay] requestPermission error: $e');
+      await _overlayChannel.invokeMethod('animOverlay', {'anim': animName});
+    } catch (_) {
+      await _modelChannel.invokeMethod('playAnimation', animName);
     }
   }
 
-  /// Show Live2D overlay. [state]: idle | listening | thinking | greeting
-  static Future<void> showOverlay({String state = 'idle'}) async {
+  // ─── Конфиг: размер / прозрачность / сторона ────────────────────────
+  Future<void> setSize(double dp) async {
+    _sizeDp = dp.clamp(80.0, 350.0);
+    await _savePrefs();
+    await _sendConfig();
+  }
+
+  Future<void> setOpacity(double v) async {
+    _opacity = v.clamp(0.2, 1.0);
+    await _savePrefs();
+    await _sendConfig();
+  }
+
+  Future<void> setSide(String side) async {
+    _side = side;
+    await _savePrefs();
+    await _sendConfig();
+  }
+
+  Future<void> setMirror(bool v) async {
+    _mirror = v;
+    await _savePrefs();
+    await _sendConfig();
+  }
+
+  /// Включить/выключить перетаскивание оверлея
+  Future<void> setDragEnabled(bool enabled) async {
     try {
-      await _channel.invokeMethod('showOverlay', {'state': state});
-    } catch (e) {
-      debugPrint('[Overlay] showOverlay error: $e');
+      await _overlayChannel.invokeMethod('setDragEnabled', {'enabled': enabled});
+    } catch (_) {}
+  }
+
+  /// Переключить модель в оверлее
+  Future<void> switchModel(String assetPath) async {
+    try {
+      await _overlayChannel.invokeMethod('switchModel', {'path': assetPath});
+    } catch (_) {
+      // fallback через modelChannel
+      try {
+        await _modelChannel.invokeMethod('switchModel', assetPath);
+      } catch (_) {}
     }
   }
 
-  /// Update avatar state (motion + expression)
-  static Future<void> updateState(String state) async {
+  Future<void> _sendConfig() async {
     try {
-      await _channel.invokeMethod('updateOverlay', {'state': state});
-    } catch (e) {
-      debugPrint('[Overlay] updateState error: $e');
-    }
+      // Обновляем WindowManager размер через overlay channel
+      await _overlayChannel.invokeMethod('configOverlay', {
+        'size': _sizeDp,
+        'side': _side,
+        'opacity': _opacity,
+      });
+      // Обновляем Flutter-сторону (зеркало, прозрачность)
+      await _modelChannel.invokeMethod('setConfig', {
+        'size':    _sizeDp,
+        'opacity': _opacity,
+        'mirror':  _mirror,
+      });
+    } catch (_) {}
   }
 
-  static Future<void> hideOverlay() async {
-    try {
-      await _channel.invokeMethod('hideOverlay');
-    } catch (e) {
-      debugPrint('[Overlay] hideOverlay error: $e');
-    }
-  }
 
-  /// Переключить режим оверлея: 'live2d' или '3d'
+  // ─── Режим модели: live2d / 3d ──────────────────────────────────────
+  static const String modeLive2D = 'live2d';
+  static const String mode3D     = '3d';
+
   Future<void> setMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('overlay_mode', mode);
     try {
-      await _channel.invokeMethod('setOverlayMode', {'mode': mode});
-    } catch (e) {
-      debugPrint('[Overlay] setMode error: $e');
-    }
+      await _overlayChannel.invokeMethod('setModeOverlay', {'mode': mode});
+    } catch (_) {}
   }
 
-  /// Переключить модель оверлея по пути к ассету
-  static Future<void> switchModel(String assetPath) async {
-    try {
-      await _channel.invokeMethod('switchOverlayModel', {'path': assetPath});
-      await _live2dChannel.invokeMethod('switchModel', assetPath);
-    } catch (e) {
-      debugPrint('[Overlay] switchModel error: $e');
-    }
+  Future<String> getMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('overlay_mode') ?? 'live2d';
   }
-
-  /// Обновить параметры Live2D модели (размер, прозрачность, скорость, отражение, сторона).
-  /// Применяется мгновенно без перезапуска overlay.
-  static Future<void> updateLive2DConfig({
-    double size    = 170,
-    double opacity = 1.0,
-    double speed   = 1.0,
-    bool   mirror  = false,
-    String side    = 'left',
-  }) async {
-    try {
-      // 1. Говорим нативной стороне изменить размер окна и положение
-      await _channel.invokeMethod('updateLive2DConfig', {
-        'size':    size,
-        'opacity': opacity,
-        'side':    side,
-      });
-      // 2. Говорим Flutter-overlay engine применить скорость и зеркало
-      await _live2dChannel.invokeMethod('setConfig', {
-        'speed':   speed,
-        'mirror':  mirror,
-        'opacity': opacity,
-      });
-    } catch (e) {
-      debugPrint('[Overlay] updateLive2DConfig error: $e');
-    }
-  }
-
-  // ── Instance-обёртки (для совместимости с main_screen.dart) ─────────────
-
-  /// Обновить состояние аватара (instance-версия)
-  Future<void> asyncState(String state) =>
-      OverlayService.updateState(state);
-
-  /// Показать оверлей (instance-версия)
-  Future<void> show({String state = 'idle'}) =>
-      OverlayService.showOverlay(state: state);
-
-  /// Скрыть оверлей (instance-версия)
-  Future<void> hide() => OverlayService.hideOverlay();
-
 }
