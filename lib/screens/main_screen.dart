@@ -1636,7 +1636,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           ),
                           if (_userName.isNotEmpty)
                             Text(
-                              'Привет, \$_userName',
+                              "Привет, \$_userName",
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.55),
                                 fontSize: 11,
@@ -1726,7 +1726,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text('\$_assistantName думает...',
+                    Text("\$_assistantName думает...",
                         style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12)),
                   ],
                 ),
@@ -1854,10 +1854,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 style: TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (_userName.isNotEmpty)
-              Text('Пользователь: \$_userName',
+              Text("Пользователь: \$_userName",
                   style: TextStyle(color: Colors.white54, fontSize: 13)),
             const SizedBox(height: 4),
-            Text('История: \${_messages.length} сообщений',
+            Text("История: \${_messages.length} сообщений",
                 style: TextStyle(color: Colors.white54, fontSize: 13)),
           ],
         ),
@@ -1904,12 +1904,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 16),
           Text(
-            _userName.isNotEmpty ? 'Привет, \$_userName!' : 'Привет!',
+            _userName.isNotEmpty ? "Привет, \$_userName!" : "Привет!",
             style: TextStyle(color: AikaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            'Я \$_assistantName. Чем могу помочь?',
+            "Я \$_assistantName. Чем могу помочь?",
             style: TextStyle(color: AikaTheme.textSecondary, fontSize: 14),
           ),
           const SizedBox(height: 24),
