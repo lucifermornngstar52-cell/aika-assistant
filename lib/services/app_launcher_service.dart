@@ -178,15 +178,63 @@ class AppLauncherService {
 
   static Future<String> launchPackage(String packageName) => _launch(packageName);
 
+  // Карта пакет → человекочитаемое имя
+  static const _pkgNames = {
+    'com.whatsapp':                          'WhatsApp',
+    'org.telegram.messenger':                'Телеграм',
+    'com.instagram.android':                 'Инстаграм',
+    'com.vkontakte.android':                 'ВКонтакте',
+    'com.google.android.youtube':            'YouTube',
+    'com.zhiliaoapp.musically':              'TikTok',
+    'com.spotify.music':                     'Spotify',
+    'ru.yandex.music':                       'Яндекс Музыку',
+    'com.google.android.apps.youtube.music': 'YouTube Music',
+    'com.netflix.mediaclient':               'Netflix',
+    'tv.twitch.android.app':                 'Twitch',
+    'com.discord':                           'Discord',
+    'com.google.android.apps.maps':          'Google Карты',
+    'com.android.chrome':                    'Chrome',
+    'com.google.android.gm':                 'Gmail',
+    'com.android.settings':                  'Настройки',
+    'com.android.camera2':                   'Камеру',
+    'com.google.android.calculator':         'Калькулятор',
+    'com.google.android.deskclock':          'Часы',
+  };
+
+  // Умные фразы при открытии — как раньше
+  static const _launchPhrases = {
+    'com.whatsapp':               'Открываю WhatsApp 💬 Не забудь ответить всем 😏',
+    'org.telegram.messenger':     'Открываю Телеграм 📨 Там что-то важное?',
+    'com.instagram.android':      'Открываю Инстаграм 📸 Листаем ленту?',
+    'com.vkontakte.android':      'Открываю ВКонтакте 🎵',
+    'com.google.android.youtube': 'Открываю YouTube ▶️ Что смотришь?',
+    'com.zhiliaoapp.musically':   'Открываю TikTok 🕺 Осторожно, там время исчезает!',
+    'com.netflix.mediaclient':    'Открываю Netflix 🍿 Кино или сериал?',
+    'tv.twitch.android.app':      'Открываю Twitch 🎮 Смотришь стримы?',
+    'com.discord':                'Открываю Discord 🎧',
+    'com.spotify.music':          'Открываю Spotify 🎵 Хороший выбор!',
+    'ru.yandex.music':            'Открываю Яндекс Музыку 🎵',
+    'com.google.android.apps.youtube.music': 'Открываю YouTube Music 🎵',
+  };
+
   static Future<String> _launch(String packageName) async {
     try {
       final result = await _channel.invokeMethod<bool>(
         'launchApp', {'package': packageName}
       );
-      if (result == true) return 'Открываю 📱';
-      return 'Приложение не найдено 😔';
+      if (result == true) {
+        // Персонализированный ответ если есть
+        if (_launchPhrases.containsKey(packageName)) {
+          return _launchPhrases[packageName]!;
+        }
+        final name = _pkgNames[packageName] ?? 'приложение';
+        return 'Открываю \$name 📱';
+      }
+      // Приложение не установлено
+      final name = _pkgNames[packageName] ?? 'это приложение';
+      return 'Не нашла \$name на телефоне 😔 Может оно не установлено?';
     } catch (_) {
-      return 'Приложение не найдено 😔';
+      return 'Не могу открыть приложение 😔';
     }
   }
 
