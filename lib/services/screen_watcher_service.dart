@@ -72,36 +72,120 @@ class ScreenWatcherService {
     try { await _channel.invokeMethod('openAccessibilitySettings'); } catch (_) {}
   }
 
+  // Случайная фраза из списка
+  static String _pick(List<String> phrases) {
+    final idx = DateTime.now().millisecondsSinceEpoch % phrases.length;
+    return phrases[idx];
+  }
+
   static String? _buildReaction(String pkg, String label) {
     switch (pkg) {
-      case 'com.google.android.youtube':
-        return 'О, ютуб открыл. Что смотришь?';
-      case 'com.zhiliaoapp.musically':
-        return 'ТикТок? Осторожно, там время исчезает 😄';
-      case 'com.spotify.music':
-      case 'com.google.android.apps.youtube.music':
-        return 'Музыка — хороший выбор. Сказать танцевать?';
-      case 'com.netflix.mediaclient':
-        return 'Netflix! Кино или сериал?';
-      case 'com.instagram.android':
-        return 'Инстаграм. Листаем ленту?';
-      case 'com.vkontakte.android':
-        return 'ВКонтакте открыл.';
-      case 'org.telegram.messenger':
-        return 'Телеграм. Есть что-то важное?';
+      // ── Мессенджеры ──────────────────────────────────────────────
       case 'com.whatsapp':
-        return 'Вацап. Не забудь ответить всем 😏';
+        return _pick([
+          'WhatsApp открыт 💬 Не забудь ответить всем 😏',
+          'О, ватсап! Кто пишет?',
+          'Вацап открыл. Давай отвечай, не заставляй людей ждать 😄',
+        ]);
+      case 'org.telegram.messenger':
+        return _pick([
+          'Телеграм открыл 📨 Там что-то важное?',
+          'О, телеграм. Много непрочитанных?',
+          'Телеграм? Надеюсь не спам 😄',
+        ]);
+      case 'com.instagram.android':
+        return _pick([
+          'Инстаграм 📸 Листаем ленту?',
+          'Инста открыт. Что интересного?',
+          'Инстаграм — только не залипни надолго 😄',
+        ]);
+      case 'com.vkontakte.android':
+        return _pick([
+          'ВКонтакте открыл 🎵',
+          'О, ВК. Музыку слушаешь или ленту листаешь?',
+        ]);
+      case 'com.discord':
+        return _pick([
+          'Discord 🎧 В игре или просто общаешься?',
+          'Дискорд открыт. Что за сервер?',
+        ]);
+      case 'com.viber.voip':
+        return 'Вайбер открыл. Не забудь ответить!';
+
+      // ── Видео и развлечения ───────────────────────────────────────
+      case 'com.google.android.youtube':
+        return _pick([
+          'О, ютуб открыл ▶️ Что смотришь?',
+          'YouTube! Учёба или развлечение? 😄',
+          'Ютуб открыт. Только не застрянь на роликах 😄',
+        ]);
+      case 'com.zhiliaoapp.musically':
+        return _pick([
+          'ТикТок? Осторожно, там время исчезает 😄',
+          'О, тикток открыл. Уже 2 часа прошло? 😄',
+          'Тикток! Ну ладно, 5 минут максимум 😄',
+        ]);
+      case 'com.netflix.mediaclient':
+        return _pick([
+          'Netflix 🍿 Кино или сериал?',
+          'Нетфликс открыл. Что смотрим сегодня?',
+          'Netflix! Один эпизод — обещаешь? 😄',
+        ]);
+      case 'tv.twitch.android.app':
+        return _pick([
+          'Twitch 🎮 Кого смотришь?',
+          'О, твич! Стримы или турниры?',
+        ]);
+
+      // ── Музыка ───────────────────────────────────────────────────
+      case 'com.spotify.music':
+        return _pick([
+          'Spotify 🎵 Хороший выбор! Хочешь я потанцую?',
+          'Спотифай открыт. Что слушаем?',
+          'Музыка — это хорошо 🎵',
+        ]);
+      case 'com.google.android.apps.youtube.music':
+        return 'YouTube Music 🎵 Что в плейлисте?';
+      case 'ru.yandex.music':
+        return 'Яндекс Музыка 🎵 Хороший вкус!';
+
+      // ── Игры ─────────────────────────────────────────────────────
+      // обрабатывается ниже через _isGamePackage
+
+      // ── Работа и учёба ───────────────────────────────────────────
       case 'com.google.android.apps.docs':
-        return 'Гугл документы. Работаем?';
+        return _pick([
+          'Google Docs открыт 📝 Работаем?',
+          'Документы. Пишем что-то важное?',
+        ]);
       case 'com.google.android.apps.spreadsheets':
-        return 'Таблицы. Считаем что-то?';
+        return 'Google Таблицы 📊 Считаем что-то?';
       case 'com.microsoft.office.word':
+        return 'Word открыт 📝 Нужна помощь с текстом?';
       case 'com.microsoft.office.excel':
-        return 'Office открыт. Помочь с чем-нибудь?';
+        return 'Excel открыт 📊 Сложные формулы?';
+      case 'com.google.android.apps.classroom':
+        return 'Google Classroom 📚 Учимся!';
+
+      // ── Браузер — молчим, слишком часто ──────────────────────────
       case 'com.android.chrome':
-        return null; // Браузер — слишком часто, молчим
+      case 'org.mozilla.firefox':
+      case 'com.yandex.browser':
+        return null;
+
+      // ── Системное — молчим ───────────────────────────────────────
+      case 'com.android.settings':
+      case 'com.google.android.apps.photos':
+        return null;
+
       default:
-        if (_isGamePackage(pkg, label)) return 'Игра? Удачи! 🎮';
+        if (_isGamePackage(pkg, label)) {
+          return _pick([
+            'Игра! Удачи 🎮',
+            'Играем? Ни пуха! 🎮',
+            'О, игра! Красавчик 🎮',
+          ]);
+        }
         return null;
     }
   }
