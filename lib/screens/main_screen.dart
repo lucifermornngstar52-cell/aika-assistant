@@ -1882,83 +1882,86 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           ),
                         ),
                         child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Превью прикреплённого фото
-                        if (_pendingImagePath != null)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                            child: Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.file(
-                                    File(_pendingImagePath!),
-                                    height: 80,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 2, right: 2,
-                                  child: GestureDetector(
-                                    onTap: () => setState(() {
-                                      _pendingImagePath = null;
-                                      _pendingImageBase64 = null;
-                                    }),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black54,
-                                        shape: BoxShape.circle,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Превью прикреплённого фото
+                            if (_pendingImagePath != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.file(
+                                        File(_pendingImagePath!),
+                                        height: 80,
+                                        fit: BoxFit.cover,
                                       ),
-                                      child: const Icon(Icons.close, color: Colors.white, size: 14),
                                     ),
+                                    Positioned(
+                                      top: 2, right: 2,
+                                      child: GestureDetector(
+                                        onTap: () => setState(() {
+                                          _pendingImagePath = null;
+                                          _pendingImageBase64 = null;
+                                        }),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(2),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.close, color: Colors.white, size: 14),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            // Input row: photo btn + textfield
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.image_outlined,
+                                    color: _pendingImagePath != null
+                                        ? AikaTheme.neonBlue
+                                        : Colors.white38,
+                                    size: 22),
+                                  onPressed: _pickImage,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 36),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _textController,
+                                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                                    decoration: InputDecoration(
+                                      hintText: _isListening ? 'Слушаю...' : 'Спроси что-нибудь',
+                                      hintStyle: TextStyle(
+                                          color: Colors.white.withOpacity(0.35), fontSize: 13),
+                                      border: InputBorder.none,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 10),
+                                    ),
+                                    onSubmitted: (t) {
+                                      if (_pendingImageBase64 != null) {
+                                        _sendMessageWithImage(t.trim(), _pendingImageBase64!);
+                                      } else if (t.trim().isNotEmpty) {
+                                        _sendMessage(t.trim());
+                                      }
+                                    },
+                                    onChanged: (_) => setState(() {}),
+                                    maxLines: 1,
+                                    textInputAction: TextInputAction.send,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        Row(children: [
-                          // Кнопка фото
-                          IconButton(
-                            icon: Icon(Icons.image_outlined,
-                              color: _pendingImagePath != null
-                                  ? AikaTheme.neonBlue
-                                  : Colors.white38,
-                              size: 22),
-                            onPressed: _pickImage,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 36),
-                          ),
-                          Expanded(child: TextField(
-                          controller: _textController,
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          decoration: InputDecoration(
-                            hintText: _isListening ? 'Слушаю...' : 'Спроси что-нибудь',
-                            hintStyle: TextStyle(
-                                color: Colors.white.withOpacity(0.35), fontSize: 13),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                          ),
-                          onSubmitted: (t) {
-                            if (_pendingImageBase64 != null) {
-                              _sendMessageWithImage(t.trim(), _pendingImageBase64!);
-                            } else if (t.trim().isNotEmpty) {
-                              _sendMessage(t.trim());
-                            }
-                          },
-                          onChanged: (_) => setState(() {}),
-                          maxLines: 1,
-                          textInputAction: TextInputAction.send,
+                          ],
                         ),
-                      )),
-                        ]),
-                      ],
-                    ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                                        const SizedBox(width: 8),
                     // Mic button
                     GestureDetector(
                       onTap: _toggleListening,
