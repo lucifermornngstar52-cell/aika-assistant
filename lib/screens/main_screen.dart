@@ -172,12 +172,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _textController.clear();
       _isThinking = true;
     });
-    setState(() => _isThinking = true);
     try {
       final apiKey = const String.fromEnvironment('OPENAI_API_KEY');
       final resp = await http.post(
         Uri.parse('https://api.openai.com/v1/chat/completions'),
-        headers: {'Authorization': 'Bearer \$apiKey', 'Content-Type': 'application/json'},
+        headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
         body: jsonEncode({
           'model': 'gpt-4o-mini',
           'messages': [
@@ -185,7 +184,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               'role': 'user',
               'content': [
                 {'type': 'text', 'text': userText},
-                {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,\$b64'}},
+                {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,$b64'}},
               ],
             }
           ],
@@ -211,7 +210,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
     }
-    setState(() => _isThinking = false);
     setState(() => _isThinking = false);
   }
 
