@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:file_picker/file_picker.dart';
 
 /// Entry point для overlay — запускается отдельным Flutter Engine
 @pragma('vm:entry-point')
@@ -18,13 +17,25 @@ class _OverlayApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          scaffoldBackgroundColor: Colors.transparent,
-          colorScheme: const ColorScheme.dark(),
-        ),
+        theme: ThemeData(scaffoldBackgroundColor: Colors.transparent),
         home: const _AikaOverlayPage(),
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Маппинг состояний → анимации Live2D
+// ─────────────────────────────────────────────────────────────────────────────
+const _stateAnimMap = {
+  'idle':      'idle',
+  'listening': 'listening',
+  'thinking':  'thinking',
+  'talking':   'talking',
+  'greeting':  'greeting',
+  'dance':     'dance',
+  'happy':     'greeting',
+  'sad':       'idle',
+  'excited':   'dance',
+};
 
 class _AikaOverlayPage extends StatefulWidget {
   const _AikaOverlayPage();
@@ -32,7 +43,8 @@ class _AikaOverlayPage extends StatefulWidget {
   State<_AikaOverlayPage> createState() => _AikaOverlayPageState();
 }
 
-class _AikaOverlayPageState extends State<_AikaOverlayPage> {
+class _AikaOverlayPageState extends State<_AikaOverlayPage>
+    with TickerProviderStateMixin {
   static const _channel = MethodChannel('com.aika.assistant/live2d_overlay');
 
   String _state   = 'idle';
@@ -40,10 +52,12 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
   double _size    = 200.0;
   bool   _mirror  = false;
 
+  // Live2D WebView
   InAppWebViewController? _webCtrl;
-  bool _webViewReady = false;
+  bool _webReady = false;
+  String _lastSentState = '';
 
-  // Сохранённые настройки модели
+  // Модель
   String _modelId = 'hiyori';
   String? _customModelPath;
 
@@ -54,40 +68,88 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
     'haru':   'models/Haru/Haru.model3.json',
   };
 
+  // Pinch scale
+  double _baseScale = 1.0;
+  double _scale     = 1.0;
+
+  // Idle-грусть таймер: если нет сообщений 30+ сек — sad анимация
+  Timer? _idleTimer;
+  bool _userInactive = false;
+
+  // Float анимация пузыря
+  late AnimationController _floatCtrl;
+  late Animation<double> _floatAnim;
+
   @override
   void initState() {
     super.initState();
     _channel.setMethodCallHandler(_handleNative);
-    _loadSavedModel();
+    _loadSavedSettings();
+    _startIdleTimer();
+
+    _floatCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..repeat(reverse: true);
+    _floatAnim = Tween<double>(begin: -5, end: 5).animate(
+      CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut),
+    );
   }
 
-  Future<void> _loadSavedModel() async {
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    _floatCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSavedSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final modelId = prefs.getString('live2d_model_id') ?? 'hiyori';
-    final customPath = prefs.getString('custom_model_path');
     if (mounted) {
       setState(() {
-        _modelId = modelId;
-        if (customPath != null && File(customPath).existsSync()) {
-          _customModelPath = customPath;
-        }
+        _modelId = prefs.getString('live2d_model_id') ?? 'hiyori';
+        _size    = prefs.getDouble('overlay_size') ?? 200.0;
+        _opacity = prefs.getDouble('overlay_opacity') ?? 1.0;
+        final cp = prefs.getString('custom_model_path');
+        if (cp != null && File(cp).existsSync()) _customModelPath = cp;
       });
     }
   }
 
+  // ── Idle timer: sad после 30 сек бездействия ──────────────────────────────
+  void _startIdleTimer() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(const Duration(seconds: 30), () {
+      if (mounted && _state == 'idle') {
+        setState(() { _userInactive = true; });
+        _sendState('sad');
+      }
+    });
+  }
+
+  void _resetIdleTimer() {
+    _userInactive = false;
+    _startIdleTimer();
+  }
+
+  // ── Нативные вызовы из AikaOverlayService ─────────────────────────────────
   Future<dynamic> _handleNative(MethodCall call) async {
     switch (call.method) {
+
       case 'setState':
         final s = call.arguments as String? ?? 'idle';
         if (mounted) setState(() => _state = s);
         _sendState(s);
+        _resetIdleTimer();
         break;
+
       case 'setMusicPlaying':
         final playing = call.arguments as bool? ?? false;
         final s = playing ? 'dance' : 'idle';
         if (mounted) setState(() => _state = s);
         _sendState(s);
         break;
+
       case 'setConfig':
         final args = call.arguments as Map? ?? {};
         if (mounted) setState(() {
@@ -96,106 +158,97 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
           _mirror  = args['mirror']  as bool? ?? _mirror;
         });
         break;
+
       case 'onTap':
-        if (mounted) setState(() => _state = 'greeting');
-        _sendState('greeting');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) setState(() => _state = 'idle');
-          _sendState('idle');
-        });
+        _onTapped();
         break;
+
       case 'playAnimation':
         final anim = call.arguments as String? ?? 'idle';
-        final mapped = _animToState(anim);
+        final mapped = _stateAnimMap[anim] ?? 'idle';
         if (mounted) setState(() => _state = mapped);
         _sendState(mapped);
-        break;
-      case 'pickModel':
-        await _pickCustomModel();
+        _resetIdleTimer();
         break;
     }
   }
 
-  void _sendState(String state) {
-    if (_webViewReady) {
-      _webCtrl?.evaluateJavascript(source: "window.setAikaState('\$state')");
-    }
-  }
-
-  String _animToState(String anim) {
-    switch (anim) {
-      case 'SambaDance': return 'dance';
-      case 'agree':      return 'greeting';
-      case 'headShake':  return 'thinking';
-      default:           return 'idle';
-    }
-  }
-
-  Future<void> _pickCustomModel() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        dialogTitle: 'Выбери файл модели (.model3.json)',
-      );
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
-        if (path.endsWith('model3.json') || path.endsWith('model.json')) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('custom_model_path', path);
-          await prefs.setString('live2d_model_id', 'custom');
-          setState(() {
-            _customModelPath = path;
-            _modelId = 'custom';
-            _webViewReady = false;
-          });
-          _webCtrl?.reload();
-        }
+  void _onTapped() {
+    _resetIdleTimer();
+    // Радуется при тапе
+    final prev = _state;
+    setState(() => _state = 'greeting');
+    _sendState('greeting');
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && _state == 'greeting') {
+        setState(() => _state = prev == 'greeting' ? 'idle' : prev);
+        _sendState(_state);
       }
-    } catch (e) {
-      debugPrint('FilePicker error: \$e');
-    }
+    });
   }
 
-  Future<void> _resetModel() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('custom_model_path');
-    await prefs.setString('live2d_model_id', 'hiyori');
-    setState(() {
-      _customModelPath = null;
-      _modelId = 'hiyori';
-      _webViewReady = false;
-    });
-    _webCtrl?.reload();
+  // ── Live2D JS команды ─────────────────────────────────────────────────────
+  void _sendState(String state) {
+    if (!_webReady) return;
+    if (state == _lastSentState) return;
+    _lastSentState = state;
+    final anim = _stateAnimMap[state] ?? state;
+    _webCtrl?.evaluateJavascript(source: "window.setAikaState('$anim')");
   }
 
   String _buildSwitchJS() {
     if (_customModelPath != null) {
-      return "window.loadCustomModel('file://\$_customModelPath');";
+      return "window.loadCustomModel('file://$_customModelPath');";
     }
-    final assetPath = _builtinPaths[_modelId] ?? _builtinPaths['hiyori']!;
-    return "window.switchBuiltinModel('\$assetPath');";
+    final asset = _builtinPaths[_modelId] ?? _builtinPaths['hiyori']!;
+    return "window.switchBuiltinModel('$asset');";
   }
 
+  // ── Pinch gesture ─────────────────────────────────────────────────────────
+  void _onScaleStart(ScaleStartDetails d) {
+    _baseScale = _scale;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (d.scale == 1.0) return; // игнорируем одиночный палец
+    setState(() {
+      _scale = (_baseScale * d.scale).clamp(0.5, 2.5);
+    });
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: AnimatedOpacity(
-        opacity: _opacity,
-        duration: const Duration(milliseconds: 300),
-        child: Transform(
-          alignment: Alignment.center,
-          transform: _mirror
-              ? (Matrix4.identity()..scale(-1.0, 1.0))
-              : Matrix4.identity(),
-          child: _buildLive2D(),
+      body: GestureDetector(
+        onScaleStart: _onScaleStart,
+        onScaleUpdate: _onScaleUpdate,
+        child: AnimatedBuilder(
+          animation: _floatAnim,
+          builder: (_, child) => Transform.translate(
+            offset: Offset(0, _floatAnim.value),
+            child: child,
+          ),
+          child: Transform.scale(
+            scale: _scale,
+            child: Opacity(
+              opacity: _opacity.clamp(0.0, 1.0),
+              child: Transform(
+                alignment: Alignment.center,
+                transform: _mirror
+                    ? (Matrix4.identity()..scale(-1.0, 1.0))
+                    : Matrix4.identity(),
+                child: _buildLive2DView(),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLive2D() {
+  Widget _buildLive2DView() {
     return SizedBox.expand(
       child: InAppWebView(
         initialFile: 'assets/live2d_viewer.html',
@@ -216,34 +269,24 @@ class _AikaOverlayPageState extends State<_AikaOverlayPage> {
             callback: (args) {
               final msg = args.isNotEmpty ? args[0].toString() : '';
               if (msg == 'tap') {
-                _channel.invokeMethod('onTap');
+                _onTapped();
               } else if (msg == 'modelLoaded') {
-                // Модель загружена — отправляем текущее состояние
-                Future.delayed(const Duration(milliseconds: 300), () {
+                Future.delayed(const Duration(milliseconds: 500), () {
                   _sendState(_state);
                 });
-              } else if (msg == 'pick_model') {
-                _pickCustomModel();
-              } else if (msg == 'reset_model') {
-                _resetModel();
               }
             },
           );
         },
         onLoadStop: (ctrl, url) {
-          setState(() => _webViewReady = true);
-          // Переключаем на нужную модель через 1.5 секунды
-          // (HTML сначала загрузит Hiyori, потом мы переключим)
+          setState(() => _webReady = true);
+          // Переключаем модель через 1.5 сек после загрузки страницы
           Future.delayed(const Duration(milliseconds: 1500), () {
-            final js = _buildSwitchJS();
-            ctrl.evaluateJavascript(source: js);
+            ctrl.evaluateJavascript(source: _buildSwitchJS());
           });
         },
-        onConsoleMessage: (ctrl, msg) {
-          debugPrint('[Overlay WebView] \${msg.messageLevel.name}: \${msg.message}');
-        },
-        onLoadError: (ctrl, url, code, message) {
-          debugPrint('[Overlay WebView] load error: \$code \$message');
+        onConsoleMessage: (_, msg) {
+          debugPrint('[OverlayWebView] ${msg.message}');
         },
       ),
     );
