@@ -69,6 +69,7 @@ flutter:
   assets:
     - assets/live2d_viewer.html
     - assets/3d_viewer.html
+    - assets/model-viewer.min.js
     - assets/live2d/
     - assets/models/
     - assets/models/robot.glb
