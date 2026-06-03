@@ -3,125 +3,275 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<!-- Локальный model-viewer — работает без интернета -->
-<script type="module" src="./model-viewer.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; background:transparent !important; overflow:hidden; }
-  model-viewer {
-    width:100%; height:100%;
-    background-color: transparent;
-    --progress-bar-color: transparent;
-    --progress-mask: transparent;
+  html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
+  canvas { display:block; background:transparent; }
+  #loading {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    color:rgba(255,255,255,0.7); font:14px sans-serif; text-align:center;
   }
+  .dot { animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
 </style>
 </head>
 <body>
-<model-viewer
-  id="mv"
-  src="./models/anime_girl.glb"
-  autoplay
-  animation-name="Idle"
-  disable-zoom
-  disable-pan
-  touch-action="none"
-  style="width:100%;height:100%;background:transparent"
-  interaction-prompt="none"
-></model-viewer>
+<div id="loading"><div class="dot">✨ Loading...</div></div>
 
-<script>
-var mv = document.getElementById('mv');
-var currentState = 'idle';
-var resetTimer = null;
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
 
-// Реальные имена анимаций из GLB файлов:
-// anime_girl/aika/xbot: idle, run, walk, agree, headShake, sad_pose, sneak_pose, SambaDance, TPose
-// robot: Idle, Running, Walking, Wave, Dance, Yes, No, Jump, ThumbsUp, Death, Sitting, Punch
-var ANIM_MAP = {
-  idle:         ['idle',       'Idle',       'sneak_pose'],
-  listening:    ['idle',       'Idle',       'sneak_pose'],
-  thinking:     ['sneak_pose', 'No',         'headShake',  'idle'],
-  talking:      ['agree',      'Yes',        'idle'],
-  greeting:     ['agree',      'Wave',       'walk',       'idle'],
-  dance:        ['SambaDance', 'Dance',      'run',        'idle'],
-  music:        ['SambaDance', 'Dance',      'run',        'idle'],
-  notification: ['agree',      'Yes',        'idle'],
-  alarm:        ['run',        'Running',    'idle'],
-  vk:           ['walk',       'Walking',    'idle'],
-  youtube:      ['walk',       'Walking',    'idle'],
-  telegram:     ['agree',      'Yes',        'idle'],
-  happy:        ['agree',      'ThumbsUp',   'SambaDance', 'idle'],
-  sad:          ['sad_pose',   'Death',      'sneak_pose', 'idle'],
-  surprised:    ['headShake',  'Jump',       'No',         'idle'],
-  stretch:      ['sneak_pose', 'Sitting',    'idle'],
-};
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { AnimationMixer } from 'three';
 
-var ONE_SHOT = {
-  greeting:4000, notification:4000, alarm:5000,
-  happy:4000, surprised:3000, telegram:4000,
-  vk:4000, youtube:4000
-};
+// ── Scene ─────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: true,
+  premultipliedAlpha: false
+});
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
 
-var availableAnims = [];
+const scene = new THREE.Scene();
 
-function onModelLoaded() {
-  availableAnims = [];
-  try {
-    var anims = mv.availableAnimations;
-    if (anims) availableAnims = Array.from(anims);
-  } catch(e) {}
-  try { AndroidBridge.onModelLoaded(); } catch(e) {}
-  // Уведомляем Flutter через JavaScriptHandler
-  try { window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded'); } catch(e) {}
-  playState(currentState);
+// Камера
+const camera = new THREE.PerspectiveCamera(28, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.4, 3.5);
+camera.lookAt(0, 1.0, 0);
+
+// ── Lighting (аниме-стиль: мягкий ambient + rim light) ────────────────────
+const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+scene.add(ambient);
+
+const dirLight = new THREE.DirectionalLight(0xfff5e0, 2.0);
+dirLight.position.set(1, 3, 2);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+// Rim light — голубоватый сзади для аниме-look
+const rimLight = new THREE.DirectionalLight(0x88ccff, 1.5);
+rimLight.position.set(-1, 2, -3);
+scene.add(rimLight);
+
+// Fill light снизу — тёплый
+const fillLight = new THREE.PointLight(0xffe0cc, 0.8, 10);
+fillLight.position.set(0, -0.5, 2);
+scene.add(fillLight);
+
+// ── Cel-shading материал ──────────────────────────────────────────────────
+function applyCelShading(model) {
+  model.traverse(obj => {
+    if (!obj.isMesh) return;
+    obj.castShadow = true;
+    obj.receiveShadow = true;
+
+    if (Array.isArray(obj.material)) {
+      obj.material = obj.material.map(m => enhanceMaterial(m));
+    } else if (obj.material) {
+      obj.material = enhanceMaterial(obj.material);
+    }
+  });
 }
 
-mv.addEventListener('load', onModelLoaded);
+function enhanceMaterial(mat) {
+  if (!mat) return mat;
+  // Оставляем оригинальные текстуры, только усиливаем аниме-вид
+  mat.roughness    = mat.roughness    != null ? Math.min(mat.roughness, 0.6)    : 0.5;
+  mat.metalness    = mat.metalness    != null ? Math.min(mat.metalness, 0.1)    : 0.0;
+  // Насыщенность цвета
+  if (mat.color) {
+    const hsl = {};
+    mat.color.getHSL(hsl);
+    mat.color.setHSL(hsl.h, Math.min(hsl.s * 1.4, 1.0), hsl.l);
+  }
+  return mat;
+}
 
-mv.addEventListener('click', function() {
-  playState('greeting');
-  try { AndroidBridge.onTap(); } catch(e) {}
-});
+// Outline через BackFace trick
+function addOutline(model) {
+  const outlineMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.6,
+  });
+  model.traverse(obj => {
+    if (!obj.isMesh) return;
+    const outline = new THREE.Mesh(obj.geometry, outlineMat);
+    outline.scale.setScalar(1.02);
+    outline.renderOrder = -1;
+    obj.add(outline);
+  });
+}
+
+// ── State & Animation ─────────────────────────────────────────────────────
+let mixer = null;
+let currentAction = null;
+let availableAnims = {};
+let currentState = 'idle';
+let resetTimer = null;
+
+// Карта состояний → приоритетные имена анимаций
+const ANIM_MAP = {
+  idle:      ['idle', 'Idle', 'sneak_pose', 'Standing'],
+  listening: ['idle', 'Idle', 'sneak_pose'],
+  thinking:  ['sneak_pose', 'No', 'headShake', 'idle'],
+  talking:   ['agree', 'Yes', 'idle'],
+  greeting:  ['agree', 'Wave', 'walk', 'idle'],
+  dance:     ['SambaDance', 'Dance', 'run', 'idle'],
+  music:     ['SambaDance', 'Dance', 'run', 'idle'],
+  happy:     ['agree', 'ThumbsUp', 'SambaDance', 'idle'],
+  sad:       ['sad_pose', 'Death', 'sneak_pose', 'idle'],
+  surprised: ['headShake', 'Jump', 'No', 'idle'],
+  alarm:     ['run', 'Running', 'idle'],
+  walk:      ['walk', 'Walking', 'run', 'idle'],
+  stretch:   ['sneak_pose', 'Sitting', 'idle'],
+  notification: ['agree', 'Yes', 'idle'],
+};
+
+const ONE_SHOT = {
+  greeting:4000, notification:3000, alarm:5000,
+  happy:4000, surprised:3000, dance:8000
+};
 
 function findAnim(state) {
-  var candidates = ANIM_MAP[state] || ['Idle', 'idle'];
-  for (var i = 0; i < candidates.length; i++) {
-    if (availableAnims.indexOf(candidates[i]) >= 0) return candidates[i];
+  const candidates = ANIM_MAP[state] || ['idle', 'Idle'];
+  for (const name of candidates) {
+    if (availableAnims[name]) return availableAnims[name];
   }
-  return availableAnims[0] || 'Idle';
+  // fallback — первая доступная
+  return Object.values(availableAnims)[0] || null;
 }
 
 function playState(state) {
   clearTimeout(resetTimer);
   currentState = state;
-  var anim = findAnim(state);
-  try {
-    mv.animationName = anim;
-    mv.play({ repetitions: Infinity });
-  } catch(e) {}
+  const clip = findAnim(state);
+  if (!clip || !mixer) return;
+
+  const action = mixer.clipAction(clip);
+  if (currentAction && currentAction !== action) {
+    currentAction.fadeOut(0.3);
+  }
+  action.reset().fadeIn(0.3).play();
+  currentAction = action;
+
   if (ONE_SHOT[state]) {
-    resetTimer = setTimeout(function() { playState('idle'); }, ONE_SHOT[state]);
+    resetTimer = setTimeout(() => playState('idle'), ONE_SHOT[state]);
   }
 }
 
-// Public API вызываемый из Flutter
-window.setAikaState = function(state) { playState(state || 'idle'); };
+// ── Loader ─────────────────────────────────────────────────────────────────
+const loader = new GLTFLoader();
+let currentModelPath = './models/anime_girl.glb';
 
-window.loadCustomModel = function(url) {
-  availableAnims = [];
-  mv.src = '';
-  setTimeout(function() { mv.src = url; }, 50);
-};
+function loadModel(path) {
+  // Чистим старую модель
+  scene.children
+    .filter(c => c.userData.isCharacter)
+    .forEach(c => { scene.remove(c); if (c.traverse) c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); });
 
-window.switchModel = function(p) {
-  availableAnims = [];
-  var newSrc = './' + p;
-  // Принудительный перезапуск: сбрасываем src в пустое и ставим новое
-  mv.src = '';
-  setTimeout(function() {
-    mv.src = newSrc;
-  }, 100);
-};
+  if (mixer) { mixer.stopAllAction(); mixer = null; }
+  availableAnims = {};
+  currentAction = null;
+
+  loader.load(path,
+    (gltf) => {
+      const model = gltf.scene;
+      model.userData.isCharacter = true;
+
+      // Центрируем модель
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = 1.8 / maxDim;
+      model.scale.setScalar(scale);
+      model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+
+      // Аниме шейдинг
+      applyCelShading(model);
+      addOutline(model);
+
+      scene.add(model);
+
+      // Анимации
+      if (gltf.animations && gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        gltf.animations.forEach(clip => { availableAnims[clip.name] = clip; });
+        console.log('Animations:', Object.keys(availableAnims));
+      }
+
+      // Скрываем loading
+      const el = document.getElementById('loading');
+      if (el) el.style.display = 'none';
+
+      // Сигнал Flutter
+      try { AndroidBridge.onModelLoaded(); } catch(e) {}
+      try { window.flutter_inappwebview.callHandler('FlutterChannel', 'modelLoaded'); } catch(e) {}
+
+      playState(currentState);
+    },
+    undefined,
+    (err) => {
+      console.error('Load error:', err);
+      const el = document.getElementById('loading');
+      if (el) el.textContent = '⚠️ Error loading model';
+    }
+  );
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── Idle breathing animation ──────────────────────────────────────────────
+let breathT = 0;
+
+// ── Render loop ───────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  if (mixer) mixer.update(delta);
+
+  // Лёгкое покачивание в idle
+  if (currentState === 'idle' || currentState === 'listening') {
+    breathT += delta * 0.8;
+    scene.children
+      .filter(c => c.userData.isCharacter)
+      .forEach(c => { c.position.y += Math.sin(breathT) * 0.0002; });
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
+window.setAikaState = (state) => playState(state || 'idle');
+window.switchModel  = (path)  => { currentModelPath = path.startsWith('./') ? path : './' + path; loadModel(currentModelPath); };
+window.loadCustomModel = (url) => loadModel(url);
+
+// Start
+loadModel(currentModelPath);
+animate();
 </script>
 </body>
 </html>
