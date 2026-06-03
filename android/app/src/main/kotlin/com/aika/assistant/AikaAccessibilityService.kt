@@ -20,6 +20,7 @@ class AikaAccessibilityService : AccessibilityService() {
         var instance: AikaAccessibilityService? = null
         var screenEventSink: ((Any?) -> Unit)? = null
         private const val TAG = "AikaA11y"
+        const val ACTION_SCREEN_EVENT = "com.aika.SCREEN_EVENT"
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -298,7 +299,7 @@ class AikaAccessibilityService : AccessibilityService() {
     fun copySelectedText(): String? {
         val root = rootInActiveWindow ?: return null
         val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        node.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+        node.performAction(0x00040000) // ACTION_SELECT_ALL
         node.performAction(AccessibilityNodeInfo.ACTION_COPY)
         return node.text?.toString()
     }
