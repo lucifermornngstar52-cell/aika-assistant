@@ -28,11 +28,11 @@ class _Live2DWidgetState extends State<Live2DWidget> {
   InAppWebViewController? _ctrl;
   String _lastState = '';
   bool _ready = false;
-  bool _loaded = false;
 
   String _modelId = 'natori';
   String _mode = 'live2d'; // 'live2d' | '3d'
   String? _savedCustomPath;
+  bool _prefsLoaded = false;
 
   static const _builtinLive2DPaths = {
     'natori': 'models/Natori/Natori.model3.json',
@@ -70,11 +70,11 @@ class _Live2DWidgetState extends State<Live2DWidget> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _modelId = prefs.getString('live2d_model_id') ?? 'natori';
-      _mode = prefs.getString('overlay_mode') ?? 'live2d';
+      _modelId        = prefs.getString('live2d_model_id') ?? 'natori';
+      _mode           = prefs.getString('overlay_mode') ?? 'live2d';
       _savedCustomPath = prefs.getString('custom_model_path');
-      _ready = false;
-      _loaded = false;
+      _prefsLoaded    = true;
+      _ready          = false;
     });
   }
 
@@ -112,7 +112,8 @@ class _Live2DWidgetState extends State<Live2DWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_loaded) {
+    // Пока prefs не загружены — показываем спиннер
+    if (!_prefsLoaded) {
       return SizedBox(
         width: widget.width,
         height: widget.height,
@@ -122,10 +123,11 @@ class _Live2DWidgetState extends State<Live2DWidget> {
       );
     }
 
+    // ValueKey по _htmlFile — при смене режима (3D↔Live2D) Flutter
+    // уничтожает старый WebView и создаёт новый с правильным HTML
     return SizedBox(
       width: widget.width,
       height: widget.height,
-      // КЛЮЧ ПО _htmlFile — при смене режима Flutter пересоздаёт WebView целиком
       child: KeyedSubtree(
         key: ValueKey(_htmlFile),
         child: InAppWebView(
