@@ -22,24 +22,66 @@ var BASE = (function() {
 var app = null, model = null, currentState = 'idle';
 var motionGroups = [], expressions = [], idleTimer = null, danceTimer = null;
 
-// Расширенный маппинг состояний → Live2D
+// ── Web Audio разблокировка (нужна для звука в WebView) ──────────────────────
+var audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(function(){});
+  }
+}
+document.addEventListener('touchstart', ensureAudio, { once: true });
+document.addEventListener('pointerdown', ensureAudio, { once: true });
+
+// ── Звуки Айки ──────────────────────────────────────────────────────────────
+var currentAudio = null;
+
+function playSound(soundPath) {
+  if (!soundPath) return;
+  ensureAudio();
+  try {
+    if (currentAudio) { currentAudio.pause(); currentAudio.src = ''; }
+    var url = soundPath.startsWith('http') ? soundPath : (BASE + soundPath);
+    currentAudio = new Audio(url);
+    currentAudio.volume = 0.85;
+    currentAudio.play().catch(function(e) {});
+  } catch(e) {}
+}
+
+function stopSound() {
+  if (currentAudio) { currentAudio.pause(); currentAudio.src = ''; currentAudio = null; }
+}
+
+// Получить Sound из motion3.json для текущего мотиона
+function getSoundForMotion(groupName, idx) {
+  try {
+    var motions = model.internalModel.settings.motions[groupName];
+    if (motions && motions[idx] && motions[idx].Sound) {
+      return motions[idx].Sound;
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ── Маппинг состояний ────────────────────────────────────────────────────────
 var STATE_CONFIG = {
   idle:        { group: 'Idle',    exprIdx: -1,  autoReset: false },
   listening:   { group: 'Idle',    exprIdx: 2,   autoReset: false },
   thinking:    { group: 'Idle',    exprIdx: 1,   autoReset: false },
-  talking:     { group: 'TapBody', exprIdx: 0,   autoReset: false },
-  greeting:    { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000 },
+  talking:     { group: 'TapBody', exprIdx: 0,   autoReset: false, playSound: true },
+  greeting:    { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
   dance:       { group: 'TapBody', exprIdx: 0,   autoReset: false },
-  // Новые состояния
-  notification:{ group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 5000 },
-  alarm:       { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 5000 },
+  notification:{ group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 5000, playSound: true },
+  alarm:       { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 5000, playSound: true },
   music:       { group: 'TapBody', exprIdx: 0,   autoReset: false },
-  vk:          { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000 },
-  youtube:     { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000 },
-  telegram:    { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000 },
-  happy:       { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000 },
+  vk:          { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
+  youtube:     { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
+  telegram:    { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
+  happy:       { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
   sad:         { group: 'Idle',    exprIdx: 3,   autoReset: true,  resetAfter: 5000 },
-  surprised:   { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 3000 },
+  surprised:   { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 3000, playSound: true },
   stretch:     { group: 'Idle',    exprIdx: -1,  autoReset: true,  resetAfter: 6000 },
 };
 
@@ -58,7 +100,11 @@ function playMotion(state) {
       var group = (motionGroups.indexOf('TapBody') >= 0) ? 'TapBody' : (motionGroups[0] || 'Idle');
       var sz = 1;
       try { sz = (model.internalModel.settings.motions[group] || []).length || 1; } catch(e) {}
-      model.motion(group, di % sz, PIXI.live2d.MotionPriority.NORMAL);
+      var i = di % sz;
+      model.motion(group, i, PIXI.live2d.MotionPriority.NORMAL);
+      // Звук при dance — играем если есть
+      var snd = getSoundForMotion(group, i);
+      if (snd && di === 0) playSound(snd); // только первый раз чтобы не спамить
       di++;
       danceTimer = setTimeout(doPlay, 2800);
     };
@@ -71,13 +117,11 @@ function playMotion(state) {
 
   // Выбираем группу движений
   var groupName = cfg.group;
-  if (motionGroups.indexOf(groupName) < 0) {
-    groupName = motionGroups[0] || 'Idle';
-  }
+  if (motionGroups.indexOf(groupName) < 0) groupName = motionGroups[0] || 'Idle';
+
   var sz = 1;
   try { sz = (model.internalModel.settings.motions[groupName] || []).length || 1; } catch(e) {}
 
-  // Индекс движения
   var idx;
   if (state === 'idle' || state === 'listening') {
     idx = Math.floor(Math.random() * sz);
@@ -91,6 +135,12 @@ function playMotion(state) {
 
   try { model.motion(groupName, idx, priority); } catch(e) {}
 
+  // Проигрываем звук если прописан в model3.json
+  if (cfg.playSound) {
+    var snd = getSoundForMotion(groupName, idx);
+    if (snd) playSound(snd);
+  }
+
   // Выражение лица
   if (cfg.exprIdx >= 0 && cfg.exprIdx < expressions.length) {
     try { model.expression(cfg.exprIdx); } catch(e) {}
@@ -99,6 +149,7 @@ function playMotion(state) {
   // Авто-сброс к idle
   if (cfg.autoReset) {
     idleTimer = setTimeout(function() {
+      stopSound();
       currentState = 'idle';
       playMotion('idle');
     }, cfg.resetAfter || 4000);
@@ -128,6 +179,7 @@ function detectGroups(m) {
 }
 
 function loadModelFromPath(path) {
+  stopSound();
   if (model) {
     try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
     model = null; motionGroups = []; expressions = [];
@@ -143,6 +195,7 @@ function loadModelFromPath(path) {
       detectGroups(model);
       model.interactive = true;
       model.on('pointerdown', function() {
+        ensureAudio();
         window.setAikaState('greeting');
         try { AndroidBridge.onTap(); } catch(e) {}
       });
@@ -193,7 +246,7 @@ function initLive2D() {
     });
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
 window.setAikaState = function(state) {
   currentState = state || 'idle';
   playMotion(currentState);
@@ -206,13 +259,17 @@ window.switchBuiltinModel = function(p) {
 };
 window.switchModel = window.switchBuiltinModel;
 
-// Дополнительные удобные методы
+// Удобные методы
 window.playNotification  = function() { window.setAikaState('notification'); };
 window.playGreeting      = function() { window.setAikaState('greeting'); };
 window.playDance         = function() { window.setAikaState('dance'); };
 window.playMusic         = function() { window.setAikaState('music'); };
 window.playAlarm         = function() { window.setAikaState('alarm'); };
 window.playSurprised     = function() { window.setAikaState('surprised'); };
+
+// Внешнее управление звуком из Flutter
+window.externalPlaySound = function(path) { playSound(path); };
+window.externalStopSound = function() { stopSound(); };
 
 setTimeout(initLive2D, 300);
 </script>
