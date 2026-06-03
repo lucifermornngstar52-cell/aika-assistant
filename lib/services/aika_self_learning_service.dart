@@ -2,20 +2,16 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Сервис самообучения Айки.
-/// Запоминает действия, приложения, предпочтения пользователя
-/// и использует их для улучшения ответов.
 class AikaSelfLearningService {
 
-  // ─── Запись действий ───────────────────────────────────────
-
   static Future<void> recordAction({
-    required String type,   // 'app_open', 'command', 'search', 'message' и т.д.
-    required String value,  // имя приложения, текст команды, etc.
+    required String type,
+    required String value,
     String? extra,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = 'self_learn_\$type';
+      final key = 'self_learn_$type';
       final existing = prefs.getStringList(key) ?? [];
       existing.add(json.encode({
         'ts': DateTime.now().toIso8601String(),
@@ -26,8 +22,6 @@ class AikaSelfLearningService {
       await prefs.setStringList(key, existing);
     } catch (_) {}
   }
-
-  // ─── Получить часто открываемые приложения ─────────────────
 
   static Future<List<String>> getFrequentApps({int top = 5}) async {
     try {
@@ -46,20 +40,16 @@ class AikaSelfLearningService {
     }
   }
 
-  // ─── Получить контекст для AI-промпта ──────────────────────
-
   static Future<String> getContextForAI() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final sb = StringBuffer();
 
-      // Частые приложения
       final apps = await getFrequentApps();
       if (apps.isNotEmpty) {
-        sb.writeln('Любимые приложения пользователя: \${apps.join(', ')}.');
+        sb.writeln("Любимые приложения пользователя: ${apps.join(', ')}.");
       }
 
-      // Последние команды
       final cmds = prefs.getStringList('self_learn_command') ?? [];
       if (cmds.isNotEmpty) {
         final recent = cmds.length > 5 ? cmds.sublist(cmds.length - 5) : cmds;
@@ -68,16 +58,20 @@ class AikaSelfLearningService {
           return m['v'] as String? ?? '';
         }).where((s) => s.isNotEmpty).toList();
         if (cmdTexts.isNotEmpty) {
-          sb.writeln('Последние команды: \${cmdTexts.join('; ')}.');
+          sb.writeln("Последние команды: ${cmdTexts.join('; ')}.");
         }
       }
 
-      // Время активности
       final hour = DateTime.now().hour;
-      if (hour >= 22 || hour < 6) sb.writeln('Сейчас ночь — пользователь работает поздно.');
-      else if (hour >= 6 && hour < 12) sb.writeln('Утро — пользователь только начинает день.');
-      else if (hour >= 12 && hour < 18) sb.writeln('День — активное время.');
-      else sb.writeln('Вечер — пользователь отдыхает или играет.');
+      if (hour >= 22 || hour < 6) {
+        sb.writeln('Сейчас ночь — пользователь работает поздно.');
+      } else if (hour >= 6 && hour < 12) {
+        sb.writeln('Утро — пользователь только начинает день.');
+      } else if (hour >= 12 && hour < 18) {
+        sb.writeln('День — активное время.');
+      } else {
+        sb.writeln('Вечер — пользователь отдыхает или играет.');
+      }
 
       return sb.toString();
     } catch (_) {
@@ -85,25 +79,24 @@ class AikaSelfLearningService {
     }
   }
 
-  // ─── Запомнить предпочтение ────────────────────────────────
+  // Алиас для обратной совместимости
+  static Future<String> buildContextSummary() => getContextForAI();
 
   static Future<void> savePreference(String key, String value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('pref_\$key', value);
+      await prefs.setString('pref_$key', value);
     } catch (_) {}
   }
 
   static Future<String?> getPreference(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('pref_\$key');
+      return prefs.getString('pref_$key');
     } catch (_) {
       return null;
     }
   }
-
-  // ─── Запомнить факт о пользователе ────────────────────────
 
   static Future<void> rememberFact(String fact) async {
     try {
@@ -129,6 +122,6 @@ class AikaSelfLearningService {
   static Future<String> getUserFactsForAI() async {
     final facts = await getUserFacts();
     if (facts.isEmpty) return '';
-    return 'Что я знаю о пользователе:\n\${facts.join('\n')}';
+    return "Что я знаю о пользователе:\n${facts.join('\n')}";
   }
 }
