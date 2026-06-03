@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'screen_reader_service.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'ai_service.dart';
 import 'aika_self_learning_service.dart';
 
