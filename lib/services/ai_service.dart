@@ -133,12 +133,23 @@ class AiService {
       }
     }
 
-    contents.add({'role': 'user', 'parts': [{'text': message}]});
+    // Vision: если есть imageBase64 — добавляем inlineData
+    if (imageBase64.isNotEmpty) {
+      contents.add({
+        'role': 'user',
+        'parts': [
+          {'text': message.isNotEmpty ? message : 'Посмотри на изображение и опиши что видишь'},
+          {'inline_data': {'mime_type': imageMimeType, 'data': imageBase64}},
+        ],
+      });
+    } else {
+      contents.add({'role': 'user', 'parts': [{'text': message}]});
+    }
 
     final body = {
       'system_instruction': {'parts': [{'text': systemPrompt}]},
       'contents': contents,
-      'generationConfig': {'temperature': 0.85, 'maxOutputTokens': 512},
+      'generationConfig': {'temperature': 0.85, 'maxOutputTokens': 2048},
     };
 
     final response = await http.post(
