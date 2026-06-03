@@ -24,10 +24,14 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
   static const _cardBg = Color(0xFF1C1C1E);
 
   static const _models = [
-    {'id': 'hiyori', 'label': '🌸 Hiyori'},
-    {'id': 'natori', 'label': '🌟 Natori'},
-    {'id': 'haru',   'label': '⚡ Haru'},
-    {'id': 'ren',    'label': '🔥 Ren'},
+    {'id': 'hiyori',  'label': '🌸 Hiyori'},
+    {'id': 'natori',  'label': '🌟 Natori'},
+    {'id': 'haru',    'label': '⚡ Haru'},
+    {'id': 'ren',     'label': '🔥 Ren'},
+    {'id': 'miku',    'label': '🎵 Miku'},
+    {'id': 'karin',   'label': '🌺 Karin'},
+    {'id': 'izumi',   'label': '💜 Izumi'},
+    {'id': 'akari',   'label': '🌙 Akari'},
   ];
 
   static const _modelPaths = {
@@ -35,6 +39,11 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     'natori': 'models/Natori/Natori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
     'ren':    'models/Ren/Ren.model3.json',
+    // Новые модели — те же базовые с другим стилем через CSS/параметры
+    'miku':   'models/Natori/Natori.model3.json',
+    'karin':  'models/Hiyori/Hiyori.model3.json',
+    'izumi':  'models/Ren/Ren.model3.json',
+    'akari':  'models/Haru/Haru.model3.json',
   };
 
   static const _testStates = [
