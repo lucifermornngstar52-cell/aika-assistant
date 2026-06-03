@@ -198,14 +198,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _textController.clear();
       _isThinking = true;
     });
-    _overlayService.setThinking();
+    OverlayService().asyncState('thinking');
     try {
       final reply = await _aiService.sendMessage(
         userText,
         userName: _userName,
         assistantName: _assistantName,
-        history: _buildHistory(),
-        memoryContext: _memoryService.getContext(),
+        history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
+        memoryContext: await _memoryService.getUserContext(),
         imageBase64: b64,
         imageMimeType: 'image/jpeg',
       );
@@ -216,7 +216,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       _speak(reply);
-      _overlayService.setTalking();
+      OverlayService().asyncState('talking');
     } catch (e) {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -224,7 +224,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         content: 'Не смогла обработать изображение 😔 Попробуй ещё раз',
         timestamp: DateTime.now(),
       ));
-      _overlayService.setIdle();
+      OverlayService().asyncState('idle');
     }
     setState(() => _isThinking = false);
   }
