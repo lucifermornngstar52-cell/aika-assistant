@@ -25,11 +25,15 @@ class MainActivity : FlutterActivity() {
         private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
         private const val AUDIO_CHANNEL         = "aika/audio"
         private const val MESSENGER_CHANNEL     = "com.aika.assistant/messenger"
-        private const val MEDIA_CHANNEL         = "com.aika.assistant/media"
+        private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
+        private const val NOTIFICATION_EVENTS_CHANNEL = "com.aika.assistant/notification_events"
     }
 
     // EventChannel sink для отправки событий смены приложений во Flutter
     private var screenEventSink: EventChannel.EventSink? = null
+
+    // EventChannel sink для уведомлений
+    private var notificationEventSink: EventChannel.EventSink? = null
 
     // BroadcastReceiver — получает события от AikaAccessibilityService
     private val screenEventReceiver = object : BroadcastReceiver() {
@@ -38,6 +42,20 @@ class MainActivity : FlutterActivity() {
             val pkg   = intent.getStringExtra("package") ?: return
             val label = intent.getStringExtra("label")   ?: ""
             screenEventSink?.success(mapOf("package" to pkg, "label" to label))
+        }
+    }
+
+    // BroadcastReceiver — уведомления от AikaNotificationListenerService
+    private val notificationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != AikaNotificationListenerService.ACTION_NOTIF) return
+            val pkg   = intent.getStringExtra(AikaNotificationListenerService.EXTRA_PKG)   ?: return
+            val title = intent.getStringExtra(AikaNotificationListenerService.EXTRA_TITLE) ?: ""
+            val text  = intent.getStringExtra(AikaNotificationListenerService.EXTRA_TEXT)  ?: ""
+            val time  = intent.getLongExtra(AikaNotificationListenerService.EXTRA_TIME, 0).toString()
+            notificationEventSink?.success(mapOf(
+                "pkg" to pkg, "title" to title, "text" to text, "time" to time
+            ))
         }
     }
 
@@ -51,6 +69,14 @@ class MainActivity : FlutterActivity() {
             registerReceiver(screenEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(screenEventReceiver, filter)
+        }
+
+        // Регистрируем ресивер уведомлений
+        val notifFilter = IntentFilter(AikaNotificationListenerService.ACTION_NOTIF)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(notificationReceiver, notifFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(notificationReceiver, notifFilter)
         }
     }
 
@@ -87,7 +113,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try { unregisterReceiver(screenEventReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(screenEventReceiver)
+        try { unregisterReceiver(notificationReceiver) } catch (_: Exception) {} } catch (_: Exception) {}
     }
 
     override fun onResume() {
@@ -290,6 +317,17 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     screenEventSink = null
+                }
+            })
+
+        // ── 6. Notification events EventChannel ──────────────────────────────────
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_EVENTS_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    notificationEventSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    notificationEventSink = null
                 }
             })
 
