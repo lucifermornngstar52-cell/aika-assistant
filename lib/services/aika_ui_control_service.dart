@@ -5,9 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 
 /// Центральный сервис управления UI через AccessibilityService.
-/// Все действия идут через MethodChannel → AikaAccessibilityService.kt
 class AikaUiControlService {
-  static const _ch = MethodChannel('com.aika.assistant/screen');
+  // Правильные каналы из MainActivity.kt
+  static const _reader = MethodChannel('com.aika.assistant/screen_reader');
   static const _launcher = MethodChannel('com.aika.assistant/launcher');
   static const _messenger = MethodChannel('com.aika.assistant/messenger');
   static const _screen = MethodChannel('com.aika.assistant/screen');
@@ -16,35 +16,57 @@ class AikaUiControlService {
   // ПРИЛОЖЕНИЯ
   // ─────────────────────────────────────────────────────────────
 
-  /// Выйти из текущего приложения и открыть новое по имени/пакету.
-  /// Айка сначала нажимает HOME, затем ищет пакет.
+  /// Выйти из текущего приложения (HOME) и открыть новое по пакету или имени.
   static Future<String> openAppAndExit(String appNameOrPkg) async {
     try {
-      // 1. Нажимаем HOME — выходим из текущего приложения
-      await _ch.invokeMethod('pressHome');
-      await Future.delayed(const Duration(milliseconds: 400));
+      await _reader.invokeMethod('pressHome');
+      await Future.delayed(const Duration(milliseconds: 500));
 
-      // 2. Открываем нужное приложение
-      final result = await _launcher.invokeMethod('launchApp', {'package': appNameOrPkg});
-      if (result == true) {
-        return 'Открываю $appNameOrPkg 📱';
-      } else {
-        // Пробуем найти по имени через fuzzy search
-        final found = await _launcher.invokeMethod('findAndLaunch', {'name': appNameOrPkg});
-        return found == true
-            ? 'Нашла и открываю $appNameOrPkg 📱'
-            : 'Не нашла приложение: $appNameOrPkg';
-      }
+      // Пробуем точный пакет
+      bool? result = await _launcher.invokeMethod<bool>('launchApp', {'package': appNameOrPkg});
+      if (result == true) return 'Открываю $appNameOrPkg 📱';
+
+      // Fuzzy поиск по имени
+      result = await _launcher.invokeMethod<bool>('findAndLaunch', {'name': appNameOrPkg});
+      return result == true
+          ? 'Нашла и открываю "$appNameOrPkg" 📱'
+          : 'Не нашла приложение: "$appNameOrPkg"';
     } catch (e) {
       return 'Ошибка открытия: $e';
     }
   }
 
-  /// Ввести текст в строку поиска текущего приложения.
+  /// Открыть приложение по имени (без выхода из текущего).
+  static Future<String> launchApp(String appNameOrPkg) async {
+    try {
+      bool? r = await _launcher.invokeMethod<bool>('launchApp', {'package': appNameOrPkg});
+      if (r == true) return 'Открываю $appNameOrPkg 📱';
+      r = await _launcher.invokeMethod<bool>('findAndLaunch', {'name': appNameOrPkg});
+      return r == true ? 'Открываю "$appNameOrPkg" 📱' : 'Приложение не найдено: "$appNameOrPkg"';
+    } catch (e) {
+      return 'Ошибка: $e';
+    }
+  }
+
+  /// Получить список установленных приложений.
+  static Future<List<Map<String, String>>> getInstalledApps() async {
+    try {
+      final raw = await _launcher.invokeMethod<List>('getInstalledApps');
+      return raw?.map((e) => Map<String, String>.from(e as Map)).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ВВОД И НАЖАТИЯ
+  // ─────────────────────────────────────────────────────────────
+
+  /// Ввести текст в строку поиска.
   static Future<String> typeInSearch(String text) async {
     try {
-      final result = await _ch.invokeMethod('typeInSearch', {'text': text});
-      return result?.toString() ?? 'Ввела в поиск: $text';
+      await _reader.invokeMethod('typeInSearch', {'text': text});
+      return 'Ввела в поиск: "$text" 🔍';
     } catch (e) {
       return 'Ошибка ввода: $e';
     }
@@ -53,31 +75,53 @@ class AikaUiControlService {
   /// Нажать на элемент по тексту.
   static Future<String> clickText(String text) async {
     try {
-      final result = await _ch.invokeMethod('clickByText', {'text': text});
-      return result == true ? 'Нажала на "$text"' : 'Не нашла "$text" на экране';
+      final r = await _reader.invokeMethod<bool>('clickElement', {'text': text});
+      return r == true ? 'Нажала на "$text" 👆' : 'Не нашла "$text" на экране';
     } catch (e) {
       return 'Ошибка нажатия: $e';
     }
   }
 
+  /// Нажать по точным координатам.
+  static Future<void> tapAt(double x, double y) async {
+    try { await _reader.invokeMethod('tapAt', {'x': x, 'y': y}); } catch (_) {}
+  }
+
+  /// Свайп.
+  static Future<void> swipe(double x1, double y1, double x2, double y2, {int durationMs = 300}) async {
+    try {
+      await _reader.invokeMethod('swipe', {'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'duration': durationMs});
+    } catch (_) {}
+  }
+
   /// Ввести текст в активное поле.
   static Future<String> typeText(String text) async {
     try {
-      final result = await _ch.invokeMethod('typeText', {'text': text});
-      return result == true ? 'Ввела текст ✍️' : 'Не смогла ввести текст';
+      final r = await _reader.invokeMethod<bool>('typeInField', {'text': text});
+      return r == true ? 'Ввела: "$text" ✍️' : 'Не смогла ввести текст';
     } catch (e) {
       return 'Ошибка: $e';
     }
   }
 
-  /// Нажать кнопку назад.
+  /// Нажать Enter/Отправить.
+  static Future<void> pressEnter() async {
+    try { await _reader.invokeMethod('pressEnter'); } catch (_) {}
+  }
+
+  /// Нажать назад.
   static Future<void> pressBack() async {
-    try { await _ch.invokeMethod('pressBack'); } catch (_) {}
+    try { await _reader.invokeMethod('pressBack'); } catch (_) {}
   }
 
   /// Нажать HOME.
   static Future<void> pressHome() async {
-    try { await _ch.invokeMethod('pressHome'); } catch (_) {}
+    try { await _reader.invokeMethod('pressHome'); } catch (_) {}
+  }
+
+  /// Скролл вниз/вверх.
+  static Future<void> scroll(String direction) async {
+    try { await _reader.invokeMethod('scroll', {'direction': direction}); } catch (_) {}
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -85,19 +129,18 @@ class AikaUiControlService {
   // ─────────────────────────────────────────────────────────────
 
   /// Написать сообщение контакту через Accessibility.
-  /// app = 'whatsapp'/'telegram'/'vk' и т.д.
   static Future<String> sendMessageToContact({
     required String app,
     required String contact,
     required String message,
   }) async {
     try {
-      final result = await _messenger.invokeMethod('sendMessage', {
+      final r = await _messenger.invokeMethod('sendMessage', {
         'app': app,
         'contact': contact,
         'message': message,
       });
-      return result?.toString() ?? 'Отправляю сообщение...';
+      return r?.toString() ?? 'Отправляю "$message" для $contact...';
     } catch (e) {
       return 'Ошибка: $e';
     }
@@ -110,41 +153,46 @@ class AikaUiControlService {
   /// Заблокировать экран.
   static Future<String> lockScreen() async {
     try {
-      await _ch.invokeMethod('lockScreen');
+      await _reader.invokeMethod('lockScreen');
       return 'Экран заблокирован 🔒';
     } catch (e) {
       return 'Ошибка блокировки: $e';
     }
   }
 
-  /// Скриншот.
+  /// Скриншот (сохраняется в галерею через Accessibility).
   static Future<String> takeScreenshot() async {
     try {
-      final result = await _ch.invokeMethod('takeScreenshot');
-      return result?.toString() ?? 'Скриншот сделан 📸';
+      await _reader.invokeMethod('takeScreenshot');
+      return 'Скриншот сделан 📸';
     } catch (e) {
       return 'Ошибка скриншота: $e';
     }
   }
 
-  /// Открыть камеру и сделать фото.
+  /// Открыть камеру.
   static Future<String> takePhoto() async {
     try {
-      final result = await _launcher.invokeMethod('launchCamera');
-      return result == true ? 'Открываю камеру 📷' : 'Не смогла открыть камеру';
+      final r = await _launcher.invokeMethod<bool>('launchCamera');
+      return r == true ? 'Открываю камеру 📷' : 'Не смогла открыть камеру';
     } catch (e) {
       return 'Ошибка камеры: $e';
     }
   }
 
-  /// Получить весь текст с текущего экрана.
+  /// Читать весь текст с экрана.
   static Future<String> readScreen() async {
     try {
-      final result = await _ch.invokeMethod('getScreenText');
-      return result?.toString() ?? '';
+      final r = await _reader.invokeMethod<String>('getScreenText');
+      return r ?? '';
     } catch (e) {
       return '';
     }
+  }
+
+  /// Открыть Power Dialog (выключение).
+  static Future<void> powerDialog() async {
+    try { await _reader.invokeMethod('powerDialog'); } catch (_) {}
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -153,10 +201,9 @@ class AikaUiControlService {
 
   static Timer? _watchTimer;
   static String _watchInstruction = '';
-  static Function(String alert)? _onAlert;
-  static int _watchIntervalSec = 4;
+  static Function(String)? _onAlert;
 
-  /// Начать слежку за экраном по инструкции.
+  /// Начать слежку за экраном.
   /// Пример: "следи за миникартой, если красные точки — скажи"
   static Future<String> startScreenWatch({
     required String instruction,
@@ -165,37 +212,28 @@ class AikaUiControlService {
   }) async {
     _watchInstruction = instruction;
     _onAlert = onAlert;
-    _watchIntervalSec = intervalSeconds;
     _watchTimer?.cancel();
-
     _watchTimer = Timer.periodic(Duration(seconds: intervalSeconds), (_) async {
       await _doWatchTick();
     });
-
-    return 'Слежу за экраном 👁 Инструкция: "$instruction"';
+    return 'Слежу 👁 Инструкция: "$instruction"';
   }
 
   static Future<void> _doWatchTick() async {
     try {
-      // Делаем скриншот через Accessibility
-      final imgData = await _ch.invokeMethod('getScreenshot');
-      if (imgData == null) return;
+      // Читаем текст экрана
+      final screenText = await readScreen();
+      if (screenText.isEmpty) return;
 
-      final String b64 = imgData is String ? imgData : base64Encode(imgData as List<int>);
-
-      // Анализируем через GPT-4o Vision
       final ai = AiService();
-      final prompt = 'Ты игровой ассистент Айка. '
-          'Смотри на скриншот экрана и выполни инструкцию: "$_watchInstruction". '
+      final prompt =
+          'Ты игровой ассистент Айка. '
+          'Текст с экрана пользователя:\n$screenText\n\n'
+          'Инструкция: "$_watchInstruction". '
           'Если нашла что-то важное — напиши КОРОТКО (1-2 предложения). '
-          'Если ничего важного — ответь только словом "OK"';
+          'Если ничего важного — ответь только "OK".';
 
-      final resp = await ai.sendMessage(
-        prompt,
-        imageBase64: b64,
-        imageMimeType: 'image/png',
-      );
-
+      final resp = await ai.sendMessage(prompt);
       if (resp.trim() != 'OK' && resp.trim().isNotEmpty) {
         _onAlert?.call(resp);
       }
@@ -206,54 +244,41 @@ class AikaUiControlService {
   static String stopScreenWatch() {
     _watchTimer?.cancel();
     _watchTimer = null;
-    _watchInstruction = '';
     return 'Слежку остановила 👁‍🗨';
   }
 
   static bool get isWatching => _watchTimer != null;
 
   // ─────────────────────────────────────────────────────────────
-  // САМООБУЧЕНИЕ — запись паттернов использования
+  // САМООБУЧЕНИЕ
   // ─────────────────────────────────────────────────────────────
 
-  /// Записать действие в историю для самообучения.
+  /// Записать действие в историю самообучения.
   static Future<void> recordAction(String action, String context) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = 'self_learn_actions';
-      final existing = prefs.getStringList(key) ?? [];
-      final entry = json.encode({
+      final existing = prefs.getStringList('self_learn_actions') ?? [];
+      existing.add(json.encode({
         'ts': DateTime.now().toIso8601String(),
         'action': action,
         'context': context,
-      });
-      existing.add(entry);
-      // Храним последние 200 действий
+      }));
       if (existing.length > 200) existing.removeRange(0, existing.length - 200);
-      await prefs.setStringList(key, existing);
+      await prefs.setStringList('self_learn_actions', existing);
     } catch (_) {}
   }
 
-  /// Получить паттерны использования для контекста AI.
+  /// Получить историю для контекста AI (последние 20 действий).
   static Future<String> getLearningContext() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final actions = prefs.getStringList('self_learn_actions') ?? [];
       if (actions.isEmpty) return '';
-
-      // Берём последние 20 действий
-      final recent = actions.length > 20
-          ? actions.sublist(actions.length - 20)
-          : actions;
-
-      final decoded = recent.map((e) {
+      final recent = actions.length > 20 ? actions.sublist(actions.length - 20) : actions;
+      return 'История действий:\n' + recent.map((e) {
         final m = json.decode(e) as Map;
-        return '${m['action']}: ${m['context']}';
-      }).join('
-');
-
-      return 'История действий пользователя:
-$decoded';
+        return '\${m['action']}: \${m['context']}';
+      }).join('\n');
     } catch (_) {
       return '';
     }
