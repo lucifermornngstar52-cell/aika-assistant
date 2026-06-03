@@ -439,6 +439,21 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "takeScreenshot" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+                            result.success(true)
+                        } else {
+                            result.error("UNSUPPORTED", "Screenshot требует Android 9+", null)
+                        }
+                    }
+
+                    "performGlobalAction" -> {
+                        val actionId = call.argument<Int>("action") ?: 0
+                        svc.performGlobalAction(actionId)
+                        result.success(true)
+                    }
+
                     "scroll" -> {
                         val direction = call.argument<String>("direction") ?: "down"
                         svc.scrollScreen(direction)
