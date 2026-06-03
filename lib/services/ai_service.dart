@@ -5,6 +5,7 @@ import 'assistant_mood_service.dart';
 import 'relationship_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'aika_self_learning_service.dart';
 
 class AiService {
   static const String _geminiKey = 'AIzaSyAOerCk0C4vyAkcenHgefVu9miuijaW46Y';
@@ -29,6 +30,9 @@ class AiService {
     String imageBase64 = '',   // base64 изображения для vision
     String imageMimeType = 'image/jpeg',
   }) async {
+    // Самообучение — запоминаем команду
+    AikaSelfLearningService.recordAction(type: \'command\', value: message.length > 80 ? message.substring(0, 80) : message).catchError((_) {});
+
     // GPT is primary, Gemini is fallback
     final effectiveKey = openAiKey.isNotEmpty ? openAiKey : _openAiKey;
     if (effectiveKey.isNotEmpty) {
