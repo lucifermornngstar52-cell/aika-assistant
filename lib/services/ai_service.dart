@@ -116,6 +116,8 @@ class AiService {
     String memoryContext = '',
     String screenContext = '',
     String longMemory = '',
+    String imageBase64 = '',
+    String imageMimeType = 'image/jpeg',
   }) async {
     final systemPrompt = _buildSystemPrompt(userName, assistantName, longMemory: longMemory)
         + (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '')
@@ -179,10 +181,21 @@ class AiService {
       }
     }
 
-    messages.add({'role': 'user', 'content': message});
+    // Последнее сообщение — с картинкой (vision) или текстом
+    if (imageBase64.isNotEmpty) {
+      messages.add({
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': message.isNotEmpty ? message : 'Посмотри на изображение и опиши что видишь'},
+          {'type': 'image_url', 'image_url': {'url': 'data:\$imageMimeType;base64,\$imageBase64', 'detail': 'high'}},
+        ],
+      });
+    } else {
+      messages.add({'role': 'user', 'content': message});
+    }
 
     final body = {
-      'model': 'gpt-4o-mini',
+      'model': 'gpt-4o',
       'messages': messages,
       'temperature': 0.85,
       'max_tokens': 512,
