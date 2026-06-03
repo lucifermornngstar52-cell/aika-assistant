@@ -237,6 +237,22 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "playSound" -> {
+                        val soundPath = call.argument<String>("path") ?: ""
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_PLAY_SOUND
+                            putExtra(AikaOverlayService.EXTRA_SOUND_PATH, soundPath)
+                        })
+                        result.success(true)
+                    }
+
+                    "stopSound" -> {
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_STOP_SOUND
+                        })
+                        result.success(true)
+                    }
+
                     "setDragEnabled" -> {
                         val enabled = call.argument<Boolean>("enabled") ?: true
                         startService(Intent(this, AikaOverlayService::class.java).apply {
