@@ -19,7 +19,7 @@
 <body>
 <model-viewer
   id="mv"
-  src="./models/aika_model.glb"
+  src="./models/anime_girl.glb"
   autoplay
   animation-name="Idle"
   disable-zoom
@@ -34,23 +34,26 @@ var mv = document.getElementById('mv');
 var currentState = 'idle';
 var resetTimer = null;
 
+// Реальные имена анимаций из GLB файлов:
+// anime_girl/aika/xbot: idle, run, walk, agree, headShake, sad_pose, sneak_pose, SambaDance, TPose
+// robot: Idle, Running, Walking, Wave, Dance, Yes, No, Jump, ThumbsUp, Death, Sitting, Punch
 var ANIM_MAP = {
-  idle:         ['idle',       'Idle',       'sneak_pose', 'Survey'],
+  idle:         ['idle',       'Idle',       'sneak_pose'],
   listening:    ['idle',       'Idle',       'sneak_pose'],
-  thinking:     ['sneak_pose', 'No',         'headShake',  'Idle',  'idle'],
-  talking:      ['agree',      'Yes',        'idle',       'Idle'],
-  greeting:     ['Wave',       'agree',      'WaveHello',  'walk',  'Walk'],
+  thinking:     ['sneak_pose', 'No',         'headShake',  'idle'],
+  talking:      ['agree',      'Yes',        'idle'],
+  greeting:     ['agree',      'Wave',       'walk',       'idle'],
   dance:        ['SambaDance', 'Dance',      'run',        'idle'],
   music:        ['SambaDance', 'Dance',      'run',        'idle'],
-  notification: ['agree',      'Yes',        'Jump',       'idle'],
-  alarm:        ['run',        'Run',        'Jump',       'idle'],
-  vk:           ['walk',       'Walk',       'WalkForward','idle'],
-  youtube:      ['walk',       'Walk',       'WalkForward','idle'],
-  telegram:     ['agree',      'Yes',        'idle',       'Idle'],
+  notification: ['agree',      'Yes',        'idle'],
+  alarm:        ['run',        'Running',    'idle'],
+  vk:           ['walk',       'Walking',    'idle'],
+  youtube:      ['walk',       'Walking',    'idle'],
+  telegram:     ['agree',      'Yes',        'idle'],
   happy:        ['agree',      'ThumbsUp',   'SambaDance', 'idle'],
   sad:          ['sad_pose',   'Death',      'sneak_pose', 'idle'],
   surprised:    ['headShake',  'Jump',       'No',         'idle'],
-  stretch:      ['sneak_pose', 'sad_pose',   'Idle',       'idle'],
+  stretch:      ['sneak_pose', 'Sitting',    'idle'],
 };
 
 var ONE_SHOT = {
