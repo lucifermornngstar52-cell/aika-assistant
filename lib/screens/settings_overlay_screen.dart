@@ -27,11 +27,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     {'id': 'hiyori',  'label': '🌸 Hiyori'},
     {'id': 'natori',  'label': '🌟 Natori'},
     {'id': 'haru',    'label': '⚡ Haru'},
-    {'id': 'ren',     'label': '🔥 Ren'},
-    {'id': 'miku',    'label': '🎵 Miku'},
-    {'id': 'karin',   'label': '🌺 Karin'},
-    {'id': 'izumi',   'label': '💜 Izumi'},
-    {'id': 'akari',   'label': '🌙 Akari'},
   ];
 
   static const _modelPaths = {
