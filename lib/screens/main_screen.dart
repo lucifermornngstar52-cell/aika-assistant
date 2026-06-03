@@ -63,6 +63,9 @@ import 'schedule_screen.dart';
 import 'package:lottie/lottie.dart';
 import '../services/emotion_service.dart';
 import '../services/screen_reader_service.dart';
+import '../services/aika_self_learning_service.dart';
+import '../services/aika_browser_service.dart';
+import '../services/aika_game_helper_service.dart';
 import '../services/edge_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../widgets/overlay_settings_widget.dart';
@@ -399,6 +402,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Загружаем состояние эмоций Айки и запускаем таймеры обиды
     await AikaFeelingsService.load();
     await AikaAutomationService.loadLearned();
+    await AikaSelfLearningService.load();
     _startFeelingsTimers();
   }
 
@@ -1536,6 +1540,65 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
     }
 
+    // ── Браузер: поиск, сайты, генерация текста/изображений ──────────────
+    if (AikaBrowserService.isBrowserCommand(text)) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user, content: text, timestamp: DateTime.now(),
+      ));
+      setState(() => _isThinking = true);
+      final browserResult = await AikaBrowserService.execute(text);
+      setState(() => _isThinking = false);
+      // Обработка сгенерированного изображения
+      if (browserResult.startsWith('[IMAGE_GENERATED]')) {
+        final msg = 'Изображение сгенерировано! 🎨';
+        _addMessage(ChatMessage(
+          id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+          role: MessageRole.aika, content: msg, timestamp: DateTime.now(),
+        ));
+        await _speak(msg);
+      } else {
+        _addMessage(ChatMessage(
+          id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+          role: MessageRole.aika, content: browserResult, timestamp: DateTime.now(),
+        ));
+        await _speak(browserResult);
+      }
+      AikaSelfLearningService.recordAction(type: 'command', value: text);
+      _moodService.onUserSpoke();
+      return;
+    }
+
+    // ── Игровой помощник ────────────────────────────────────────────────
+    if (AikaGameHelperService.isGameCommand(text)) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user, content: text, timestamp: DateTime.now(),
+      ));
+      setState(() => _isThinking = true);
+      final gameResult = await AikaGameHelperService.execute(
+        text,
+        onAlert: (alert) {
+          if (!mounted) return;
+          _addMessage(ChatMessage(
+            id: 'game_\${DateTime.now().millisecondsSinceEpoch}',
+            role: MessageRole.aika, content: alert, timestamp: DateTime.now(),
+          ));
+          _speak(alert);
+        },
+        currentApp: ScreenWatcherService.currentPackage,
+      );
+      setState(() => _isThinking = false);
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika, content: gameResult, timestamp: DateTime.now(),
+      ));
+      await _speak(gameResult);
+      AikaSelfLearningService.recordAction(type: 'command', value: text);
+      _moodService.onUserSpoke();
+      return;
+    }
+
     // ── Automation: скриншот, поиск в приложении, игра, самообучение ──────
     if (AikaAutomationService.isAutomationCommand(text)) {
       _addMessage(ChatMessage(
@@ -1601,7 +1664,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // ── Сначала проверяем локальные команды запуска приложений ──
     final appLaunchResult = await AppLauncherService.tryLaunch(text);
     if (appLaunchResult != null) {
-      
+      AikaSelfLearningService.recordAction(type: 'command', value: text);
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
         role: MessageRole.aika,
