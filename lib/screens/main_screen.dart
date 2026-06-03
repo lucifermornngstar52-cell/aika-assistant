@@ -160,9 +160,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Отправка сообщения с прикреплённым изображением
+  // Отправка сообщения с прикреплённым изображением — через AiService vision
   Future<void> _sendMessageWithImage(String text, String b64) async {
-    final userText = text.isNotEmpty ? text : 'Посмотри на это фото';
+    final userText = text.isNotEmpty ? text : 'Посмотри на это фото и опиши что видишь';
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       role: MessageRole.user,
@@ -175,43 +175,33 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _textController.clear();
       _isThinking = true;
     });
+    _overlayService.setThinking();
     try {
-      final apiKey = const String.fromEnvironment('OPENAI_API_KEY');
-      final resp = await http.post(
-        Uri.parse('https://api.openai.com/v1/chat/completions'),
-        headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'model': 'gpt-4o-mini',
-          'messages': [
-            {
-              'role': 'user',
-              'content': [
-                {'type': 'text', 'text': userText},
-                {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,$b64'}},
-              ],
-            }
-          ],
-          'max_tokens': 1000,
-        }),
+      final reply = await _aiService.sendMessage(
+        userText,
+        userName: _userName,
+        assistantName: _assistantName,
+        history: _buildHistory(),
+        memoryContext: _memoryService.getContext(),
+        imageBase64: b64,
+        imageMimeType: 'image/jpeg',
       );
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body);
-        final reply = data['choices'][0]['message']['content'] as String;
-        _addMessage(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          role: MessageRole.aika,
-          content: reply,
-          timestamp: DateTime.now(),
-        ));
-        _speak(reply);
-      }
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      _speak(reply);
+      _overlayService.setTalking();
     } catch (e) {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
-        content: 'Не смогла обработать изображение: \$e',
+        content: 'Не смогла обработать изображение 😔 Попробуй ещё раз',
         timestamp: DateTime.now(),
       ));
+      _overlayService.setIdle();
     }
     setState(() => _isThinking = false);
   }
