@@ -43,8 +43,8 @@ class AikaAccessibilityService : AccessibilityService() {
         info.feedbackType      = AccessibilityServiceInfo.FEEDBACK_GENERIC
         info.flags             = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                                  AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                                 AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
-                                 AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE
+                                 AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
+                                 // FLAG_REQUEST_TOUCH_EXPLORATION_MODE убран — он перехватывал тачскрин
         info.notificationTimeout = 100
         serviceInfo = info
         Log.i(TAG, "AikaAccessibilityService connected ✅")
@@ -368,6 +368,62 @@ class AikaAccessibilityService : AccessibilityService() {
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
         dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+    }
+
+    // ── СИСТЕМНЫЕ КНОПКИ ────────────────────────────────────────────────
+
+    /** Назад (выйти из приложения / закрыть экран) */
+    fun pressBack() = performGlobalAction(GLOBAL_ACTION_BACK)
+
+    /** Домой */
+    fun goHome() = performGlobalAction(GLOBAL_ACTION_HOME)
+
+    /** Недавние приложения */
+    fun openRecents() = performGlobalAction(GLOBAL_ACTION_RECENTS)
+
+    /** Шторка уведомлений */
+    fun openNotifications() = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+
+    /** Закрыть текущее приложение через Recents — свайп карточки */
+    fun closeCurrentApp() {
+        performGlobalAction(GLOBAL_ACTION_RECENTS)
+        handler.postDelayed({
+            // Свайп карточки вверх чтобы закрыть
+            val dm = resources.displayMetrics
+            val cx = dm.widthPixels / 2f
+            val cy = dm.heightPixels / 2f
+            swipe(cx, cy, cx, 0f, 400)
+        }, 600)
+    }
+
+    /** Удалить/удалить приложение — открываем настройки приложения через Intent */
+    fun openAppSettings(packageName: String): Boolean {
+        return try {
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.fromParts("package", packageName, null)
+            ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+            applicationContext.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "openAppSettings: $e")
+            false
+        }
+    }
+
+    /** Удалить приложение — открываем стандартный диалог удаления */
+    fun uninstallApp(packageName: String): Boolean {
+        return try {
+            val intent = android.content.Intent(
+                android.content.Intent.ACTION_DELETE,
+                android.net.Uri.fromParts("package", packageName, null)
+            ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+            applicationContext.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "uninstallApp: $e")
+            false
+        }
     }
 
     fun pinchZoom(cx: Float, cy: Float, scale: Float) {
