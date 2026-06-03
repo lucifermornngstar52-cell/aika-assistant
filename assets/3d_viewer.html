@@ -9,13 +9,14 @@
   canvas { display:block; }
   #loading {
     position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-    color:rgba(255,255,255,0.7); font:14px Arial,sans-serif; text-align:center;
-    pointer-events:none;
+    color:rgba(255,255,255,0.8); font:16px Arial,sans-serif; text-align:center;
+    pointer-events:none; z-index:10;
   }
   #err {
-    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-    color:#ff6b6b; font:12px Arial,sans-serif; text-align:center;
-    display:none; padding:10px;
+    position:fixed; top:10px; left:5px; right:5px;
+    color:#ff6b6b; font:11px Arial,sans-serif; text-align:center;
+    display:none; padding:8px; background:rgba(0,0,0,0.6); border-radius:8px;
+    word-break:break-all; z-index:20;
   }
 </style>
 </head>
@@ -23,65 +24,22 @@
 <div id="loading">✨</div>
 <div id="err"></div>
 
-<!-- Локальные Three.js файлы -->
+<!-- UMD builds — работают с file:// в Android WebView -->
+<script src="./three/three.min.js"></script>
+<script src="./three/GLTFLoader.js"></script>
+
 <script>
-// Патчим импорты GLTFLoader чтобы они работали без importmap
-window.__THREE_GLTF_LOADER_PATCH = true;
-</script>
+(function() {
 
-<script type="module">
-// Загружаем three.module.min.js локально
-const BASE = './three/';
+  var renderer, scene, camera, mixer, clock;
+  var currentAction = null;
+  var availableAnims = {};
+  var currentState   = 'idle';
+  var resetTimer     = null;
+  var breathT        = 0;
+  var modelLoaded    = false;
 
-// Динамический импорт с локальными путями
-async function loadThree() {
-  try {
-    const THREE = await import('./three/three.module.min.js');
-    return THREE;
-  } catch(e) {
-    document.getElementById('err').style.display='block';
-    document.getElementById('err').textContent = 'THREE load error: ' + e.message;
-    throw e;
-  }
-}
-
-// Встроенный GLTFLoader (без внешних зависимостей через relative import)
-// Используем inline-версию на основе three.module
-async function main() {
-  const THREE = await import('./three/three.module.min.js');
-  const { GLTFLoader } = await import('./three/GLTFLoader.js');
-
-  document.getElementById('loading').style.display = 'none';
-
-  // Scene
-  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, premultipliedAlpha:false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0x000000, 0);
-  renderer.shadowMap.enabled = false;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.3;
-  document.body.appendChild(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(28, window.innerWidth/window.innerHeight, 0.1, 100);
-  camera.position.set(0, 1.4, 3.5);
-  camera.lookAt(0, 1.0, 0);
-
-  // Lights
-  scene.add(new THREE.AmbientLight(0xffffff, 1.4));
-  const dir = new THREE.DirectionalLight(0xfff0e0, 2.0);
-  dir.position.set(1,3,2); scene.add(dir);
-  const rim = new THREE.DirectionalLight(0x88ccff, 1.5);
-  rim.position.set(-1,2,-3); scene.add(rim);
-
-  // State
-  let mixer = null, currentAction = null, availableAnims = {};
-  let currentState = 'idle';
-  let resetTimer = null;
-  let breathT = 0;
-
-  const ANIM_MAP = {
+  var ANIM_MAP = {
     idle:      ['idle','Idle','sneak_pose','Standing','mixamo.com'],
     listening: ['idle','Idle','sneak_pose'],
     thinking:  ['sneak_pose','No','headShake','idle','Idle'],
@@ -96,131 +54,191 @@ async function main() {
     walk:      ['walk','Walking','run','idle'],
     notification: ['agree','Yes','idle'],
   };
-  const ONE_SHOT = {greeting:4000,notification:3000,alarm:5000,happy:4000,surprised:3000,dance:8000,music:8000};
+  var ONE_SHOT = {greeting:4000,notification:3000,alarm:5000,happy:4000,surprised:3000,dance:8000,music:8000};
+
+  function showErr(msg) {
+    var el = document.getElementById('err');
+    if (el) { el.style.display='block'; el.textContent = msg; }
+  }
+
+  function hideLoading() {
+    var el = document.getElementById('loading');
+    if (el) el.style.display = 'none';
+  }
 
   function findAnim(state) {
-    const names = ANIM_MAP[state] || ['idle','Idle'];
-    for (const n of names) {
-      if (availableAnims[n]) return availableAnims[n];
+    var names = ANIM_MAP[state] || ['idle','Idle'];
+    for (var i=0; i<names.length; i++) {
+      if (availableAnims[names[i]]) return availableAnims[names[i]];
     }
-    return Object.values(availableAnims)[0] || null;
+    var keys = Object.keys(availableAnims);
+    return keys.length ? availableAnims[keys[0]] : null;
   }
 
   function playState(state) {
     clearTimeout(resetTimer);
     currentState = state;
     if (!mixer) return;
-    const clip = findAnim(state);
+    var clip = findAnim(state);
     if (!clip) return;
-    const action = mixer.clipAction(clip);
+    var action = mixer.clipAction(clip);
     if (currentAction && currentAction !== action) currentAction.fadeOut(0.3);
     action.reset().fadeIn(0.3).play();
     currentAction = action;
-    if (ONE_SHOT[state]) resetTimer = setTimeout(()=>playState('idle'), ONE_SHOT[state]);
-  }
-
-  function addOutline(model) {
-    const mat = new THREE.MeshBasicMaterial({color:0x111111,side:THREE.BackSide,transparent:true,opacity:0.55});
-    model.traverse(o => {
-      if (!o.isMesh) return;
-      const ol = new THREE.Mesh(o.geometry, mat);
-      ol.scale.setScalar(1.025); ol.renderOrder = -1;
-      o.add(ol);
-    });
+    if (ONE_SHOT[state]) {
+      resetTimer = setTimeout(function(){ playState('idle'); }, ONE_SHOT[state]);
+    }
   }
 
   function applyCelShading(model) {
-    model.traverse(o => {
+    model.traverse(function(o) {
       if (!o.isMesh || !o.material) return;
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      mats.forEach(m => {
+      var mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(function(m) {
         if (m.roughness != null) m.roughness = Math.min(m.roughness, 0.65);
         if (m.metalness != null) m.metalness = Math.min(m.metalness, 0.1);
         if (m.color) {
-          const h={}; m.color.getHSL(h);
+          var h = {}; m.color.getHSL(h);
           m.color.setHSL(h.h, Math.min(h.s*1.35,1), h.l);
         }
       });
     });
   }
 
-  const loader = new GLTFLoader();
-
-  function loadModel(path) {
-    scene.children.filter(c=>c.userData.char).forEach(c=>scene.remove(c));
-    if (mixer) { mixer.stopAllAction(); mixer=null; }
-    availableAnims = {}; currentAction = null;
-
-    const el = document.getElementById('loading');
-    if (el) { el.style.display='block'; el.textContent='✨'; }
-
-    loader.load(path, gltf => {
-      const model = gltf.scene;
-      model.userData.char = true;
-
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      const scale = 1.8 / Math.max(size.x, size.y, size.z);
-      model.scale.setScalar(scale);
-      const center = box.getCenter(new THREE.Vector3());
-      model.position.set(-center.x*scale, -box.min.y*scale, -center.z*scale);
-
-      applyCelShading(model);
-      addOutline(model);
-      scene.add(model);
-
-      if (gltf.animations?.length) {
-        mixer = new THREE.AnimationMixer(model);
-        gltf.animations.forEach(c => { availableAnims[c.name]=c; });
-        console.log('Anims:', Object.keys(availableAnims));
-      }
-
-      if (el) el.style.display='none';
-
-      try { AndroidBridge.onModelLoaded(); } catch(e) {}
-      try { window.flutter_inappwebview.callHandler('FlutterChannel','modelLoaded'); } catch(e) {}
-
-      playState(currentState);
-    },
-    undefined,
-    err => {
-      console.error('Load error:', err);
-      const errEl = document.getElementById('err');
-      if (errEl) { errEl.style.display='block'; errEl.textContent='⚠️ '+err.message; }
-      if (el) el.style.display='none';
+  function addOutline(model) {
+    var mat = new THREE.MeshBasicMaterial({
+      color:0x111111, side:THREE.BackSide, transparent:true, opacity:0.5
+    });
+    model.traverse(function(o) {
+      if (!o.isMesh) return;
+      var ol = new THREE.Mesh(o.geometry, mat);
+      ol.scale.setScalar(1.025); ol.renderOrder = -1;
+      o.add(ol);
     });
   }
 
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
+  function loadModel(path) {
+    // Очищаем предыдущую модель
+    if (scene) {
+      var toRemove = [];
+      scene.children.forEach(function(c){ if(c.userData.char) toRemove.push(c); });
+      toRemove.forEach(function(c){ scene.remove(c); });
+    }
+    if (mixer) { mixer.stopAllAction(); mixer = null; }
+    availableAnims = {}; currentAction = null; modelLoaded = false;
+
+    var loadEl = document.getElementById('loading');
+    if (loadEl) { loadEl.style.display='block'; loadEl.textContent='✨'; }
+
+    var loader = new THREE.GLTFLoader();
+    loader.load(
+      path,
+      function(gltf) {
+        var model = gltf.scene;
+        model.userData.char = true;
+
+        var box   = new THREE.Box3().setFromObject(model);
+        var size  = box.getSize(new THREE.Vector3());
+        var scale = 1.8 / Math.max(size.x, size.y, size.z);
+        model.scale.setScalar(scale);
+        var center = box.getCenter(new THREE.Vector3());
+        model.position.set(-center.x*scale, -box.min.y*scale, -center.z*scale);
+
+        applyCelShading(model);
+        addOutline(model);
+        scene.add(model);
+
+        if (gltf.animations && gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(model);
+          gltf.animations.forEach(function(c){ availableAnims[c.name] = c; });
+        }
+
+        hideLoading();
+        modelLoaded = true;
+
+        try { AndroidBridge.onModelLoaded(); } catch(e) {}
+        try { window.flutter_inappwebview.callHandler('FlutterChannel','modelLoaded'); } catch(e) {}
+
+        playState(currentState);
+      },
+      undefined,
+      function(err) {
+        hideLoading();
+        showErr('Load error: ' + (err.message || String(err)));
+      }
+    );
+  }
+
+  function init() {
+    if (typeof THREE === 'undefined') {
+      showErr('THREE.js не загружен');
+      return;
+    }
+    if (typeof THREE.GLTFLoader === 'undefined') {
+      showErr('GLTFLoader не загружен');
+      return;
+    }
+
+    clock = new THREE.Clock();
+
+    renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, premultipliedAlpha:false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+    renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.3;
+    document.body.appendChild(renderer.domElement);
 
-  const clock = new THREE.Clock();
-  (function animate() {
-    requestAnimationFrame(animate);
-    const dt = clock.getDelta();
-    if (mixer) mixer.update(dt);
-    breathT += dt*0.7;
-    scene.children.filter(c=>c.userData.char).forEach(c=>{
-      c.position.y += Math.sin(breathT)*0.0003;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(28, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.4, 3.5);
+    camera.lookAt(0, 1.0, 0);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    var dir = new THREE.DirectionalLight(0xfff0e0, 2.0);
+    dir.position.set(1,3,2); scene.add(dir);
+    var rim = new THREE.DirectionalLight(0x88ccff, 1.5);
+    rim.position.set(-1,2,-3); scene.add(rim);
+
+    window.addEventListener('resize', function() {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
     });
-    renderer.render(scene, camera);
-  })();
 
-  window.setAikaState  = s => playState(s||'idle');
-  window.switchModel   = p => loadModel(p.startsWith('.')?p:'./'+p);
-  window.loadCustomModel = p => loadModel(p);
+    (function animate() {
+      requestAnimationFrame(animate);
+      var dt = clock.getDelta();
+      if (mixer) mixer.update(dt);
+      breathT += dt * 0.7;
+      if (scene) {
+        scene.children.forEach(function(c) {
+          if (c.userData.char) c.position.y += Math.sin(breathT) * 0.0003;
+        });
+      }
+      renderer.render(scene, camera);
+    })();
 
-  loadModel('./models/anime_girl.glb');
-}
+    // Глобальные функции для Flutter
+    window.setAikaState = function(s) { playState(s || 'idle'); };
+    window.switchModel  = function(p) {
+      if (!p) return;
+      loadModel(p.startsWith('.') ? p : './' + p);
+    };
+    window.loadCustomModel = function(p) { loadModel(p); };
 
-main().catch(e => {
-  console.error(e);
-  const errEl = document.getElementById('err');
-  if (errEl) { errEl.style.display='block'; errEl.textContent='Fatal: '+e.message; }
-});
+    // Загружаем дефолтную модель
+    loadModel('./models/anime_girl.glb');
+  }
+
+  // Запускаем после загрузки страницы
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
 </script>
 </body>
 </html>
