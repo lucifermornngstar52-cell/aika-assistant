@@ -205,7 +205,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         userName: _userName,
         assistantName: _assistantName,
         history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
-        memoryContext: await _memoryService.getUserContext(),
+        memoryContext: await _memoryService.getLongMemory(),
         imageBase64: b64,
         imageMimeType: 'image/jpeg',
       );
