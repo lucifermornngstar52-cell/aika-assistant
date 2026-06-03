@@ -17,14 +17,8 @@ class BuiltinModel {
 
 final _builtinModels = [
   BuiltinModel(id: 'natori', name: 'Natori',  assetPath: 'models/Natori/Natori.model3.json', emoji: '🌟'),
-  BuiltinModel(id: 'ren',    name: 'Ren',     assetPath: 'models/Ren/Ren.model3.json',       emoji: '🔥'),
   BuiltinModel(id: 'hiyori', name: 'Hiyori',  assetPath: 'models/Hiyori/Hiyori.model3.json', emoji: '🌸'),
   BuiltinModel(id: 'haru',   name: 'Haru',    assetPath: 'models/Haru/Haru.model3.json',     emoji: '⚡'),
-  // Псевдонимы — те же модели, другой образ
-  BuiltinModel(id: 'miku',   name: 'Miku',   assetPath: 'models/Natori/Natori.model3.json',  emoji: '🎵'),
-  BuiltinModel(id: 'karin',  name: 'Karin',  assetPath: 'models/Hiyori/Hiyori.model3.json',  emoji: '🌺'),
-  BuiltinModel(id: 'izumi',  name: 'Izumi',  assetPath: 'models/Ren/Ren.model3.json',        emoji: '💜'),
-  BuiltinModel(id: 'akari',  name: 'Akari',  assetPath: 'models/Haru/Haru.model3.json',      emoji: '🌙'),
 ];
 
 class ModelPickerScreen extends StatefulWidget {
