@@ -540,7 +540,7 @@ class MainActivity : FlutterActivity() {
                     }
 
                     "pressBack" -> {
-                        svc.pressBack()
+                        svc.performBack()
                         result.success(true)
                     }
 
