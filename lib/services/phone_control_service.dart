@@ -216,12 +216,125 @@ class PhoneControlService {
           action: 'power_dialog');
     }
 
+    // ── НАВИГАЦИЯ / ВЫХОД ─────────────────────────────────────
+    if (_matches(t, ['назад', 'выйди', 'выйти', 'вернись', 'go back', 'press back'])) {
+      return await _pressBack();
+    }
+    if (_matches(t, ['домой', 'на главный', 'главный экран', 'go home', 'home screen'])) {
+      return await _goHome();
+    }
+    if (_matches(t, ['недавние', 'последние приложения', 'open recents', 'recent apps'])) {
+      return await _openRecents();
+    }
+    if (_matches(t, ['закрой приложение', 'закрыть приложение', 'close app', 'закрой это'])) {
+      return await _closeCurrentApp();
+    }
+
+    // ── УДАЛЕНИЕ ПРИЛОЖЕНИЙ ───────────────────────────────────
+    if (_matches(t, ['удали приложение', 'удалить приложение', 'uninstall', 'деинсталл'])) {
+      final appName = _extractAfter(t, ['удали приложение', 'удалить приложение', 'uninstall', 'деинсталл']);
+      if (appName != null && appName.isNotEmpty) {
+        return await _uninstallApp(appName.trim());
+      }
+      return PhoneCommandResult.ok('Какое приложение удалить? Скажи: удали приложение [название]');
+    }
+    if (_matches(t, ['настройки приложения', 'инфо приложения', 'app info'])) {
+      final appName = _extractAfter(t, ['настройки приложения', 'инфо приложения']);
+      if (appName != null) return await _openAppSettings(appName.trim());
+    }
+
     return null; // Команда не распознана — отправляем в AI
   }
 
   // ══════════════════════════════════════════════════════════════
   // РЕАЛИЗАЦИИ КОМАНД
   // ══════════════════════════════════════════════════════════════
+
+  // ── НАВИГАЦИЯ (новые) ─────────────────────────────────────────────────
+
+  static const _screenCh = MethodChannel('aika/screen_reader');
+
+  Future<PhoneCommandResult> _pressBack() async {
+    try {
+      await _screenCh.invokeMethod('performBack');
+      return PhoneCommandResult.ok('◀️ Назад');
+    } catch (e) {
+      return PhoneCommandResult.error('Не удалось: \$e');
+    }
+  }
+
+  Future<PhoneCommandResult> _goHome() async {
+    try {
+      await _screenCh.invokeMethod('pressHome');
+      return PhoneCommandResult.ok('🏠 Главный экран');
+    } catch (e) {
+      return PhoneCommandResult.error('Не удалось: \$e');
+    }
+  }
+
+  Future<PhoneCommandResult> _openRecents() async {
+    try {
+      await _screenCh.invokeMethod('pressRecents');
+      return PhoneCommandResult.ok('📋 Недавние приложения');
+    } catch (e) {
+      return PhoneCommandResult.error('Не удалось: \$e');
+    }
+  }
+
+  Future<PhoneCommandResult> _closeCurrentApp() async {
+    try {
+      await _screenCh.invokeMethod('closeCurrentApp');
+      return PhoneCommandResult.ok('✅ Закрываю приложение');
+    } catch (e) {
+      return PhoneCommandResult.error('Не удалось закрыть: \$e');
+    }
+  }
+
+  Future<PhoneCommandResult> _uninstallApp(String appName) async {
+    try {
+      // Пробуем найти package по названию — сначала открываем настройки
+      // Для известных приложений — прямой package name
+      final knownApps = {
+        'telegram': 'org.telegram.messenger',
+        'whatsapp': 'com.whatsapp',
+        'instagram': 'com.instagram.android',
+        'вк': 'com.vkontakte.android',
+        'вконтакте': 'com.vkontakte.android',
+        'tiktok': 'com.zhiliaoapp.musically',
+        'тикток': 'com.zhiliaoapp.musically',
+        'youtube': 'com.google.android.youtube',
+        'ютуб': 'com.google.android.youtube',
+        'spotify': 'com.spotify.music',
+        'chrome': 'com.android.chrome',
+        'хром': 'com.android.chrome',
+        'maps': 'com.google.android.apps.maps',
+        'карты': 'com.google.android.apps.maps',
+      };
+      final pkg = knownApps[appName.toLowerCase()] ?? appName;
+      await _screenCh.invokeMethod('uninstallApp', {'package': pkg});
+      return PhoneCommandResult.ok('🗑 Открываю удаление \$appName...');
+    } catch (e) {
+      return PhoneCommandResult.error('Не удалось удалить: \$e');
+    }
+  }
+
+  Future<PhoneCommandResult> _openAppSettings(String appName) async {
+    try {
+      final knownApps = {
+        'telegram': 'org.telegram.messenger',
+        'whatsapp': 'com.whatsapp',
+        'instagram': 'com.instagram.android',
+        'вк': 'com.vkontakte.android',
+        'youtube': 'com.google.android.youtube',
+        'chrome': 'com.android.chrome',
+      };
+      final pkg = knownApps[appName.toLowerCase()] ?? appName;
+      await _screenCh.invokeMethod('openAppSettings', {'package': pkg});
+      return PhoneCommandResult.ok('⚙️ Настройки \$appName открыты');
+    } catch (e) {
+      return PhoneCommandResult.error('Не удалось: \$e');
+    }
+  }
 
   Future<PhoneCommandResult> _makeCall(String contact) async {
     try {
