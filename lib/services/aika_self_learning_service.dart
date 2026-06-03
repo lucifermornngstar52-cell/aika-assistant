@@ -119,6 +119,12 @@ class AikaSelfLearningService {
     }
   }
 
+  // Метод инициализации (вызывается при старте)
+  static Future<void> load() async {
+    // Ничего не нужно загружать — всё читается лениво
+    return;
+  }
+
   static Future<String> getUserFactsForAI() async {
     final facts = await getUserFacts();
     if (facts.isEmpty) return '';
