@@ -160,6 +160,29 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Съёмка фото через камеру
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        dialogTitle: 'Сделай фото',
+        allowCompression: true,
+      );
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        final bytes = await File(path).readAsBytes();
+        final b64 = base64Encode(bytes);
+        setState(() {
+          _pendingImagePath = path;
+          _pendingImageBase64 = b64;
+        });
+      }
+    } catch (e) {
+      // Фолбэк — открываем обычный выбор файла
+      await _pickImage();
+    }
+  }
+
   // Отправка сообщения с прикреплённым изображением — через AiService vision
   Future<void> _sendMessageWithImage(String text, String b64) async {
     final userText = text.isNotEmpty ? text : 'Посмотри на это фото и опиши что видишь';
@@ -2067,6 +2090,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                                         : Colors.white38,
                                     size: 22),
                                   onPressed: _pickImage,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 36),
+                                ),
+                                // Кнопка камеры
+                                IconButton(
+                                  icon: Icon(Icons.camera_alt_outlined,
+                                    color: _pendingImageBase64 != null
+                                        ? AikaTheme.neonBlue
+                                        : Colors.white38,
+                                    size: 22),
+                                  onPressed: _pickImageFromCamera,
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(minWidth: 36),
                                 ),
