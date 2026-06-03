@@ -31,7 +31,7 @@ class AiService {
     String imageMimeType = 'image/jpeg',
   }) async {
     // Самообучение — запоминаем команду
-    AikaSelfLearningService.recordAction(type: \'command\', value: message.length > 80 ? message.substring(0, 80) : message).catchError((_) {});
+    AikaSelfLearningService.recordAction(type: 'command', value: message.length > 80 ? message.substring(0, 80) : message).catchError((_) {});
 
     // GPT is primary, Gemini is fallback
     final effectiveKey = openAiKey.isNotEmpty ? openAiKey : _openAiKey;
