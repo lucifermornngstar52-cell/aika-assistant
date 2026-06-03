@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 3D GLB модель через model_viewer_plus ^1.6.1.
-/// Работает оффлайн — грузит модели из assets.
+/// 3D GLB модель через model_viewer_plus.
+/// Пути без префикса "assets/" — model_viewer_plus добавляет его сам на Android.
 class Aika3DAvatar extends StatefulWidget {
   final String? state;
   final double width;
@@ -21,29 +21,58 @@ class Aika3DAvatar extends StatefulWidget {
 }
 
 class _Aika3DAvatarState extends State<Aika3DAvatar> {
-  String _modelPath = 'assets/models/aika_model.glb';
+  String _modelId = 'anime_girl';
 
+  // Пути — model_viewer_plus принимает 'assets/...' на Flutter
   static const _models = {
-    'aika_glb':    'assets/models/aika_model.glb',
     'anime_girl':  'assets/models/anime_girl.glb',
-    'michelle':    'assets/models/michelle.glb',
+    'aika_glb':    'assets/models/aika_model.glb',
     'robot_glb':   'assets/models/robot.glb',
     'xbot_glb':    'assets/models/xbot.glb',
-    'soldier_glb': 'assets/models/soldier.glb',
   };
 
-  static const _animMap = {
+  // Реальные имена анимаций из GLB файлов
+  static const _animMapAnime = {
+    'idle':      'idle',
+    'listening': 'idle',
+    'thinking':  'sneak_pose',
+    'talking':   'agree',
+    'greeting':  'agree',
+    'dance':     'SambaDance',
+    'music':     'SambaDance',
+    'happy':     'agree',
+    'sad':       'sad_pose',
+    'surprised': 'headShake',
+    'stretch':   'sneak_pose',
+    'alarm':     'run',
+    'walk':      'walk',
+  };
+
+  static const _animMapRobot = {
     'idle':      'Idle',
     'listening': 'Idle',
     'thinking':  'No',
     'talking':   'Yes',
-    'greeting':  'WaveHello',
+    'greeting':  'Wave',
     'dance':     'Dance',
-    'stretch':   'Idle',
+    'music':     'Dance',
+    'happy':     'ThumbsUp',
+    'sad':       'Death',
+    'surprised': 'Jump',
+    'stretch':   'Sitting',
+    'alarm':     'Running',
+    'walk':      'Walking',
   };
 
-  String get _animName =>
-      _animMap[widget.state ?? 'idle'] ?? 'Idle';
+  String get _modelPath => _models[_modelId] ?? _models['anime_girl']!;
+
+  bool get _isRobot => _modelId == 'robot_glb';
+
+  String get _animName {
+    final state = widget.state ?? 'idle';
+    final map = _isRobot ? _animMapRobot : _animMapAnime;
+    return map[state] ?? (_isRobot ? 'Idle' : 'idle');
+  }
 
   @override
   void initState() {
@@ -53,9 +82,9 @@ class _Aika3DAvatarState extends State<Aika3DAvatar> {
 
   Future<void> _loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('live2d_model_id') ?? 'aika_glb';
+    final saved = prefs.getString('model_3d_id') ?? 'anime_girl';
     if (_models.containsKey(saved) && mounted) {
-      setState(() => _modelPath = _models[saved]!);
+      setState(() => _modelId = saved);
     }
   }
 
@@ -65,7 +94,7 @@ class _Aika3DAvatarState extends State<Aika3DAvatar> {
       width: widget.width,
       height: widget.height,
       child: ModelViewer(
-        key: ValueKey(_modelPath),
+        key: ValueKey(_modelPath + (_animName)),
         src: _modelPath,
         alt: 'Aika 3D avatar',
         autoPlay: true,
