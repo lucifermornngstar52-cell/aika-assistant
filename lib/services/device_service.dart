@@ -186,6 +186,68 @@ class DeviceService {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
+
+  // ── НОВЫЕ КОМАНДЫ УПРАВЛЕНИЯ ─────────────────────────────────────────
+
+  /// Выйти из текущего приложения (нажать Назад)
+  Future<String> pressBack() async {
+    try {
+      await _screenChannel.invokeMethod('performBack');
+      return 'Вышел назад';
+    } catch (e) {
+      return 'Не удалось: $e';
+    }
+  }
+
+  /// На домашний экран
+  Future<String> goHome() async {
+    try {
+      await _screenChannel.invokeMethod('pressHome');
+      return 'На главный экран';
+    } catch (e) {
+      return 'Не удалось: $e';
+    }
+  }
+
+  /// Закрыть текущее приложение через Recents
+  Future<String> closeCurrentApp() async {
+    try {
+      await _screenChannel.invokeMethod('closeCurrentApp');
+      return 'Закрываю приложение';
+    } catch (e) {
+      return 'Не удалось закрыть: $e';
+    }
+  }
+
+  /// Открыть настройки приложения (перед удалением)
+  Future<String> openAppSettings(String packageName) async {
+    try {
+      await _screenChannel.invokeMethod('openAppSettings', {'package': packageName});
+      return 'Открываю настройки приложения';
+    } catch (e) {
+      return 'Не удалось: $e';
+    }
+  }
+
+  /// Удалить приложение (показывает системный диалог удаления)
+  Future<String> uninstallApp(String packageName) async {
+    try {
+      await _screenChannel.invokeMethod('uninstallApp', {'package': packageName});
+      return 'Открываю диалог удаления';
+    } catch (e) {
+      return 'Не удалось: $e';
+    }
+  }
+
+  /// Недавние приложения
+  Future<String> openRecents() async {
+    try {
+      await _screenChannel.invokeMethod('pressRecents');
+      return 'Открываю недавние';
+    } catch (e) {
+      return 'Не удалось: $e';
+    }
+  }
 }
 
 
