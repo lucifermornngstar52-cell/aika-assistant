@@ -5,6 +5,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 import 'app_launcher_service.dart';
 import 'currency_service.dart';
 import 'music_control_service.dart';
@@ -15,6 +16,7 @@ class DeviceService {
   final CurrencyService _currencyService = CurrencyService();
   bool _flashlightOn = false;
   double _currentVolume = 0.5;
+  static const _screenChannel = MethodChannel('aika/screen_reader');
 
   DeviceService() {
     VolumeController().listener((v) => _currentVolume = v);
