@@ -227,26 +227,15 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   }
 
   Widget _buildPreview() {
-    try {
-      return Live2DWidget(
-        modelPath: _currentPreviewPath,
-        state: _previewState,
-        width: double.infinity,
-        height: 260,
-      );
-    } catch (_) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.person_outline, color: AikaTheme.neonBlue, size: 48),
-            const SizedBox(height: 8),
-            Text(_selectedId == 'custom' ? 'Кастомная модель' : _selectedId,
-                style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      );
-    }
+    final path = _currentPreviewPath;
+    final isCustom = _selectedId == 'custom';
+    return Live2DWidget(
+      width: double.infinity,
+      height: 260,
+      state: _previewState,
+      builtinModelAsset: isCustom ? null : path,
+      customModelPath: isCustom ? path : null,
+    );
   }
 
   Widget _buildModelCard({
