@@ -684,6 +684,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    _avatarMode = prefs.getString('overlay_mode') ?? 'live2d';
     setState(() {
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
@@ -1850,12 +1851,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-                // Live2D модель поверх фона
-                Live2DWidget(
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height,
-                  state: _avatarStateString,
-                ),
+                // Аватар — Live2D или 3D в зависимости от настроек
+                if (_avatarMode == '3d')
+                  Aika3DAvatar(
+                    width: MediaQuery.of(context).size.width,
+                    height: MediaQuery.of(context).size.height,
+                    state: _avatarStateString,
+                  )
+                else
+                  Live2DWidget(
+                    width: MediaQuery.of(context).size.width,
+                    height: MediaQuery.of(context).size.height,
+                    state: _avatarStateString,
+                  ),
               ],
             ),
           ),
