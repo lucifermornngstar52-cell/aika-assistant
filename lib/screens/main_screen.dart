@@ -38,6 +38,7 @@ import 'weather_screen.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
 import '../services/aika_feelings_service.dart';
+import '../services/aika_automation_service.dart';
 import '../services/notification_service.dart';
 import '../services/people_memory_service.dart';
 import '../services/reminder_service.dart';
@@ -397,6 +398,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // Загружаем состояние эмоций Айки и запускаем таймеры обиды
     await AikaFeelingsService.load();
+    await AikaAutomationService.loadLearned();
     _startFeelingsTimers();
   }
 
@@ -1532,6 +1534,34 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         _moodService.onUserSpoke();
         return;
       }
+    }
+
+    // ── Automation: скриншот, поиск в приложении, игра, самообучение ──────
+    if (AikaAutomationService.isAutomationCommand(text)) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.user, content: text, timestamp: DateTime.now(),
+      ));
+      setState(() => _isThinking = true);
+      final autoResult = await AikaAutomationService.execute(
+        text,
+        onGameAlert: (alert) {
+          if (!mounted) return;
+          _addMessage(ChatMessage(
+            id: 'game_\${DateTime.now().millisecondsSinceEpoch}',
+            role: MessageRole.aika, content: alert, timestamp: DateTime.now(),
+          ));
+          _speak(alert);
+        },
+      );
+      setState(() => _isThinking = false);
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika, content: autoResult, timestamp: DateTime.now(),
+      ));
+      await _speak(autoResult);
+      _moodService.onUserSpoke();
+      return;
     }
 
     // ── Медиа-команды (Spotify, play/pause/next) ────────────────────────
