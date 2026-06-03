@@ -16,9 +16,13 @@ class BuiltinModel {
 }
 
 final _builtinModels = [
-  BuiltinModel(id: 'natori', name: 'Natori',  assetPath: 'models/Natori/Natori.model3.json', emoji: '🌟'),
-  BuiltinModel(id: 'hiyori', name: 'Hiyori',  assetPath: 'models/Hiyori/Hiyori.model3.json', emoji: '🌸'),
-  BuiltinModel(id: 'haru',   name: 'Haru',    assetPath: 'models/Haru/Haru.model3.json',     emoji: '⚡'),
+  BuiltinModel(id: 'natori', name: 'Natori', assetPath: 'models/Natori/Natori.model3.json', emoji: '🌟'),
+  BuiltinModel(id: 'hiyori', name: 'Hiyori', assetPath: 'models/Hiyori/Hiyori.model3.json', emoji: '🌸'),
+  BuiltinModel(id: 'haru',   name: 'Haru',   assetPath: 'models/Haru/Haru.model3.json',     emoji: '⚡'),
+  BuiltinModel(id: 'mao',    name: 'Mao',    assetPath: 'models/Mao/Mao.model3.json',       emoji: '🍵'),
+  BuiltinModel(id: 'mark',   name: 'Mark',   assetPath: 'models/Mark/Mark.model3.json',     emoji: '🧑'),
+  BuiltinModel(id: 'rice',   name: 'Rice',   assetPath: 'models/Rice/Rice.model3.json',     emoji: '🌾'),
+  BuiltinModel(id: 'wanko',  name: 'Wanko',  assetPath: 'models/Wanko/Wanko.model3.json',  emoji: '🐶'),
 ];
 
 class ModelPickerScreen extends StatefulWidget {
