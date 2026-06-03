@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'screen_reader_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'ai_service.dart';
 import 'aika_self_learning_service.dart';
 
@@ -99,7 +101,7 @@ class AikaGameHelperService {
           'Если это Майнкрафт — давай конкретные рецепты или шаги постройки.';
 
       final ai = AiService();
-      final resp = await ai.getResponse(prompt, []);
+      final resp = await ai.sendMessage(prompt, history: []);
       return '🎮 $resp';
     } catch (e) {
       return 'Не смогла получить совет: $e';
