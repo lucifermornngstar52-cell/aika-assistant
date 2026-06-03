@@ -370,19 +370,7 @@ class AikaAccessibilityService : AccessibilityService() {
         dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
-    // ── СИСТЕМНЫЕ КНОПКИ ────────────────────────────────────────────────
-
-    /** Назад (выйти из приложения / закрыть экран) */
-    fun pressBack() = performGlobalAction(GLOBAL_ACTION_BACK)
-
-    /** Домой */
-    fun goHome() = performGlobalAction(GLOBAL_ACTION_HOME)
-
-    /** Недавние приложения */
-    fun openRecents() = performGlobalAction(GLOBAL_ACTION_RECENTS)
-
-    /** Шторка уведомлений */
-    fun openNotifications() = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+    // ── ДОПОЛНИТЕЛЬНЫЕ ДЕЙСТВИЯ ─────────────────────────────────────────
 
     /** Закрыть текущее приложение через Recents — свайп карточки */
     fun closeCurrentApp() {
