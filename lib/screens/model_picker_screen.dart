@@ -410,7 +410,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
 
   Widget _buildPreviewLive2D() {
     if (_is3DSelected) {
-      // Превью 3D модели через model_viewer_plus
+      // Превью 3D модели через InAppWebView + Three.js
       final model3d = _builtin3DModels.firstWhere(
         (m) => m.id == _selectedId,
         orElse: () => _builtin3DModels.first,
