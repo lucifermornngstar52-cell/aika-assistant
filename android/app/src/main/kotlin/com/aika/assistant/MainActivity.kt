@@ -319,6 +319,57 @@ class MainActivity : FlutterActivity() {
                             result.success(false)
                         }
                     }
+                    "findAndLaunch" -> {
+                        val name = (call.argument<String>("name") ?: "").lowercase()
+                        if (name.isEmpty()) { result.success(false); return@setMethodCallHandler }
+                        try {
+                            val apps = packageManager.getInstalledApplications(0)
+                            val match = apps.firstOrNull { app ->
+                                val label = packageManager.getApplicationLabel(app).toString().lowercase()
+                                label.contains(name) || app.packageName.contains(name)
+                            }
+                            if (match != null) {
+                                val intent = packageManager.getLaunchIntentForPackage(match.packageName)
+                                if (intent != null) {
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    startActivity(intent)
+                                    result.success(true)
+                                } else { result.success(false) }
+                            } else { result.success(false) }
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    "launchCamera" -> {
+                        try {
+                            val intent = android.content.Intent(android.hardware.camera2.CameraManager::class.java.name).apply {
+                                action = android.provider.MediaStore.ACTION_IMAGE_CAPTURE
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            try {
+                                val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            } catch (e2: Exception) {
+                                result.success(false)
+                            }
+                        }
+                    }
+                    "getInstalledApps" -> {
+                        val apps = packageManager.getInstalledApplications(0)
+                        val list = apps.map { app ->
+                            mapOf(
+                                "package" to app.packageName,
+                                "name" to packageManager.getApplicationLabel(app).toString()
+                            )
+                        }
+                        result.success(list)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -588,6 +639,32 @@ class MainActivity : FlutterActivity() {
                     "pressBack" -> {
                         svc.performBack()
                         result.success(true)
+                    }
+
+                    "typeInSearch" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        // Ищем поле поиска и вводим текст
+                        val root = svc.rootInActiveWindow
+                        val searchNode = root?.findAccessibilityNodeInfosByViewId("search")?.firstOrNull()
+                            ?: root?.findAccessibilityNodeInfosByText("Поиск")?.firstOrNull()
+                            ?: root?.findAccessibilityNodeInfosByText("Search")?.firstOrNull()
+                        if (searchNode != null) {
+                            searchNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                svc.typeText(text)
+                            }, 300)
+                            result.success(true)
+                        } else {
+                            result.success(svc.typeText(text))
+                        }
+                    }
+                    "clickByText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        result.success(svc.clickByText(text))
+                    }
+                    "typeText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        result.success(svc.typeText(text))
                     }
 
                     else -> result.notImplemented()
