@@ -93,7 +93,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Notification reply state
   Map<String, String>? _pendingReplyNotif;
   bool _awaitingReplyConfirm = false;
-  String _avatarMode = 'live2d'; // 'live2d' | '3d'
   final ThemeSwitcherService _themeSwitcher = ThemeSwitcherService();
   final PhoneControlService _phoneControl = PhoneControlService();
   final AlarmService _alarmService = AlarmService();
@@ -698,7 +697,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _avatarMode = prefs.getString('overlay_mode') ?? 'live2d';
       _assistantName = prefs.getString('assistant_name') ?? 'Aika';
       _userName = prefs.getString('user_name') ?? '';
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
@@ -1136,7 +1134,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final musicCmd = MusicControlService.parseCommand(text);
     if (musicCmd != null) {
       await MusicControlService.send(musicCmd);
-      // 🎵 Синхронизируем 3D анимацию с музыкой
       final overlayService = OverlayService();
       if (musicCmd == 'play') {
         await overlayService.setMusicPlaying(true);
