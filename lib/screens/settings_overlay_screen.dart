@@ -70,7 +70,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
       _opacity    = _svc.opacity;
       _side       = _svc.side;
       _modelId    = prefs.getString('overlay_model_id') ?? 'hiyori';
-      _mode       = prefs.getString('overlay_mode') ?? 'live2d';
       _dragEnabled = prefs.getBool('overlay_drag_enabled') ?? true;
     });
   }
