@@ -103,8 +103,6 @@ function playMotion(state) {
       var i = di % sz;
       model.motion(group, i, PIXI.live2d.MotionPriority.NORMAL);
       // Звук при dance — играем если есть
-      var snd = getSoundForMotion(group, i);
-      if (snd && di === 0) playSound(snd); // только первый раз чтобы не спамить
       di++;
       danceTimer = setTimeout(doPlay, 2800);
     };
@@ -136,9 +134,6 @@ function playMotion(state) {
   try { model.motion(groupName, idx, priority); } catch(e) {}
 
   // Проигрываем звук если прописан в model3.json
-  if (cfg.playSound) {
-    var snd = getSoundForMotion(groupName, idx);
-    if (snd) playSound(snd);
   }
 
   // Выражение лица
