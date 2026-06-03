@@ -28,6 +28,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
   InAppWebViewController? _ctrl;
   String _lastState = '';
   bool _ready = false;
+  bool _loaded = false;
 
   String _modelId = 'natori';
   String _mode = 'live2d'; // 'live2d' | '3d'
@@ -56,6 +57,9 @@ class _Live2DWidgetState extends State<Live2DWidget> {
     return asset.endsWith('.glb');
   }
 
+  String get _htmlFile =>
+      _is3DModel ? 'assets/3d_viewer.html' : 'assets/live2d_viewer.html';
+
   @override
   void initState() {
     super.initState();
@@ -64,13 +68,14 @@ class _Live2DWidgetState extends State<Live2DWidget> {
 
   Future<void> _loadSavedModel() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() {
-        _modelId = prefs.getString('live2d_model_id') ?? 'natori';
-        _mode = prefs.getString('overlay_mode') ?? 'live2d';
-        _savedCustomPath = prefs.getString('custom_model_path');
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _modelId = prefs.getString('live2d_model_id') ?? 'natori';
+      _mode = prefs.getString('overlay_mode') ?? 'live2d';
+      _savedCustomPath = prefs.getString('custom_model_path');
+      _ready = false;
+      _loaded = false;
+    });
   }
 
   @override
@@ -88,13 +93,11 @@ class _Live2DWidgetState extends State<Live2DWidget> {
 
   String _buildInitJS() {
     if (_is3DModel) {
-      // 3D режим — switchModel
       final path = widget.builtinModelAsset
           ?? _builtin3DPaths[_modelId]
           ?? _builtin3DPaths['aika_glb']!;
       return "window.switchModel('$path'); window.setAikaState('${widget.state}');";
     } else {
-      // Live2D режим
       final customPath = widget.customModelPath
           ?? (_modelId == 'custom' ? _savedCustomPath : null);
       if (customPath != null) {
@@ -107,52 +110,64 @@ class _Live2DWidgetState extends State<Live2DWidget> {
     }
   }
 
-  String get _htmlFile =>
-      _is3DModel ? 'assets/3d_viewer.html' : 'assets/live2d_viewer.html';
-
   @override
   Widget build(BuildContext context) {
+    if (!_loaded) {
+      return SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.purpleAccent),
+        ),
+      );
+    }
+
     return SizedBox(
       width: widget.width,
       height: widget.height,
-      child: InAppWebView(
-        initialFile: _htmlFile,
-        initialSettings: InAppWebViewSettings(
-          transparentBackground: true,
-          javaScriptEnabled: true,
-          mediaPlaybackRequiresUserGesture: false,
-          allowFileAccessFromFileURLs: true,
-          allowUniversalAccessFromFileURLs: true,
-          mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-          useHybridComposition: true,
-          disableDefaultErrorPage: true,
-          allowContentAccess: true,
-        ),
-        onWebViewCreated: (ctrl) {
-          _ctrl = ctrl;
-          ctrl.addJavaScriptHandler(
-            handlerName: 'FlutterChannel',
-            callback: (args) {
-              final msg = args.isNotEmpty ? args[0].toString() : '';
-              if (msg == 'modelLoaded') {
-                setState(() => _ready = true);
-                Future.delayed(const Duration(milliseconds: 300), () {
-                  _sendState(widget.state);
-                });
+      // КЛЮЧ ПО _htmlFile — при смене режима Flutter пересоздаёт WebView целиком
+      child: KeyedSubtree(
+        key: ValueKey(_htmlFile),
+        child: InAppWebView(
+          initialFile: _htmlFile,
+          initialSettings: InAppWebViewSettings(
+            transparentBackground: true,
+            javaScriptEnabled: true,
+            mediaPlaybackRequiresUserGesture: false,
+            allowFileAccessFromFileURLs: true,
+            allowUniversalAccessFromFileURLs: true,
+            mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+            useHybridComposition: true,
+            disableDefaultErrorPage: true,
+            allowContentAccess: true,
+          ),
+          onWebViewCreated: (ctrl) {
+            _ctrl = ctrl;
+            _ready = false;
+            ctrl.addJavaScriptHandler(
+              handlerName: 'FlutterChannel',
+              callback: (args) {
+                final msg = args.isNotEmpty ? args[0].toString() : '';
+                if (msg == 'modelLoaded') {
+                  if (mounted) setState(() => _ready = true);
+                  Future.delayed(const Duration(milliseconds: 300), () {
+                    if (mounted) _sendState(widget.state);
+                  });
+                }
+              },
+            );
+          },
+          onLoadStop: (ctrl, url) {
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                ctrl.evaluateJavascript(source: _buildInitJS());
               }
-            },
-          );
-        },
-        onLoadStop: (ctrl, url) {
-          Future.delayed(const Duration(milliseconds: 600), () {
-            if (mounted) {
-              ctrl.evaluateJavascript(source: _buildInitJS());
-            }
-          });
-        },
-        onReceivedError: (ctrl, req, err) {
-          debugPrint('[Live2DWidget] WebView error: ${err.description}');
-        },
+            });
+          },
+          onReceivedError: (ctrl, req, err) {
+            debugPrint('[Live2DWidget] WebView error: ${err.description}');
+          },
+        ),
       ),
     );
   }
