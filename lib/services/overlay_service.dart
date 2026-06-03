@@ -98,6 +98,20 @@ class OverlayService {
     }
   }
 
+  /// Проиграть звук в WebView Live2D
+  Future<void> playSound(String soundPath) async {
+    try {
+      await _overlayChannel.invokeMethod('playSound', {'path': soundPath});
+    } catch (_) {}
+  }
+
+  /// Остановить звук
+  Future<void> stopSound() async {
+    try {
+      await _overlayChannel.invokeMethod('stopSound');
+    } catch (_) {}
+  }
+
   // ─── Конфиг: размер / прозрачность / сторона ────────────────────────
   Future<void> setSize(double dp) async {
     _sizeDp = dp.clamp(80.0, 350.0);
