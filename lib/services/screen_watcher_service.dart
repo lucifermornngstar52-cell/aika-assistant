@@ -43,7 +43,7 @@ class ScreenWatcherService {
         AikaSelfLearningService.recordAction(type: 'app_open', value: label);
         // Уведомляем игровой помощник о текущем приложении
         AikaGameHelperService.setCurrentGame(
-          AikaGameHelperService.detectGameByPackage(pkg)
+          _detectGamePkg(pkg)
         );
 
         final result = _buildReaction(pkg, label);
@@ -254,7 +254,7 @@ class ScreenWatcherService {
     return keywords.any((k) => lower.contains(k));
   }
 
-  static String? detectGameByPackage(String pkg) {
+  static String? _detectGamePkg(String pkg) {
     final p = pkg.toLowerCase();
     if (p.contains('minecraft') || p.contains('mojang')) return 'Minecraft';
     if (p.contains('pubg') || p.contains('tencent.ig')) return 'PUBG';
