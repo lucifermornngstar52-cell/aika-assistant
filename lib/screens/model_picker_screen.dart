@@ -4,32 +4,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live2d_widget.dart';
-import '../widgets/aika_3d_avatar.dart';
 import '../services/overlay_service.dart';
 
-/// Встроенные модели из assets/models/
+/// Встроенные Live2D модели
 class BuiltinModel {
-  final String id;
-  final String name;
-  final String assetPath; // путь к model3.json внутри assets
-  final String emoji;
-  BuiltinModel({required this.id, required this.name, required this.assetPath, required this.emoji});
-}
-
-// 3D модели
-class Model3D {
   final String id;
   final String name;
   final String assetPath;
   final String emoji;
-  Model3D({required this.id, required this.name, required this.assetPath, required this.emoji});
+  BuiltinModel({required this.id, required this.name, required this.assetPath, required this.emoji});
 }
-
-final _builtin3DModels = [
-  Model3D(id: 'anime_girl', name: '🌸 Sakura',    assetPath: 'models/anime_girl.glb',  emoji: '🌸'),
-  Model3D(id: 'aika_glb',   name: '💜 Aika',      assetPath: 'models/aika_model.glb',  emoji: '💜'),
-  Model3D(id: 'xbot_glb',   name: '🤍 Shirogane', assetPath: 'models/xbot.glb',        emoji: '🤍'),
-];
 
 final _builtinModels = [
   BuiltinModel(id: 'natori', name: 'Natori',  assetPath: 'models/Natori/Natori.model3.json', emoji: '🌟'),
@@ -45,12 +29,13 @@ class ModelPickerScreen extends StatefulWidget {
 }
 
 class _ModelPickerScreenState extends State<ModelPickerScreen> {
-  String _selectedId = 'hiyori';
+  String _selectedId    = 'natori';
   String? _customModelPath;
-  String _previewState = 'idle';
-  bool _loading = false;
-  String _mode = 'live2d'; // 'live2d' | '3d'
-  final _overlaySvc = OverlayService();
+  String _previewState  = 'idle';
+  bool _loading         = false;
+  final _overlaySvc     = OverlayService();
+
+  final _states = ['idle', 'listening', 'thinking', 'greeting', 'dance'];
 
   @override
   void initState() {
@@ -61,9 +46,8 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _selectedId = prefs.getString('live2d_model_id') ?? 'natori';
+      _selectedId      = prefs.getString('live2d_model_id') ?? 'natori';
       _customModelPath = prefs.getString('custom_model_path');
-      _mode = prefs.getString('overlay_mode') ?? 'live2d';
     });
   }
 
@@ -88,10 +72,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
         if (path.endsWith('model3.json') || path.endsWith('model.json')) {
-          setState(() {
-            _customModelPath = path;
-            _selectedId = 'custom';
-          });
+          setState(() { _customModelPath = path; _selectedId = 'custom'; });
           await _save('custom', customPath: path);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -109,36 +90,38 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
           }
         }
       }
-    } catch (e) {
-      debugPrint('FilePicker error: $e');
-    }
+    } catch (e) { debugPrint('FilePicker error: $e'); }
     setState(() => _loading = false);
   }
 
-  Future<void> _pickModelFolder() async {
-    // Инструкция как установить кастомную модель
-    showDialog(context: context, builder: (_) => AlertDialog(
-      backgroundColor: const Color(0xFF1A1A2E),
-      title: const Text('Как установить модель?',
-          style: TextStyle(color: Colors.white, fontSize: 16)),
-      content: const SingleChildScrollView(
-        child: Text(
-          '1. Скачай модель с VRoid Hub / Booth / другого сайта\n\n'
-          '2. Распакуй архив в папку на телефоне\n\n'
-          '3. Нажми "Загрузить модель (.json)"\n\n'
-          '4. Выбери файл .model3.json из папки с моделью\n\n'
-          'Важно: папка с моделью должна содержать все файлы '
-          '(.moc3, текстуры, motions и т.д.) рядом с .model3.json',
-          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text('Понял', style: TextStyle(color: AikaTheme.neonBlue)),
-        ),
-      ],
-    ));
+  Future<void> _applyAndClose() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('overlay_mode'); // всегда live2d
+    await prefs.setString('overlay_mode', 'live2d');
+
+    String path;
+    if (_selectedId == 'custom' && _customModelPath != null) {
+      path = _customModelPath!;
+    } else {
+      final model = _builtinModels.firstWhere(
+        (m) => m.id == _selectedId,
+        orElse: () => _builtinModels.first,
+      );
+      path = model.assetPath;
+    }
+    await _overlaySvc.switchModel(path);
+    if (mounted) Navigator.pop(context);
+  }
+
+  String get _currentPreviewPath {
+    if (_selectedId == 'custom' && _customModelPath != null) {
+      return _customModelPath!;
+    }
+    final model = _builtinModels.firstWhere(
+      (m) => m.id == _selectedId,
+      orElse: () => _builtinModels.first,
+    );
+    return model.assetPath;
   }
 
   @override
@@ -146,340 +129,242 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     return Scaffold(
       backgroundColor: AikaTheme.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text('МОДЕЛЬ ПЕРСОНАЖА', style: TextStyle(
-          color: AikaTheme.neonBlue, fontSize: 15,
-          fontWeight: FontWeight.bold, letterSpacing: 3,
-        )),
-        centerTitle: true,
-        iconTheme: IconThemeData(color: AikaTheme.neonBlue),
+        backgroundColor: AikaTheme.surface,
+        title: Text('МОДЕЛЬ ПЕРСОНАЖА',
+            style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold, letterSpacing: 2)),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline, color: Colors.white54),
-            onPressed: _pickModelFolder,
+            onPressed: _showHelpDialog,
           ),
         ],
       ),
       body: Column(
         children: [
-          // Превью модели
+          // ── Превью Live2D ──────────────────────────────────────────
           Container(
-            height: 280,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.black26,
-              border: Border(bottom: BorderSide(color: AikaTheme.neonBlue.withOpacity(0.2))),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                _buildPreviewLive2D(),
-                // Кнопки анимации
-                Positioned(
-                  bottom: 8,
-                  child: Row(
-                    children: ['idle','listening','thinking','greeting','dance'].map((s) =>
-                      GestureDetector(
-                        onTap: () => setState(() => _previewState = s),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _previewState == s
-                                ? AikaTheme.neonBlue.withOpacity(0.3)
-                                : Colors.white10,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: _previewState == s ? AikaTheme.neonBlue : Colors.white24,
-                            ),
-                          ),
-                          child: Text(s, style: TextStyle(
-                            color: _previewState == s ? AikaTheme.neonBlue : Colors.white54,
-                            fontSize: 10,
-                          )),
-                        ),
-                      )
-                    ).toList(),
+            height: 260,
+            color: Colors.black,
+            child: _buildPreview(),
+          ),
+          // ── Переключатель состояний ───────────────────────────────
+          Container(
+            color: AikaTheme.surface.withOpacity(0.5),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _states.map((s) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(s, style: const TextStyle(fontSize: 12)),
+                    selected: _previewState == s,
+                    onSelected: (_) => setState(() => _previewState = s),
+                    selectedColor: AikaTheme.neonBlue.withOpacity(0.3),
+                    backgroundColor: AikaTheme.surface,
+                    labelStyle: TextStyle(
+                      color: _previewState == s ? AikaTheme.neonBlue : Colors.white70,
+                    ),
+                    side: BorderSide(
+                      color: _previewState == s ? AikaTheme.neonBlue : Colors.white24,
+                    ),
                   ),
-                ),
-              ],
+                )).toList(),
+              ),
             ),
           ),
-
+          // ── Список моделей ─────────────────────────────────────────
           Expanded(
-            child: SingleChildScrollView(
+            child: ListView(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Встроенные модели
-                  Text('ВСТРОЕННЫЕ МОДЕЛИ',
-                    style: TextStyle(color: AikaTheme.neonBlue, fontSize: 11,
-                        letterSpacing: 2, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  ..._builtinModels.map((m) => _buildModelCard(
-                    id: m.id,
-                    emoji: m.emoji,
-                    name: m.name,
-                    desc: 'Live2D • встроенная',
+              children: [
+                // ── Live2D встроенные ──────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text('LIVE2D МОДЕЛИ',
+                      style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12,
+                          fontWeight: FontWeight.bold, letterSpacing: 2)),
+                ),
+                ..._builtinModels.map((m) => _buildModelCard(
+                  id: m.id, name: m.name, emoji: m.emoji, desc: 'Live2D • встроенная',
+                  onTap: () async {
+                    setState(() => _selectedId = m.id);
+                    await _save(m.id);
+                  },
+                )),
+                const SizedBox(height: 8),
+                Divider(color: Colors.white12),
+                const SizedBox(height: 8),
+                // ── Кастомная модель ─────────────────────────────
+                _buildAddCustomCard(),
+                if (_customModelPath != null) ...[
+                  const SizedBox(height: 8),
+                  _buildModelCard(
+                    id: 'custom',
+                    name: _customModelPath!.split('/').last.replaceAll('.model3.json', ''),
+                    emoji: '📦',
+                    desc: 'Live2D • пользовательская',
                     onTap: () async {
-                      setState(() => _selectedId = m.id);
-                      await _save(m.id);
+                      setState(() => _selectedId = 'custom');
+                      await _save('custom', customPath: _customModelPath);
                     },
-                  )),
-
-                  const SizedBox(height: 20),
-
-                  // ── 3D GLB модели ──────────────────────────────────────
-                  Text('3D МОДЕЛИ (GLB)',
-                    style: TextStyle(color: Color(0xFFFF80AB), fontSize: 11,
-                        letterSpacing: 2, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('Анимации привязаны к состояниям Айки',
-                    style: TextStyle(color: Colors.white38, fontSize: 11)),
-                  const SizedBox(height: 10),
-                  ..._builtin3DModels.map((m) => _buildModelCard(
-                    id: m.id,
-                    emoji: m.emoji,
-                    name: m.name,
-                    desc: '3D GLB • встроенная',
-                    onTap: () async {
-                      setState(() { _selectedId = m.id; _mode = '3d'; });
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setString('overlay_mode', '3d');
-                      await _overlaySvc.setMode('3d');
-                      await _save(m.id, customPath: m.assetPath);
-                      // Переключаем модель в оверлее
-                      await _overlaySvc.switchModel(m.assetPath);
-                    },
-                  )),
-
-                  const SizedBox(height: 20),
-
-                  // ── Режим аватара ──────────────────────────────────────
-                  Text('РЕЖИМ АВАТАРА',
-                    style: TextStyle(color: AikaTheme.neonBlue, fontSize: 11,
-                        letterSpacing: 2, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    Expanded(child: GestureDetector(
-                      onTap: () async {
-                        setState(() => _mode = 'live2d');
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('overlay_mode', 'live2d');
-                        await _overlaySvc.setMode('live2d');
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _mode == 'live2d'
-                              ? AikaTheme.neonBlue.withOpacity(0.15)
-                              : Colors.white.withOpacity(0.04),
-                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
-                          border: Border.all(
-                            color: _mode == 'live2d' ? AikaTheme.neonBlue : Colors.white12),
-                        ),
-                        child: Column(children: [
-                          Text('🌸', style: const TextStyle(fontSize: 22)),
-                          const SizedBox(height: 4),
-                          Text('Live2D', style: TextStyle(
-                            color: _mode == 'live2d' ? AikaTheme.neonBlue : Colors.white54,
-                            fontSize: 12, fontWeight: FontWeight.bold)),
-                        ]),
-                      ),
-                    )),
-                    Expanded(child: GestureDetector(
-                      onTap: () async {
-                        setState(() => _mode = '3d');
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('overlay_mode', '3d');
-                        await _overlaySvc.setMode('3d');
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _mode == '3d'
-                              ? AikaTheme.neonBlue.withOpacity(0.15)
-                              : Colors.white.withOpacity(0.04),
-                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
-                          border: Border.all(
-                            color: _mode == '3d' ? AikaTheme.neonBlue : Colors.white12),
-                        ),
-                        child: Column(children: [
-                          Text('🤖', style: const TextStyle(fontSize: 22)),
-                          const SizedBox(height: 4),
-                          Text('3D модель', style: TextStyle(
-                            color: _mode == '3d' ? AikaTheme.neonBlue : Colors.white54,
-                            fontSize: 12, fontWeight: FontWeight.bold)),
-                        ]),
-                      ),
-                    )),
-                  ]),
-
-                  const SizedBox(height: 20),
-
-                  // Кастомная модель
-                  Text('СВОЯ МОДЕЛЬ',
-                    style: TextStyle(color: AikaTheme.neonBlue, fontSize: 11,
-                        letterSpacing: 2, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-
-                  if (_customModelPath != null)
-                    _buildModelCard(
-                      id: 'custom',
-                      emoji: '📦',
-                      name: _customModelPath!.split('/').last.replaceAll('.model3.json', ''),
-                      desc: 'Кастомная • ${_customModelPath!.split('/').last}',
-                      onTap: () async {
-                        setState(() => _selectedId = 'custom');
-                        await _save('custom', customPath: _customModelPath);
-                      },
-                    ),
-
-                  const SizedBox(height: 12),
-
-                  // Кнопка загрузки
-                  GestureDetector(
-                    onTap: _loading ? null : _pickCustomModel,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      decoration: BoxDecoration(
-                        color: AikaTheme.neonBlue.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: AikaTheme.neonBlue.withOpacity(0.4), style: BorderStyle.solid),
-                      ),
-                      child: Column(children: [
-                        _loading
-                            ? SizedBox(width: 24, height: 24,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: AikaTheme.neonBlue))
-                            : Icon(Icons.upload_file, color: AikaTheme.neonBlue, size: 28),
-                        const SizedBox(height: 6),
-                        Text('Загрузить модель (.json)',
-                          style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13,
-                              fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 2),
-                        const Text('Выбери .model3.json из папки модели',
-                          style: TextStyle(color: Colors.white38, fontSize: 11)),
-                      ]),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Ссылка на сайты с моделями
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.04),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('🔗 Где найти модели:',
-                          style: TextStyle(color: Colors.white70, fontSize: 12,
-                              fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        const Text(
-                          '• VRoid Hub — vroid.com/hub\n'
-                          '• Booth — booth.pm\n'
-                          '• Niconi Commons — commons.nicovideo.jp\n\n'
-                          'Ищи файлы с расширением .model3.json',
-                          style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
-                        ),
-                      ],
-                    ),
                   ),
                 ],
-              ),
+                const SizedBox(height: 80),
+              ],
             ),
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _applyAndClose,
+        backgroundColor: AikaTheme.neonBlue.withOpacity(0.2),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.check_rounded),
+        label: const Text('Применить'),
+      ),
     );
   }
 
-  bool get _is3DSelected {
-    return _builtin3DModels.any((m) => m.id == _selectedId);
-  }
-
-  Widget _buildPreviewLive2D() {
-    if (_is3DSelected) {
-      // Превью 3D модели через InAppWebView + Three.js
-      final model3d = _builtin3DModels.firstWhere(
-        (m) => m.id == _selectedId,
-        orElse: () => _builtin3DModels.first,
-      );
-      return Aika3DAvatar(
-        state: _previewState,
-        width: double.infinity,
-        height: 260,
-      );
-    }
-    if (_selectedId == 'custom' && _customModelPath != null) {
+  Widget _buildPreview() {
+    try {
       return Live2DWidget(
+        modelPath: _currentPreviewPath,
+        state: _previewState,
         width: double.infinity,
         height: 260,
-        state: _previewState,
-        customModelPath: _customModelPath,
+      );
+    } catch (_) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_outline, color: AikaTheme.neonBlue, size: 48),
+            const SizedBox(height: 8),
+            Text(_selectedId == 'custom' ? 'Кастомная модель' : _selectedId,
+                style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
+          ],
+        ),
       );
     }
-    final model = _builtinModels.firstWhere(
-      (m) => m.id == _selectedId,
-      orElse: () => _builtinModels.first,
-    );
-    return Live2DWidget(
-      width: double.infinity,
-      height: 260,
-      state: _previewState,
-      builtinModelAsset: model.assetPath,
-    );
   }
 
   Widget _buildModelCard({
     required String id,
-    required String emoji,
     required String name,
+    required String emoji,
     required String desc,
     required VoidCallback onTap,
   }) {
     final isSelected = _selectedId == id;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected
-              ? AikaTheme.neonBlue.withOpacity(0.12)
-              : Colors.white.withOpacity(0.04),
+          color: isSelected ? AikaTheme.neonBlue.withOpacity(0.1) : AikaTheme.surface.withOpacity(0.5),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected ? AikaTheme.neonBlue : Colors.white12,
             width: isSelected ? 1.5 : 1,
           ),
         ),
-        child: Row(children: [
-          Text(emoji, style: const TextStyle(fontSize: 28)),
-          const SizedBox(width: 14),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: const TextStyle(
-                  color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-              Text(desc, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            ],
-          )),
-          if (isSelected)
-            Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 22),
-        ]),
+        child: Row(
+          children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: AikaTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(child: Text(emoji, style: const TextStyle(fontSize: 22))),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                  const SizedBox(height: 2),
+                  Text(desc, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(Icons.check_circle_rounded, color: AikaTheme.neonBlue, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddCustomCard() {
+    return GestureDetector(
+      onTap: _loading ? null : _pickCustomModel,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AikaTheme.surface.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white12, style: BorderStyle.solid),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(color: AikaTheme.surface, borderRadius: BorderRadius.circular(12)),
+              child: _loading
+                  ? Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AikaTheme.neonBlue),
+                    )
+                  : Icon(Icons.add_rounded, color: AikaTheme.neonBlue),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Добавить модель', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                  Text('Выбери .model3.json файл', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                ],
+              ),
+            ),
+            Icon(Icons.folder_open_rounded, color: Colors.white38),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AikaTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Как добавить модель', style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold)),
+        content: const Text(
+          '1. Скачай Live2D модель в формате .model3.json\n\n'
+          '2. Распакуй все файлы модели в одну папку на телефоне\n\n'
+          '3. Нажми "Добавить модель" и выбери .model3.json файл\n\n'
+          '4. Нажми "Применить" — модель появится в оверлее',
+          style: TextStyle(color: Colors.white70, height: 1.5),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AikaTheme.neonBlue.withOpacity(0.2),
+              side: BorderSide(color: AikaTheme.neonBlue),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Понятно', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }
 }
-
