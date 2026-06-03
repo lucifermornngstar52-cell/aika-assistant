@@ -24,15 +24,23 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
   static const _cardBg = Color(0xFF1C1C1E);
 
   static const _models = [
-    {'id': 'hiyori',  'label': '🌸 Hiyori'},
-    {'id': 'natori',  'label': '🌟 Natori'},
-    {'id': 'haru',    'label': '⚡ Haru'},
+    {'id': 'hiyori', 'label': '🌸 Hiyori'},
+    {'id': 'natori', 'label': '🌟 Natori'},
+    {'id': 'haru',   'label': '⚡ Haru'},
+    {'id': 'mao',    'label': '🍵 Mao'},
+    {'id': 'mark',   'label': '🧑 Mark'},
+    {'id': 'rice',   'label': '🌾 Rice'},
+    {'id': 'wanko',  'label': '🐶 Wanko'},
   ];
 
   static const _modelPaths = {
     'hiyori': 'models/Hiyori/Hiyori.model3.json',
     'natori': 'models/Natori/Natori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
+    'mao':    'models/Mao/Mao.model3.json',
+    'mark':   'models/Mark/Mark.model3.json',
+    'rice':   'models/Rice/Rice.model3.json',
+    'wanko':  'models/Wanko/Wanko.model3.json',
   };
 
   static const _testStates = [
