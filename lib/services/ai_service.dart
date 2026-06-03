@@ -26,6 +26,8 @@ class AiService {
     String screenContext = '',
     String openAiKey = '',
     String longMemory = '',
+    String imageBase64 = '',   // base64 изображения для vision
+    String imageMimeType = 'image/jpeg',
   }) async {
     // GPT is primary, Gemini is fallback
     final effectiveKey = openAiKey.isNotEmpty ? openAiKey : _openAiKey;
@@ -40,6 +42,8 @@ class AiService {
           screenContext: screenContext,
           openAiKey: effectiveKey,
           longMemory: longMemory,
+          imageBase64: imageBase64,
+          imageMimeType: imageMimeType,
         );
       } catch (e) {
         final errStr = e.toString();
@@ -54,6 +58,8 @@ class AiService {
               memoryContext: memoryContext,
               screenContext: screenContext,
               longMemory: longMemory,
+              imageBase64: imageBase64,
+              imageMimeType: imageMimeType,
             );
           } catch (e2) {
             throw Exception('AI недоступен: GPT — $e | Gemini — $e2');
@@ -73,6 +79,8 @@ class AiService {
         memoryContext: memoryContext,
         screenContext: screenContext,
         longMemory: longMemory,
+        imageBase64: imageBase64,
+        imageMimeType: imageMimeType,
       );
     } catch (e) {
       throw Exception('AI недоступен: $e');
@@ -87,7 +95,8 @@ class AiService {
     final internalMoodMod = AssistantMoodService.getPromptModifier();
     final feelingsMod = AikaFeelingsService.getPromptHint();
     final memPart = longMemory.isNotEmpty ? "\n\n== ЧТО ТЫ ЗНАЕШЬ О ПОЛЬЗОВАТЕЛЕ ==\n\$longMemory" : '';
-    return "Ты \$assistantName — аниме AI-ассистент для Android\$userPart. Говоришь кратко, умно. Отвечаешь по-русски.\$personalityPrompt\$relationshipMod\$internalMoodMod\$feelingsMod\n\n"
+    final genderPrompt = PersonalityService.genderPrompt;
+    return "Ты \$assistantName — аниме AI-ассистент для Android\$userPart. Говоришь кратко, умно. Отвечаешь по-русски.\$personalityPrompt\$genderPrompt\$relationshipMod\$internalMoodMod\$feelingsMod\n\n"
         "\${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}\$memPart\n\n"
         "[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]\n"
         "[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]\n"
@@ -96,7 +105,7 @@ class AiService {
         "[ACTION:reminder_ТЕКСТ_через_N_мин] [ACTION:alarm_HH:MM_ТЕКСТ]\n"
         "[ACTION:game_guess] [ACTION:game_words]\n"
         "[ACTION:launch_app_PACKAGE]\n"
-        "Никогда не пиши JSON в ответе. Отвечай кратко 1-3 предложения.";
+        "Никогда не пиши JSON в ответе. Если вопрос требует развёрнутого ответа (эссе, анализ, код) — отвечай подробно. Иначе — кратко, 1-3 предложения.";
   }
 
   Future<String> _callGemini(
