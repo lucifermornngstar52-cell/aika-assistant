@@ -175,12 +175,14 @@ class AiService {
     String screenContext = '',
     required String openAiKey,
     String longMemory = '',
+    String imageBase64 = '',
+    String imageMimeType = 'image/jpeg',
   }) async {
     final systemPrompt = _buildSystemPrompt(userName, assistantName, longMemory: longMemory)
         + (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '')
         + (screenContext.isNotEmpty ? '\n\n== СЕЙЧАС НА ЭКРАНЕ ==\n$screenContext' : '');
 
-    final messages = <Map<String, String>>[
+    final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': systemPrompt},
     ];
 
