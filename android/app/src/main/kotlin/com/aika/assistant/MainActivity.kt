@@ -466,7 +466,64 @@ class MainActivity : FlutterActivity() {
                         result.success(svc.getScreenSize())
                     }
 
-                    
+                    "getScreenStructure" -> {
+                        result.success(svc.getScreenStructure())
+                    }
+
+                    "longClickByText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        result.success(svc.longClickByText(text))
+                    }
+
+                    "longTapAt" -> {
+                        val x = (call.argument<Double>("x") ?: 540.0).toFloat()
+                        val y = (call.argument<Double>("y") ?: 1000.0).toFloat()
+                        svc.longTapAt(x, y)
+                        result.success(true)
+                    }
+
+                    "doubleTapAt" -> {
+                        val x = (call.argument<Double>("x") ?: 540.0).toFloat()
+                        val y = (call.argument<Double>("y") ?: 1000.0).toFloat()
+                        svc.doubleTapAt(x, y)
+                        result.success(true)
+                    }
+
+                    "takeScreenshot" -> {
+                        result.success(svc.takeScreenshot())
+                    }
+
+                    "powerDialog" -> {
+                        result.success(svc.powerDialog())
+                    }
+
+                    "toggleSplitScreen" -> {
+                        result.success(svc.toggleSplitScreen())
+                    }
+
+                    "copySelectedText" -> {
+                        result.success(svc.copySelectedText())
+                    }
+
+                    "pasteText" -> {
+                        result.success(svc.pasteText())
+                    }
+
+                    "appendText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        result.success(svc.appendText(text))
+                    }
+
+                    "clickByDescription" -> {
+                        val desc = call.argument<String>("desc") ?: ""
+                        result.success(svc.clickByDescription(desc))
+                    }
+
+                    "findByClass" -> {
+                        val cls = call.argument<String>("className") ?: "EditText"
+                        result.success(svc.findNodesByClass(cls))
+                    }
+
                     else -> result.notImplemented()
                 }
             }
