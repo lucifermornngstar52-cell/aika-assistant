@@ -26,7 +26,8 @@ class MainActivity : FlutterActivity() {
         private const val AUDIO_CHANNEL         = "aika/audio"
         private const val MESSENGER_CHANNEL     = "com.aika.assistant/messenger"
         private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
-        private const val NOTIFICATION_EVENTS_CHANNEL = "com.aika.assistant/notification_events"
+        private const val NOTIFICATION_EVENTS_CHANNEL  = "com.aika.assistant/notification_events"
+        private const val NOTIFICATIONS_CHANNEL          = "com.aika.assistant/notifications"
     }
 
     // EventChannel sink для отправки событий смены приложений во Flutter
@@ -330,6 +331,27 @@ class MainActivity : FlutterActivity() {
                     notificationEventSink = null
                 }
             })
+
+        // ── 7. Notifications permission channel ──────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "hasPermission" -> {
+                        val enabledListeners = android.provider.Settings.Secure.getString(
+                            contentResolver, "enabled_notification_listeners"
+                        )
+                        val enabled = enabledListeners?.contains(packageName) == true
+                        result.success(enabled)
+                    }
+                    "openPermissionSettings" -> {
+                        startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         // ── 2. Screen reader channel ──────────────────────────────────────────
         // Все вызовы делегируются в AikaAccessibilityService.instance
