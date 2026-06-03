@@ -87,6 +87,19 @@ flutter:
     - assets/models/Ren/Ren.2048/
     - assets/models/Ren/motions/
     - assets/models/Ren/expressions/
+    - assets/models/Mao/
+    - assets/models/Mao/Mao.2048/
+    - assets/models/Mao/motions/
+    - assets/models/Mao/expressions/
+    - assets/models/Mark/
+    - assets/models/Mark/Mark.2048/
+    - assets/models/Mark/motions/
+    - assets/models/Rice/
+    - assets/models/Rice/Rice.2048/
+    - assets/models/Rice/motions/
+    - assets/models/Wanko/
+    - assets/models/Wanko/Wanko.1024/
+    - assets/models/Wanko/motions/
     - assets/images/chat_wallpaper.jpg
     - assets/images/aika_avatar.png
     - assets/images/aika_chibi.png
