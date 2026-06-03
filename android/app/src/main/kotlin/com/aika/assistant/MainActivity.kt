@@ -524,6 +524,26 @@ class MainActivity : FlutterActivity() {
                         result.success(svc.findNodesByClass(cls))
                     }
 
+                    "closeCurrentApp" -> {
+                        svc.closeCurrentApp()
+                        result.success(true)
+                    }
+
+                    "openAppSettings" -> {
+                        val pkg = call.argument<String>("package") ?: ""
+                        result.success(svc.openAppSettings(pkg))
+                    }
+
+                    "uninstallApp" -> {
+                        val pkg = call.argument<String>("package") ?: ""
+                        result.success(svc.uninstallApp(pkg))
+                    }
+
+                    "pressBack" -> {
+                        svc.pressBack()
+                        result.success(true)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
