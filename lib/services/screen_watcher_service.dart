@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'aika_self_learning_service.dart';
+import 'aika_game_helper_service.dart';
 
 typedef ScreenReactionCallback = void Function(String reaction, String overlayState);
 
@@ -37,6 +39,13 @@ class ScreenWatcherService {
       final cooldownExpired = _lastReactionTime == null ||
           now.difference(_lastReactionTime!) > _cooldown;
       if (!isSamePkg || cooldownExpired) {
+        // Записываем в память самообучения
+        AikaSelfLearningService.recordAction(type: 'app_open', value: label);
+        // Уведомляем игровой помощник о текущем приложении
+        AikaGameHelperService.setCurrentGame(
+          AikaGameHelperService.detectGameByPackage(pkg)
+        );
+
         final result = _buildReaction(pkg, label);
         if (result != null) {
           _lastReactedPackage = pkg;
@@ -191,12 +200,48 @@ class ScreenWatcherService {
       case 'com.google.android.apps.photos':
         return null;
 
+      case 'com.mojang.minecraftpe':
+        return (_pick([
+          'Майнкрафт! 🏗️ Что строим? Скажи если нужна помощь!',
+          'О, Майнкрафт! Выживание или творческий? 🪨',
+          'Майнкрафт запущен! Я могу помочь с постройками — спрашивай 🏠',
+        ]), 'happy');
+
+      case 'com.pubg.imobile':
+      case 'com.tencent.ig':
+        return (_pick([
+          'PUBG! 🎯 Слежу за тылами — скажи "следи за экраном"!',
+          'Пубж! Удачи в матче! 🎮',
+          'PUBG запущен! Нужна помощь — скажи! 🎯',
+        ]), 'happy');
+
+      case 'com.vkontakte.android.vkvideo':
+      case 'com.vk.video':
+        return (_pick([
+          'VK Видео! 🎬 Что сегодня смотрим?',
+          'Видос от ВК! 🍿 Выбрал что-то интересное?',
+          'ВК Видео открыт! Чилл? 😎',
+        ]), 'youtube');
+
+      case 'com.genshin.impact':
+      case 'com.miHoYo.GenshinImpact':
+        return (_pick([
+          'Геншин! ⚔️ Фарм артефактов или сюжет?',
+          'Genshin Impact! Надеюсь стамина полная 😄',
+        ]), 'happy');
+
+      case 'com.supercell.brawlstars':
+        return ('Brawl Stars! 🥊 Ни пуха в матче!', 'happy');
+
+      case 'com.supercell.clashofclans':
+        return ('Clash of Clans! 🏰 Атакуем или строим?', 'happy');
+
       default:
         if (_isGamePackage(pkg, label)) {
           return (_pick([
-            'Игра запущена 🎮 Удачи!',
-            'Играем? Ни пуха! 🎮',
-            'О, игра! Красавчик 🎮',
+            'Игра запущена 🎮 Скажи "помоги в игре" если нужен совет!',
+            'Играем! Ни пуха! 🎮 Я рядом если что.',
+            'О, игра! Удачи! Я слежу 🎮',
           ]), 'happy');
         }
         return null;
@@ -207,5 +252,17 @@ class ScreenWatcherService {
     final keywords = ['game', 'games', 'play', 'clash', 'pubg', 'brawl', 'arena', 'mobile'];
     final lower = pkg.toLowerCase();
     return keywords.any((k) => lower.contains(k));
+  }
+
+  static String? detectGameByPackage(String pkg) {
+    final p = pkg.toLowerCase();
+    if (p.contains('minecraft') || p.contains('mojang')) return 'Minecraft';
+    if (p.contains('pubg') || p.contains('tencent.ig')) return 'PUBG';
+    if (p.contains('genshin') || p.contains('mihoyo')) return 'Genshin Impact';
+    if (p.contains('roblox')) return 'Roblox';
+    if (p.contains('brawl')) return 'Brawl Stars';
+    if (p.contains('clash')) return 'Clash';
+    if (_isGamePackage(p, '')) return 'Unknown Game';
+    return null;
   }
 }
