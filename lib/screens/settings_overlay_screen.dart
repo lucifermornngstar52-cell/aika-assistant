@@ -33,12 +33,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     'hiyori': 'models/Hiyori/Hiyori.model3.json',
     'natori': 'models/Natori/Natori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
-    'ren':    'models/Ren/Ren.model3.json',
-    // Новые модели — те же базовые с другим стилем через CSS/параметры
-    'miku':   'models/Natori/Natori.model3.json',
-    'karin':  'models/Hiyori/Hiyori.model3.json',
-    'izumi':  'models/Ren/Ren.model3.json',
-    'akari':  'models/Haru/Haru.model3.json',
   };
 
   static const _testStates = [
