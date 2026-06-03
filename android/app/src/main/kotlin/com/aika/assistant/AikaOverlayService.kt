@@ -55,6 +55,9 @@ class AikaOverlayService : Service() {
         const val EXTRA_ANIM        = "anim_name"
         const val EXTRA_MODEL_PATH  = "model_path"
         const val EXTRA_DRAG_ENABLED = "drag_enabled"
+        const val EXTRA_SOUND_PATH   = "sound_path"
+        const val ACTION_PLAY_SOUND  = "aika.overlay.PLAY_SOUND"
+        const val ACTION_STOP_SOUND  = "aika.overlay.STOP_SOUND"
         const val ENGINE_ID          = "live2d_overlay_engine"
 
         private const val CHANNEL_ID = "aika_overlay_channel"
@@ -301,6 +304,19 @@ class AikaOverlayService : Service() {
                 val anim = intent.getStringExtra(EXTRA_ANIM) ?: return START_STICKY
                 handler.post {
                     webView?.evaluateJavascript("window.setAikaState('$anim')", null)
+                }
+            }
+            ACTION_PLAY_SOUND -> {
+                val path = intent.getStringExtra(EXTRA_SOUND_PATH) ?: return START_STICKY
+                handler.post {
+                    // Передаём путь в JS — экранируем одинарные кавычки
+                    val safePath = path.replace("'", "\'")
+                    webView?.evaluateJavascript("window.externalPlaySound('$safePath')", null)
+                }
+            }
+            ACTION_STOP_SOUND -> {
+                handler.post {
+                    webView?.evaluateJavascript("window.externalStopSound()", null)
                 }
             }
             ACTION_MUSIC -> {
