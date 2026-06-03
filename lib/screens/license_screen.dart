@@ -170,19 +170,14 @@ class _LicenseScreenState extends State<LicenseScreen> {
             width: 100, height: 100,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: AikaTheme.neonBlue.withOpacity(0.4), blurRadius: 30, spreadRadius: 10)],
+              color: AikaTheme.card,
+              border: Border.all(color: AikaTheme.neonBlue, width: 2.5),
+              boxShadow: [BoxShadow(color: AikaTheme.neonBlue.withOpacity(0.5), blurRadius: 30, spreadRadius: 8)],
             ),
-            child: ClipOval(
-              child: Image.asset('assets/images/aika_avatar.png', fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: AikaTheme.card),
-                  child: const Icon(Icons.person, color: AikaTheme.neonBlue, size: 50),
-                ),
-              ),
-            ),
+            child: const Icon(Icons.auto_awesome, color: AikaTheme.neonBlue, size: 48),
           ),
           const SizedBox(height: 16),
-          const Text('Айка', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          const Text('Aivora', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 2)),
           const SizedBox(height: 8),
           if (_message.isNotEmpty)
             Text(_message, textAlign: TextAlign.center,
