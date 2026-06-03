@@ -26,10 +26,9 @@ class Model3D {
 }
 
 final _builtin3DModels = [
-  Model3D(id: 'anime_girl', name: '🌸 Anime Girl', assetPath: 'models/anime_girl.glb', emoji: '🌸'),
-  Model3D(id: 'aika_glb',   name: '🤖 Aika',       assetPath: 'models/aika_model.glb', emoji: '🤖'),
-  Model3D(id: 'robot_glb',  name: '🦾 Robot',      assetPath: 'models/robot.glb',      emoji: '🦾'),
-  Model3D(id: 'xbot_glb',   name: '🧬 X-Bot',      assetPath: 'models/xbot.glb',       emoji: '🧬'),
+  Model3D(id: 'anime_girl', name: '🌸 Sakura',    assetPath: 'models/anime_girl.glb',  emoji: '🌸'),
+  Model3D(id: 'aika_glb',   name: '💜 Aika',      assetPath: 'models/aika_model.glb',  emoji: '💜'),
+  Model3D(id: 'xbot_glb',   name: '🤍 Shirogane', assetPath: 'models/xbot.glb',        emoji: '🤍'),
 ];
 
 final _builtinModels = [
