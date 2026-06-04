@@ -661,46 +661,53 @@ class AikaAccessibilityService : AccessibilityService() {
         pendingApp = null; pendingContact = null; pendingMessage = null; sendStep = "idle"
     }
 
+
     /**
-     * Делает скриншот через PixelCopy и возвращает base64 JPEG.
-     * quality — качество JPEG (0-100), default 60 для экономии памяти.
+     * Захват скриншота через PixelCopy (Android 8+).
+     * Возвращает base64 JPEG или null если не удалось.
      */
+    @Suppress("DEPRECATION")
     fun captureScreenBase64(quality: Int = 60): String? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return null
         return try {
-            val wm = getSystemService(WindowManager::class.java) ?: return null
-            val windows = windows ?: return null
-            val w = windows.firstOrNull { it.isActive && it.isFocused } 
-                ?: windows.firstOrNull { it.isActive }
+            val wm = getSystemService(android.view.WindowManager::class.java) ?: return null
+            val allWindows = windows ?: return null
+            val activeWindow = allWindows.firstOrNull { it.isActive && it.isFocused }
+                ?: allWindows.firstOrNull { it.isActive }
                 ?: return null
-            val rootView = w.root ?: return null
+            val rootView = activeWindow.root ?: return null
+
             val rect = android.graphics.Rect()
             rootView.getBoundsInScreen(rect)
             if (rect.width() <= 0 || rect.height() <= 0) return null
-            
-            val bitmap = Bitmap.createBitmap(rect.width(), rect.height(), Bitmap.Config.ARGB_8888)
-            val latch = CountDownLatch(1)
-            var success = false
-            
-            Handler(Looper.getMainLooper()).post {
-                PixelCopy.request(
-                    rootView.window ?: run { latch.countDown(); return@post },
-                    rect,
-                    bitmap,
-                    { result ->
-                        success = (result == PixelCopy.SUCCESS)
-                        latch.countDown()
-                    },
-                    Handler(Looper.getMainLooper())
-                )
+
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                rect.width(), rect.height(), android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val latch = java.util.concurrent.CountDownLatch(1)
+            var copyResult = -1
+
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    android.view.PixelCopy.request(
+                        activeWindow.root?.window ?: run { latch.countDown(); return@post },
+                        rect,
+                        bitmap,
+                        { res -> copyResult = res; latch.countDown() },
+                        android.os.Handler(android.os.Looper.getMainLooper())
+                    )
+                } else {
+                    latch.countDown()
+                }
             }
-            latch.await(3, TimeUnit.SECONDS)
-            if (!success) return null
-            
-            val out = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+
+            latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+            if (copyResult != android.view.PixelCopy.SUCCESS) return null
+
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
             bitmap.recycle()
-            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+            android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
         } catch (e: Exception) {
             null
         }
