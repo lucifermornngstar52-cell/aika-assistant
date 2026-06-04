@@ -130,7 +130,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
           );
         },
         onLoadStop: (ctrl, url) {
-          Future.delayed(const Duration(milliseconds: 500), () {
+          Future.delayed(const Duration(milliseconds: 1200), () {
             if (mounted) ctrl.evaluateJavascript(source: _buildInitJS());
           });
         },
