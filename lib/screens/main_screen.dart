@@ -306,7 +306,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         );
         return reply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
       } catch (e) {
-        return 'Ошибка: $e';
+        return 'Что-то пошло не так, попробуй ещё раз';
       }
     };
     final botEnabled = await TelegramBotService.isEnabled();
@@ -1816,7 +1816,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
-        content: 'Ошибка: $e',
+        content: 'Что-то пошло не так 😔 Попробуй ещё раз',
         timestamp: DateTime.now(),
       ));
     } finally {
