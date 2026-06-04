@@ -641,6 +641,12 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    "captureScreenBase64" -> {
+                        val quality = call.argument<Int>("quality") ?: 60
+                        val b64 = svc.captureScreenBase64(quality)
+                        result.success(b64)
+                    }
+
                     "typeInSearch" -> {
                         val text = call.argument<String>("text") ?: ""
                         // Ищем поле поиска и вводим текст
