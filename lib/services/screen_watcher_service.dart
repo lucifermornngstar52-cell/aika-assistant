@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'aika_self_learning_service.dart';
 import 'aika_game_helper_service.dart';
+import 'aika_zone_watcher_service.dart';
 
 typedef ScreenReactionCallback = void Function(String reaction, String overlayState);
 
