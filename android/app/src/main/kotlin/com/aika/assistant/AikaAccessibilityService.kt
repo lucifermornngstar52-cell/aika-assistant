@@ -662,51 +662,50 @@ class AikaAccessibilityService : AccessibilityService() {
     }
 
 
+
     /**
-     * Захват скриншота через PixelCopy (Android 8+).
-     * Возвращает base64 JPEG или null если не удалось.
+     * Делает скриншот через TAKE_SCREENSHOT (API 28+),
+     * затем читает последний файл из папки Screenshots и возвращает base64.
+     * Если файл не появился за 2 сек — возвращает null.
      */
-    @Suppress("DEPRECATION")
     fun captureScreenBase64(quality: Int = 60): String? {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return null
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return null
         return try {
-            val wm = getSystemService(android.view.WindowManager::class.java) ?: return null
-            val allWindows = windows ?: return null
-            val activeWindow = allWindows.firstOrNull { it.isActive && it.isFocused }
-                ?: allWindows.firstOrNull { it.isActive }
-                ?: return null
-            val rootView = activeWindow.root ?: return null
+            // Запоминаем время перед скриншотом
+            val before = System.currentTimeMillis()
 
-            val rect = android.graphics.Rect()
-            rootView.getBoundsInScreen(rect)
-            if (rect.width() <= 0 || rect.height() <= 0) return null
+            // Делаем скриншот системным действием
+            performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
 
-            val bitmap = android.graphics.Bitmap.createBitmap(
-                rect.width(), rect.height(), android.graphics.Bitmap.Config.ARGB_8888
-            )
-            val latch = java.util.concurrent.CountDownLatch(1)
-            var copyResult = -1
+            // Ждём появления файла (максимум 2.5 сек)
+            val screenshotsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_PICTURES
+            ).let { java.io.File(it, "Screenshots") }
 
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    android.view.PixelCopy.request(
-                        activeWindow.root?.window ?: run { latch.countDown(); return@post },
-                        rect,
-                        bitmap,
-                        { res -> copyResult = res; latch.countDown() },
-                        android.os.Handler(android.os.Looper.getMainLooper())
-                    )
-                } else {
-                    latch.countDown()
-                }
+            var found: java.io.File? = null
+            val deadline = System.currentTimeMillis() + 2500
+            while (System.currentTimeMillis() < deadline) {
+                Thread.sleep(150)
+                val candidate = screenshotsDir.listFiles()
+                    ?.filter { it.lastModified() >= before && it.extension in listOf("png", "jpg") }
+                    ?.maxByOrNull { it.lastModified() }
+                if (candidate != null) { found = candidate; break }
             }
 
-            latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
-            if (copyResult != android.view.PixelCopy.SUCCESS) return null
+            if (found == null) return null
 
+            // Читаем, ресайзим и кодируем в base64
+            val original = android.graphics.BitmapFactory.decodeFile(found.absolutePath) ?: return null
+            val scaled = android.graphics.Bitmap.createScaledBitmap(
+                original,
+                (original.width * 0.5).toInt().coerceAtLeast(1),
+                (original.height * 0.5).toInt().coerceAtLeast(1),
+                true
+            )
+            original.recycle()
             val out = java.io.ByteArrayOutputStream()
-            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
-            bitmap.recycle()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+            scaled.recycle()
             android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
         } catch (e: Exception) {
             null
