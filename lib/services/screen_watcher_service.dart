@@ -15,7 +15,7 @@ class ScreenWatcherService {
   static StreamSubscription? _sub;
   static String _lastReactedPackage = '';
   static DateTime? _lastReactionTime;
-  static const _cooldown = Duration(minutes: 5);
+  static const _cooldown = Duration(seconds: 30);
 
   static Map<String, String>? getCurrentAppInfo() {
     if (_currentPackage.isEmpty) return null;
