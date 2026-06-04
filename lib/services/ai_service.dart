@@ -226,7 +226,7 @@ class AiService {
         'role': 'user',
         'content': [
           {'type': 'text', 'text': message.isNotEmpty ? message : 'Посмотри на изображение и опиши что видишь'},
-          {'type': 'image_url', 'image_url': {'url': 'data:\$imageMimeType;base64,\$imageBase64', 'detail': 'high'}},
+          {'type': 'image_url', 'image_url': {'url': 'data:' + imageMimeType + ';base64,' + imageBase64, 'detail': 'low'}},
         ],
       });
     } else {
