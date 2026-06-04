@@ -451,9 +451,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               _speak(msg);
             }
           });
+          // Озвучиваем название приложения при входе
+          final appLbl = ScreenWatcherService.currentLabel;
+          if (appLbl.isNotEmpty && !_isListening) {
+            _speak('$appLbl');
+          }
           if (!_screenCommentsEnabled) return;
           if (!_isListening && !_isThinking && !_isDancing) {
-            // Добавляем сообщение в чат и говорим
             _addMessage(ChatMessage(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               role: MessageRole.aika,
@@ -2254,7 +2258,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     GestureDetector(
                       onTap: () {
                         final t = _textController.text.trim();
-                        if (t.isNotEmpty) _sendMessage(t);
+                        if (_pendingImageBase64 != null) {
+                          _sendMessageWithImage(t, _pendingImageBase64!);
+                        } else if (t.isNotEmpty) {
+                          _sendMessage(t);
+                        }
                       },
                       child: Container(
                         width: 44, height: 44,
