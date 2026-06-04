@@ -451,11 +451,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               _speak(msg);
             }
           });
-          // Озвучиваем название приложения при входе
-          final appLbl = ScreenWatcherService.currentLabel;
-          if (appLbl.isNotEmpty && !_isListening) {
-            _speak('$appLbl');
-          }
+          // Не озвучиваем сухое название — используем только reaction ниже
           if (!_screenCommentsEnabled) return;
           if (!_isListening && !_isThinking && !_isDancing) {
             _addMessage(ChatMessage(
