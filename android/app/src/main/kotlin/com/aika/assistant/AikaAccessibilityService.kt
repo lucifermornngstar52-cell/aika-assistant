@@ -65,21 +65,30 @@ class AikaAccessibilityService : AccessibilityService() {
     // EVENTS
     // ═══════════════════════════════════════════════════════════════════
 
+    // Дедупликация: не шлём событие если пакет не изменился
+    private var _lastSentPkg = ""
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        when (event.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                val pkg = event.packageName?.toString() ?: return
-                if (pkg == "com.aika.assistant") return
-                val label = try {
-                    packageManager.getApplicationLabel(
-                        packageManager.getApplicationInfo(pkg, 0)
-                    ).toString()
-                } catch (_: Exception) { pkg }
-                handler.post {
-                    screenEventSink?.invoke(mapOf("package" to pkg, "label" to label))
+        // Только смена окна/приложения — не CONTENT_CHANGED (слишком шумно)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString() ?: return
+            if (pkg == "com.aika.assistant") return
+            if (pkg == _lastSentPkg) return // дубликат — игнорируем
+            _lastSentPkg = pkg
+            val label = try {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(pkg, 0)
+                ).toString()
+            } catch (_: Exception) { pkg }
+            handler.post {
+                // Шлём broadcast — MainActivity поймает через BroadcastReceiver
+                val intent = android.content.Intent(ACTION_SCREEN_EVENT).apply {
+                    putExtra("package", pkg)
+                    putExtra("label", label)
+                    setPackage(packageName)
                 }
+                sendBroadcast(intent)
             }
         }
         // Шаги отправки сообщений
