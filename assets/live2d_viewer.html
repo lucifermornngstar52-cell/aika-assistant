@@ -22,7 +22,14 @@ var BASE = (function() {
 var app = null, model = null, currentState = 'idle';
 var motionGroups = [], expressions = [], idleTimer = null, danceTimer = null;
 
-// ── Web Audio разблокировка (нужна для звука в WebView) ──────────────────────
+// ── Уведомление Flutter ──────────────────────────────────────────────────────
+function notifyFlutter(msg) {
+  try {
+    window.flutter_inappwebview.callHandler('FlutterChannel', msg);
+  } catch(e) {}
+}
+
+// ── Web Audio разблокировка ──────────────────────────────────────────────────
 var audioCtx = null;
 function ensureAudio() {
   if (!audioCtx) {
@@ -35,7 +42,7 @@ function ensureAudio() {
 document.addEventListener('touchstart', ensureAudio, { once: true });
 document.addEventListener('pointerdown', ensureAudio, { once: true });
 
-// ── Звуки Айки ──────────────────────────────────────────────────────────────
+// ── Звуки ────────────────────────────────────────────────────────────────────
 var currentAudio = null;
 
 function playSound(soundPath) {
@@ -54,7 +61,6 @@ function stopSound() {
   if (currentAudio) { currentAudio.pause(); currentAudio.src = ''; currentAudio = null; }
 }
 
-// Получить Sound из motion3.json для текущего мотиона
 function getSoundForMotion(groupName, idx) {
   try {
     var motions = model.internalModel.settings.motions[groupName];
@@ -67,22 +73,22 @@ function getSoundForMotion(groupName, idx) {
 
 // ── Маппинг состояний ────────────────────────────────────────────────────────
 var STATE_CONFIG = {
-  idle:        { group: 'Idle',    exprIdx: -1,  autoReset: false },
-  listening:   { group: 'Idle',    exprIdx: 2,   autoReset: false },
-  thinking:    { group: 'Idle',    exprIdx: 1,   autoReset: false },
-  talking:     { group: 'TapBody', exprIdx: 0,   autoReset: false, playSound: true },
-  greeting:    { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
-  dance:       { group: 'TapBody', exprIdx: 0,   autoReset: false },
-  notification:{ group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 5000, playSound: true },
-  alarm:       { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 5000, playSound: true },
-  music:       { group: 'TapBody', exprIdx: 0,   autoReset: false },
-  vk:          { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
-  youtube:     { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
-  telegram:    { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
-  happy:       { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 4000, playSound: true },
-  sad:         { group: 'Idle',    exprIdx: 3,   autoReset: true,  resetAfter: 5000 },
-  surprised:   { group: 'TapBody', exprIdx: 0,   autoReset: true,  resetAfter: 3000, playSound: true },
-  stretch:     { group: 'Idle',    exprIdx: -1,  autoReset: true,  resetAfter: 6000 },
+  idle:         { group: 'Idle',    exprIdx: -1, autoReset: false },
+  listening:    { group: 'Idle',    exprIdx: 2,  autoReset: false },
+  thinking:     { group: 'Idle',    exprIdx: 1,  autoReset: false },
+  talking:      { group: 'TapBody', exprIdx: 0,  autoReset: false, playSound: true },
+  greeting:     { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 4000, playSound: true },
+  dance:        { group: 'TapBody', exprIdx: 0,  autoReset: false },
+  notification: { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 5000, playSound: true },
+  alarm:        { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 5000, playSound: true },
+  music:        { group: 'TapBody', exprIdx: 0,  autoReset: false },
+  vk:           { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 4000, playSound: true },
+  youtube:      { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 4000, playSound: true },
+  telegram:     { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 4000, playSound: true },
+  happy:        { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 4000, playSound: true },
+  sad:          { group: 'Idle',    exprIdx: 3,  autoReset: true,  resetAfter: 5000 },
+  surprised:    { group: 'TapBody', exprIdx: 0,  autoReset: true,  resetAfter: 3000, playSound: true },
+  stretch:      { group: 'Idle',    exprIdx: -1, autoReset: true,  resetAfter: 6000 },
 };
 
 function playMotion(state) {
@@ -92,7 +98,6 @@ function playMotion(state) {
 
   var cfg = STATE_CONFIG[state] || STATE_CONFIG['idle'];
 
-  // Dance — цикличная анимация
   if (state === 'dance' || state === 'music') {
     var di = 0;
     var doPlay = function() {
@@ -102,7 +107,6 @@ function playMotion(state) {
       try { sz = (model.internalModel.settings.motions[group] || []).length || 1; } catch(e) {}
       var i = di % sz;
       model.motion(group, i, PIXI.live2d.MotionPriority.NORMAL);
-      // Звук при dance — играем если есть
       di++;
       danceTimer = setTimeout(doPlay, 2800);
     };
@@ -113,19 +117,15 @@ function playMotion(state) {
     return;
   }
 
-  // Выбираем группу движений
   var groupName = cfg.group;
   if (motionGroups.indexOf(groupName) < 0) groupName = motionGroups[0] || 'Idle';
 
   var sz = 1;
   try { sz = (model.internalModel.settings.motions[groupName] || []).length || 1; } catch(e) {}
 
-  var idx;
-  if (state === 'idle' || state === 'listening') {
-    idx = Math.floor(Math.random() * sz);
-  } else {
-    idx = 0;
-  }
+  var idx = (state === 'idle' || state === 'listening')
+    ? Math.floor(Math.random() * sz)
+    : 0;
 
   var priority = (state === 'idle')
     ? PIXI.live2d.MotionPriority.IDLE
@@ -133,15 +133,16 @@ function playMotion(state) {
 
   try { model.motion(groupName, idx, priority); } catch(e) {}
 
-  // Проигрываем звук если прописан в model3.json
+  // Звук из motion3.json
+  if (cfg.playSound) {
+    var snd = getSoundForMotion(groupName, idx);
+    if (snd) playSound(snd);
   }
 
-  // Выражение лица
   if (cfg.exprIdx >= 0 && cfg.exprIdx < expressions.length) {
     try { model.expression(cfg.exprIdx); } catch(e) {}
   }
 
-  // Авто-сброс к idle
   if (cfg.autoReset) {
     idleTimer = setTimeout(function() {
       stopSound();
@@ -179,7 +180,7 @@ function loadModelFromPath(path) {
     try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
     model = null; motionGroups = []; expressions = [];
   }
-  return PIXI.live2d.Live2DModel.from(path, { autoInteract:false, autoUpdate:true })
+  return PIXI.live2d.Live2DModel.from(path, { autoInteract: false, autoUpdate: true })
     .then(function(m) {
       model = m;
       app.stage.addChild(model);
@@ -192,13 +193,14 @@ function loadModelFromPath(path) {
       model.on('pointerdown', function() {
         ensureAudio();
         window.setAikaState('greeting');
-        try { AndroidBridge.onTap(); } catch(e) {}
       });
       playMotion('idle');
-      try { AndroidBridge.onModelLoaded(); } catch(e) {}
-      window.setAikaState(currentState);
+      // Сообщаем Flutter что модель загружена
+      notifyFlutter('modelLoaded');
     })
-    .catch(function(e) {});
+    .catch(function(e) {
+      notifyFlutter('modelError');
+    });
 }
 
 function loadScript(src) {
@@ -234,17 +236,19 @@ function initLive2D() {
         resolution: window.devicePixelRatio || 1,
       });
       try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch(e) {}
-      return loadModelFromPath(BASE + 'models/Hiyori/Hiyori.model3.json');
+      // Загружаем дефолтную модель — Flutter потом переключит через switchBuiltinModel
+      return loadModelFromPath(BASE + 'models/Natori/Natori.model3.json');
     })
     .catch(function(e) {
       window.module = _mod; window.exports = _exp;
+      notifyFlutter('modelError');
     });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 window.setAikaState = function(state) {
   currentState = state || 'idle';
-  playMotion(currentState);
+  if (model) playMotion(currentState);
 };
 window.loadCustomModel = function(url) {
   if (app) return loadModelFromPath(url);
@@ -254,19 +258,17 @@ window.switchBuiltinModel = function(p) {
 };
 window.switchModel = window.switchBuiltinModel;
 
-// Удобные методы
-window.playNotification  = function() { window.setAikaState('notification'); };
-window.playGreeting      = function() { window.setAikaState('greeting'); };
-window.playDance         = function() { window.setAikaState('dance'); };
-window.playMusic         = function() { window.setAikaState('music'); };
-window.playAlarm         = function() { window.setAikaState('alarm'); };
-window.playSurprised     = function() { window.setAikaState('surprised'); };
-
-// Внешнее управление звуком из Flutter
+window.playNotification = function() { window.setAikaState('notification'); };
+window.playGreeting     = function() { window.setAikaState('greeting'); };
+window.playDance        = function() { window.setAikaState('dance'); };
+window.playMusic        = function() { window.setAikaState('music'); };
+window.playAlarm        = function() { window.setAikaState('alarm'); };
+window.playSurprised    = function() { window.setAikaState('surprised'); };
 window.externalPlaySound = function(path) { playSound(path); };
 window.externalStopSound = function() { stopSound(); };
 
-setTimeout(initLive2D, 300);
+// Запуск — без задержки, сразу как DOM готов
+initLive2D();
 </script>
 </body>
 </html>
