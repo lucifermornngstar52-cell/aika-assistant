@@ -102,10 +102,24 @@ class AikaAccessibilityService : AccessibilityService() {
     // ═══════════════════════════════════════════════════════════════════
 
     fun startSendMessage(app: String, contact: String, message: String) {
-        pendingApp     = app
+        pendingApp = when (app.lowercase().trim()) {
+            "whatsapp", "вотсап", "вацап", "ватсап" -> "com.whatsapp"
+            "telegram", "телеграм", "tg"             -> "org.telegram.messenger"
+            "vk", "вк", "vkontakte", "вконтакте"    -> "com.vkontakte.android"
+            "viber", "вайбер"                         -> "com.viber.voip"
+            else -> if (app.contains('.')) app else "com.$app"
+        }
         pendingContact = contact
         pendingMessage = message
         sendStep       = "waiting_for_app"
+        // Сначала открываем приложение через Intent
+        try {
+            val intent = context?.packageManager?.getLaunchIntentForPackage(pendingApp ?: "")
+            if (intent != null) {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                context?.startActivity(intent)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun processStep(event: AccessibilityEvent) {
