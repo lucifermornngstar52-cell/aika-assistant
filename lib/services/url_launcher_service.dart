@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 /// Открытие веб-сайтов через Intent
 class UrlLauncherService {
-  static const _channel = MethodChannel('com.aika.assistant/url');
+  static const _channel = MethodChannel('com.aika.assistant/launcher');
 
   /// Открыть URL в браузере
   static Future<bool> openUrl(String url) async {
@@ -13,7 +13,7 @@ class UrlLauncherService {
       if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
         normalized = 'https://\$normalized';
       }
-      final result = await _channel.invokeMethod<bool>('openUrl', {'url': normalized});
+      final result = await _channel.invokeMethod<bool>('launchUrl', {'url': normalized});
       return result ?? false;
     } on PlatformException catch (e) {
       debugPrint('[UrlLauncher] ошибка: \${e.message}');
