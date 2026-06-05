@@ -7,7 +7,7 @@ import 'smart_action_loop.dart';
 /// Читает экран, умно интерпретирует команды через AI, выполняет действия.
 class ScreenCommandService {
   static const _reader  = MethodChannel('com.aika.assistant/screen_reader');
-  static const _phone   = MethodChannel('aika/phone_control');
+  static const _phone   = MethodChannel('com.aika.assistant/screen_reader');
   static const _screen  = MethodChannel('com.aika.assistant/screen');
 
   // ═══════════════════════════════════════════════════════════════════
