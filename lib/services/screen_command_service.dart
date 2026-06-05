@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'ai_service.dart';
+import 'smart_action_loop.dart';
 
 /// Универсальный сервис голосового управления телефоном.
 /// Читает экран, умно интерпретирует команды через AI, выполняет действия.
@@ -183,69 +184,14 @@ class ScreenCommandService {
   // SMART AI ACTION
   // ═══════════════════════════════════════════════════════════════════
 
+  /// SmartActionLoop — многошаговое выполнение через UI Tree.
+  /// Читает дерево AccessibilityService как текст (не скриншот),
+  /// AI выбирает точный node/действие, цикл до 8 шагов.
   static Future<String> _smartAction(String command) async {
     try {
-      final screenText = await _reader.invokeMethod<String>('getScreenText') ?? '';
-      final elements   = await _reader.invokeMethod<List>('getClickableElements') ?? [];
-      final size       = await _reader.invokeMethod<Map>('getScreenSize') ?? {};
-
-      final w = size['width']  ?? 1080;
-      final h = size['height'] ?? 2340;
-
-      final elemList = elements.take(25)
-          .map((e) => '"${e['text']}" (x:${e['x']}, y:${e['y']})')
-          .join('\n');
-
-      final screenLines = screenText
-          .split('\n')
-          .where((l) => l.trim().length > 1)
-          .toSet()
-          .take(40)
-          .join('\n');
-
-      final prompt = '''
-Ты управляешь Android телефоном через Accessibility API.
-Разрешение экрана: ${w}x${h}
-
-Текст на экране:
-$screenLines
-
-Кликабельные элементы (текст, координаты):
-$elemList
-
-Пользователь сказал: "$command"
-
-Выбери ОДНО действие и ответь СТРОГО в JSON:
-{"action": "click",       "target": "точный текст кнопки"}
-{"action": "click_desc",  "desc": "content-description элемента"}
-{"action": "tap",         "x": 540, "y": 1000}
-{"action": "long_tap",    "x": 540, "y": 1000}
-{"action": "double_tap",  "x": 540, "y": 1000}
-{"action": "swipe",       "direction": "up|down|left|right"}
-{"action": "swipe_coords","x1": 100, "y1": 500, "x2": 900, "y2": 500, "duration": 300}
-{"action": "scroll",      "direction": "up|down"}
-{"action": "back"}
-{"action": "home"}
-{"action": "recents"}
-{"action": "screenshot"}
-{"action": "type",        "text": "текст для ввода"}
-{"action": "lock"}
-{"action": "notifications"}
-{"action": "quick_settings"}
-{"action": "none",        "reason": "объяснение"}
-
-Только JSON, без пояснений.
-''';
-
-      final aiService  = AiService();
-      final aiResponse = await aiService.sendMessage(prompt);
-      final jsonStr    = _extractJson(aiResponse);
-      if (jsonStr == null) return await _fallback(command);
-
-      final Map<String, dynamic> action = jsonDecode(jsonStr);
-      return await _executeAiAction(action);
+      return await SmartActionLoop.run(command);
     } catch (e) {
-      return await _fallback(command);
+      return 'Не смогла выполнить: $e';
     }
   }
 
