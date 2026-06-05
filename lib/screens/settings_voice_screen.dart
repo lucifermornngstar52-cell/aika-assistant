@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import '../services/edge_tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 
@@ -52,7 +53,18 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     await prefs.setDouble('tts_rate', _rate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
-    if (_selectedVoice != null) await prefs.setString('tts_voice', _selectedVoice!);
+    if (_selectedVoice != null) {
+      await prefs.setString('tts_voice', _selectedVoice!);
+      // Also sync EdgeTTS voice if it matches our neural voice list
+      final edgeVoice = EdgeTtsService.voices.firstWhere(
+        (v) => _selectedVoice!.toLowerCase().contains(v['id']!.split('-').last.toLowerCase()),
+        orElse: () => <String, String>{},
+      );
+      if (edgeVoice.isNotEmpty) {
+        await prefs.setString('edge_voice', edgeVoice['id']!);
+        EdgeTtsService().setVoice(edgeVoice['id']!);
+      }
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: const Text('Сохранено'),
