@@ -36,7 +36,7 @@ dependencies:
   url_launcher: ^6.3.0
   android_intent_plus: ^4.0.2
   torch_light: ^1.0.1
-  volume_controller: ^2.0.7
+  volume_controller: ^2.0.6
   
   # HTTP
   http: ^1.2.1
