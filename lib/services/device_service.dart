@@ -28,7 +28,7 @@ class DeviceService {
   final CurrencyService _currencyService = CurrencyService();
   bool _flashlightOn = false;
   double _currentVolume = 0.5;
-  static const _screenChannel = MethodChannel('aika/screen_reader');
+  static const _screenChannel = MethodChannel('com.aika.assistant/screen_reader');
 
   /// Таблица известных приложений: название → package name
   static const Map<String, String> knownApps = {
