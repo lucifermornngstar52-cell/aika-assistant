@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Лицензии хранятся в GitHub — читаем напрямую
-const String _licenseCheckUrl =
-    'https://raw.githubusercontent.com/lucifermornngstar52-cell/aika-assistant/main/licenses.json';
+// API сервер — обрабатывает лицензии и устройства
+const String _apiUrl =
+    'https://superagent-f0b687b3.base44.app/functions/updateLicense';
+const String _appToken = 'app-aika-assistant-v1';
 
 // Telegram бот для уведомлений владельца
 const String _botToken = '8339740462:AAH8HywtjV2TfCS6MVnSwka4CidpNPdSIK4';
@@ -27,10 +29,11 @@ class LicenseStatus {
 }
 
 class LicenseService {
-  static const _keyEmail    = 'license_email';
-  static const _keyStatus   = 'license_status';
-  static const _keyExpires  = 'license_expires';
+  static const _keyEmail     = 'license_email';
+  static const _keyStatus    = 'license_status';
+  static const _keyExpires   = 'license_expires';
   static const _keyLastCheck = 'license_last_check';
+  static const _keyDeviceId  = 'device_id';
 
   static Future<void> saveEmail(String email) async {
     final prefs = await SharedPreferences.getInstance();
@@ -42,37 +45,60 @@ class LicenseService {
     return prefs.getString(_keyEmail);
   }
 
-  // Проверяем лицензию через GitHub JSON
+  // Генерируем уникальный ID устройства (один раз при первом запуске)
+  static Future<String> getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString(_keyDeviceId);
+    if (id == null) {
+      id = 'android_${DateTime.now().millisecondsSinceEpoch}_${Platform.numberOfProcessors}';
+      await prefs.setString(_keyDeviceId, id);
+    }
+    return id;
+  }
+
+  // Проверяем лицензию через наш API (с регистрацией устройства)
   static Future<LicenseStatus> checkLicenseByEmail(String email) async {
     try {
-      final response = await http.get(
-        Uri.parse('$_licenseCheckUrl?t=${DateTime.now().millisecondsSinceEpoch}'),
-        headers: {'Cache-Control': 'no-cache'},
+      final deviceId = await getDeviceId();
+      final model = Platform.operatingSystem;
+      final androidVersion = Platform.operatingSystemVersion;
+
+      final response = await http.post(
+        Uri.parse(_apiUrl),
+        headers: {
+          'Authorization': 'Bearer $_appToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'action': 'check_license',
+          'email': email.toLowerCase().trim(),
+          'device_id': deviceId,
+          'model': model,
+          'android_version': androidVersion,
+        }),
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final userEmail = email.toLowerCase().trim();
+        final valid = data['valid'] == true;
+        final reason = data['reason'] as String? ?? 'unknown';
 
-        if (data.containsKey(userEmail)) {
-          final info = data[userEmail] as Map<String, dynamic>;
-          final status = info['status'] ?? 'pending';
-
-          if (status == 'active') {
-            final expiresStr = info['expires_at'] as String?;
-            if (expiresStr != null) {
-              final expires = DateTime.tryParse(expiresStr);
-              if (expires != null && expires.isAfter(DateTime.now())) {
-                await _cacheStatus('active', expiresStr);
-                return LicenseStatus(
-                    valid: true, reason: 'active', expiresAt: expiresStr, email: email);
-              }
-              return LicenseStatus(valid: false, reason: 'expired');
-            }
-          }
-          return LicenseStatus(valid: false, reason: status);
+        if (valid) {
+          final expiresStr = data['expires_at'] as String?;
+          await _cacheStatus('active', expiresStr);
+          return LicenseStatus(
+            valid: true,
+            reason: 'active',
+            expiresAt: expiresStr,
+            email: email,
+            plan: data['plan'] as String?,
+          );
         }
-        return LicenseStatus(valid: false, reason: 'not_found');
+
+        if (reason == 'device_blocked') {
+          return LicenseStatus(valid: false, reason: 'device_blocked');
+        }
+        return LicenseStatus(valid: false, reason: reason);
       }
       return await _checkCached();
     } catch (e) {
