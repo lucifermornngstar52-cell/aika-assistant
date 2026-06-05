@@ -100,11 +100,11 @@ class DeviceService {
   };
 
   DeviceService() {
-    VolumeController.instance.addListener((v) => _currentVolume = v);
+    VolumeController().listener((v) => _currentVolume = v);
   }
 
   void dispose() {
-    VolumeController.instance.removeListener();
+    VolumeController().removeListener();
   }
 
   // ─── Парсинг ВСЕХ ACTION тегов из ответа AI ───────────────────────
@@ -218,16 +218,16 @@ class DeviceService {
 
       // ── Громкость ────────────────────────────────────────────────────
       case 'volume_up':
-        VolumeController.instance.setVolume((_currentVolume + 0.2).clamp(0.0, 1.0));
+        VolumeController().setVolume((_currentVolume + 0.2).clamp(0.0, 1.0));
         return 'Громкость увеличена 🔊';
       case 'volume_down':
-        VolumeController.instance.setVolume((_currentVolume - 0.2).clamp(0.0, 1.0));
+        VolumeController().setVolume((_currentVolume - 0.2).clamp(0.0, 1.0));
         return 'Громкость уменьшена 🔉';
       case 'volume_mute':
-        VolumeController.instance.setVolume(0.0);
+        VolumeController().setVolume(0.0);
         return 'Звук выключен 🔇';
       case 'volume_max':
-        VolumeController.instance.setVolume(1.0);
+        VolumeController().setVolume(1.0);
         return 'Максимальная громкость 🔊';
 
       // ── Батарея ──────────────────────────────────────────────────────
