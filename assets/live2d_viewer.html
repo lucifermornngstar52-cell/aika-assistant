@@ -12,6 +12,31 @@
 <body>
 <canvas id="canvas"></canvas>
 <script>
+// МЬЮТ всего звука от Live2D моделей — патчируем Audio до загрузки библиотек
+(function() {
+  // Патч 1: HTMLAudioElement — мьют все <audio> теги
+  var _origAudio = window.Audio;
+  window.Audio = function(src) {
+    var a = new _origAudio(src);
+    a.volume = 0;
+    a.muted = true;
+    var _origPlay = a.play.bind(a);
+    a.play = function() { return Promise.resolve(); };
+    return a;
+  };
+  // Патч 2: AudioContext — нет звука через Web Audio API
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (AC) {
+    var _origGain = AC.prototype.createGain;
+    AC.prototype.createGain = function() {
+      var g = _origGain.call(this);
+      try { g.gain.value = 0; } catch(_) {}
+      return g;
+    };
+  }
+})();
+</script>
+<script>
 'use strict';
 
 var BASE = (function() {
