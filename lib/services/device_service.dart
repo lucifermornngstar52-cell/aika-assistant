@@ -100,11 +100,11 @@ class DeviceService {
   };
 
   DeviceService() {
-    VolumeController().listener((v) => _currentVolume = v);
+    VolumeController.instance.addListener((v) => _currentVolume = v);
   }
 
   void dispose() {
-    VolumeController().removeListener();
+    VolumeController.instance.removeListener();
   }
 
   // ─── Парсинг ВСЕХ ACTION тегов из ответа AI ───────────────────────
@@ -189,7 +189,7 @@ class DeviceService {
     if (action == 'notifications_briefing') {
       final notifs = NotificationService.recent;
       if (notifs.isEmpty) return 'Нет новых уведомлений';
-      return 'Уведомления:\n' + notifs.take(5).map((n) => '• ${n['app']}: ${n['text']}').join('\n');
+      return 'Уведомления:\n' + notifs.take(5).map((n) => '• ${n['title'] ?? n['pkg'] ?? ''}: ${n['text'] ?? ''}').join('\n');
     }
 
     // ── Экран ─────────────────────────────────────────────────────────
@@ -218,16 +218,16 @@ class DeviceService {
 
       // ── Громкость ────────────────────────────────────────────────────
       case 'volume_up':
-        VolumeController().setVolume((_currentVolume + 0.2).clamp(0.0, 1.0));
+        VolumeController.instance.setVolume((_currentVolume + 0.2).clamp(0.0, 1.0));
         return 'Громкость увеличена 🔊';
       case 'volume_down':
-        VolumeController().setVolume((_currentVolume - 0.2).clamp(0.0, 1.0));
+        VolumeController.instance.setVolume((_currentVolume - 0.2).clamp(0.0, 1.0));
         return 'Громкость уменьшена 🔉';
       case 'volume_mute':
-        VolumeController().setVolume(0.0);
+        VolumeController.instance.setVolume(0.0);
         return 'Звук выключен 🔇';
       case 'volume_max':
-        VolumeController().setVolume(1.0);
+        VolumeController.instance.setVolume(1.0);
         return 'Максимальная громкость 🔊';
 
       // ── Батарея ──────────────────────────────────────────────────────
