@@ -567,6 +567,25 @@ class MainActivity : FlutterActivity() {
                         result.success(svc.getScreenStructure())
                     }
 
+                    "swipeDir" -> {
+                        val dir = call.argument<String>("direction") ?: "down"
+                        svc.swipeDir(dir); result.success(true)
+                    }
+
+                    "launchApp" -> {
+                        val pkg = call.argument<String>("package") ?: ""
+                        result.success(svc.launchApp(pkg))
+                    }
+
+                    "clearField" -> {
+                        result.success(svc.clearField())
+                    }
+
+                    "clickByExactText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        result.success(svc.clickByExactText(text))
+                    }
+
                     "longClickByText" -> {
                         val text = call.argument<String>("text") ?: ""
                         result.success(svc.longClickByText(text))
