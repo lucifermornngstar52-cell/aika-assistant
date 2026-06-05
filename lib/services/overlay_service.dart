@@ -9,7 +9,7 @@ class OverlayService {
   OverlayService._();
 
   static const _overlayChannel = MethodChannel('com.aika.assistant/overlay');
-  static const _modelChannel   = MethodChannel('com.aika.assistant/live2d_overlay');
+  // _modelChannel merged into _overlayChannel (live2d_overlay not registered)
 
   // Настройки размера
   double _sizeDp   = 170.0;
@@ -94,7 +94,7 @@ class OverlayService {
     try {
       await _overlayChannel.invokeMethod('animOverlay', {'anim': animName});
     } catch (_) {
-      await _modelChannel.invokeMethod('playAnimation', animName);
+      await _overlayChannel.invokeMethod('playAnimation', animName);
     }
   }
 
@@ -151,7 +151,7 @@ class OverlayService {
     } catch (_) {
       // fallback через modelChannel
       try {
-        await _modelChannel.invokeMethod('switchModel', assetPath);
+        await _overlayChannel.invokeMethod('switchModel', assetPath);
       } catch (_) {}
     }
   }
@@ -165,7 +165,7 @@ class OverlayService {
         'opacity': _opacity,
       });
       // Обновляем Flutter-сторону (зеркало, прозрачность)
-      await _modelChannel.invokeMethod('setConfig', {
+      await _overlayChannel.invokeMethod('setConfig', {
         'size':    _sizeDp,
         'opacity': _opacity,
         'mirror':  _mirror,
