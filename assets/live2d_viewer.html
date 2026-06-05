@@ -183,6 +183,17 @@ function initLive2D() {
     .then(function() {
       window.module = _mod; window.exports = _exp;
       if (!PIXI.live2d || !PIXI.live2d.Live2DModel) throw new Error('no live2d');
+
+      // Полностью отключаем звук моделей
+      try {
+        if (PIXI.live2d.config) PIXI.live2d.config.sound = false;
+        if (PIXI.live2d.SoundManager) {
+          PIXI.live2d.SoundManager.volume = 0;
+          var origPlay = PIXI.live2d.SoundManager.play;
+          PIXI.live2d.SoundManager.play = function() { return { stop: function(){} }; };
+        }
+      } catch(e) {}
+
       app = new PIXI.Application({
         view: document.getElementById('canvas'),
         autoStart: true,
