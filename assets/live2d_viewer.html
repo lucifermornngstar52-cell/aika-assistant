@@ -29,47 +29,11 @@ function notifyFlutter(msg) {
   } catch(e) {}
 }
 
-// ── Web Audio разблокировка ──────────────────────────────────────────────────
-var audioCtx = null;
-function ensureAudio() {
-  if (!audioCtx) {
-    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-  }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(function(){});
-  }
-}
-document.addEventListener('touchstart', ensureAudio, { once: true });
-document.addEventListener('pointerdown', ensureAudio, { once: true });
-
-// ── Звуки ────────────────────────────────────────────────────────────────────
-var currentAudio = null;
-
-function playSound(soundPath) {
-  if (!soundPath) return;
-  ensureAudio();
-  try {
-    if (currentAudio) { currentAudio.pause(); currentAudio.src = ''; }
-    var url = soundPath.startsWith('http') ? soundPath : (BASE + soundPath);
-    currentAudio = new Audio(url);
-    currentAudio.volume = 0.85;
-    currentAudio.play().catch(function(e) {});
-  } catch(e) {}
-}
-
-function stopSound() {
-  if (currentAudio) { currentAudio.pause(); currentAudio.src = ''; currentAudio = null; }
-}
-
-function getSoundForMotion(groupName, idx) {
-  try {
-    var motions = model.internalModel.settings.motions[groupName];
-    if (motions && motions[idx] && motions[idx].Sound) {
-      return motions[idx].Sound;
-    }
-  } catch(e) {}
-  return null;
-}
+// ── Звуки моделей отключены ─────────────────────────────────────────────────
+function ensureAudio() {}
+function playSound(soundPath) {}
+function stopSound() {}
+function getSoundForMotion(groupName, idx) { return null; }
 
 // ── Маппинг состояний ────────────────────────────────────────────────────────
 var STATE_CONFIG = {
@@ -133,15 +97,12 @@ function playMotion(state) {
 
   try { model.motion(groupName, idx, priority); } catch(e) {}
 
-  // Звук из motion3.json
-
   if (cfg.exprIdx >= 0 && cfg.exprIdx < expressions.length) {
     try { model.expression(cfg.exprIdx); } catch(e) {}
   }
 
   if (cfg.autoReset) {
     idleTimer = setTimeout(function() {
-      stopSound();
       currentState = 'idle';
       playMotion('idle');
     }, cfg.resetAfter || 4000);
