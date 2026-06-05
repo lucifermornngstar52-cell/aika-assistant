@@ -91,6 +91,34 @@ class AiService {
     }
   }
 
+
+  /// Прямой запрос к OpenAI с custom prompt (для SmartActionLoop, без системного промпта персонажа)
+  Future<String> sendRawPrompt({required String systemPrompt, required String userPrompt}) async {
+    try {
+      final key = _openAiKey;
+      if (key.isEmpty) throw Exception('no key');
+      final body = {
+        'model': 'gpt-4o-mini',
+        'messages': [
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user',   'content': userPrompt},
+        ],
+        'temperature': 0.1,
+        'max_tokens': 150,
+      };
+      final response = await http.post(
+        Uri.parse(_openAiUrl),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $key'},
+        body: jsonEncode(body),
+      );
+      if (response.statusCode != 200) throw Exception('HTTP \${response.statusCode}');
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      return data['choices'][0]['message']['content'] as String;
+    } catch (e) {
+      return '{"action":"error","message":"AI недоступен"}';
+    }
+  }
+
   String _buildSystemPrompt(String userName, String assistantName, {String longMemory = ''}) {
     final userPart = userName.isNotEmpty ? ', пользователя зовут $userName' : '';
     final personalityPrompt = PersonalityService.systemPromptAddition;
