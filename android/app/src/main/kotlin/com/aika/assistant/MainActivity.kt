@@ -28,6 +28,8 @@ class MainActivity : FlutterActivity() {
         private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
         private const val NOTIFICATION_EVENTS_CHANNEL  = "com.aika.assistant/notification_events"
         private const val NOTIFICATIONS_CHANNEL          = "com.aika.assistant/notifications"
+        private const val ALARM_CHANNEL            = "com.aika.assistant/alarm"
+        private const val SECURITY_CHANNEL         = "com.aika.assistant/security"
     }
 
     // EventChannel sink для отправки событий смены приложений во Flutter
@@ -687,6 +689,84 @@ class MainActivity : FlutterActivity() {
                         val text = call.argument<String>("text") ?: ""
                         result.success(svc.clickByText(text))
                     }
+                    
+                    "answerCall" -> {
+                        // Answer call via Telecom API (requires ANSWER_PHONE_CALLS permission)
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                val tm = getSystemService(android.telecom.TelecomManager::class.java)
+                                tm?.acceptRingingCall()
+                                result.success(true)
+                            } else {
+                                result.error("UNSUPPORTED", "Requires Android 8+", null)
+                            }
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
+                    }
+
+                    "endCall" -> {
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                                val tm = getSystemService(android.telecom.TelecomManager::class.java)
+                                tm?.endCall()
+                                result.success(true)
+                            } else {
+                                result.error("UNSUPPORTED", "Requires Android 9+", null)
+                            }
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
+                    }
+
+                    "setBrightness" -> {
+                        try {
+                            val value = (call.argument<Double>("value") ?: 0.5).toFloat()
+                            val brightnessInt = (value * 255).toInt().coerceIn(0, 255)
+                            android.provider.Settings.System.putInt(
+                                contentResolver,
+                                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                            )
+                            android.provider.Settings.System.putInt(
+                                contentResolver,
+                                android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                                brightnessInt
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
+                    }
+
+                    "setAutoBrightness" -> {
+                        try {
+                            android.provider.Settings.System.putInt(
+                                contentResolver,
+                                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
+                    }
+
+                    "startMusicBackground" -> {
+                        try {
+                            val intent = Intent(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+                            // Send media key play event
+                            val mediaIntent = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                                putExtra(android.content.Intent.EXTRA_KEY_EVENT,
+                                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY))
+                            }
+                            sendOrderedBroadcast(mediaIntent, null)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
+                    }
+
                     "typeText" -> {
                         val text = call.argument<String>("text") ?: ""
                         result.success(svc.typeText(text))
