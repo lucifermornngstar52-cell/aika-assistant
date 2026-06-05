@@ -4,10 +4,6 @@ import 'package:flutter/services.dart';
 class MessageSenderService {
   static const _channel = MethodChannel('com.aika.assistant/messenger');
 
-  /// Отправить сообщение контакту через WhatsApp или Telegram
-  /// [app] — "whatsapp" | "telegram"
-  /// [contact] — имя контакта как оно написано в списке
-  /// [message] — текст сообщения
   static Future<String> sendMessage({
     required String app,
     required String contact,
@@ -19,9 +15,18 @@ class MessageSenderService {
         'contact': contact,
         'message': message,
       });
-      return result ?? 'Отправляю...';
+      final r = result ?? '';
+      if (r.startsWith('NO_ACCESSIBILITY')) {
+        return 'Включи Accessibility Service для Aika в настройках Android, чтобы отправлять сообщения';
+      }
+      if (r.startsWith('ERROR')) return 'Не удалось отправить: проверь имя контакта';
+      return r.isEmpty ? 'Отправила!' : r;
     } on PlatformException catch (e) {
-      return 'Ошибка: \${e.message}';
+      final code = e.code;
+      if (code == 'NO_SERVICE') return 'Accessibility Service не активен - включи в настройках';
+      return 'Ошибка отправки: \${e.message ?? code}';
+    } catch (_) {
+      return 'Не удалось отправить сообщение';
     }
   }
 }
