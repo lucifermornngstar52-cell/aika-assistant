@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 /// WakeWordService — надёжный бесконечный цикл прослушивания.
@@ -107,10 +108,49 @@ class WakeWordService {
 
   // ─── Обновление триггеров ──────────────────────────────────────────────────
 
+  /// Обновляет триггеры из SharedPreferences (custom_wake_word) + имя ассистента.
+  /// Вызывается при каждом возврате из Settings.
   Future<void> updateTriggers([List<String>? triggers]) async {
-    _triggers = (triggers != null && triggers.isNotEmpty)
-        ? triggers
-        : ['айка', 'aika'];
+    if (triggers != null && triggers.isNotEmpty) {
+      _triggers = triggers;
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final assistantName = (prefs.getString('assistant_name') ?? 'Aika').toLowerCase().trim();
+    final customRaw = prefs.getString('custom_wake_word') ?? '';
+
+    // Базовые триггеры из имени ассистента
+    final Set<String> result = {'айка', 'aika', assistantName};
+
+    // Транслитерация имени (basic)
+    if (assistantName.isNotEmpty) {
+      result.add(assistantName);
+      // ru->en простая транслит
+      final translit = assistantName
+        .replaceAll('а','a').replaceAll('б','b').replaceAll('в','v')
+        .replaceAll('г','g').replaceAll('д','d').replaceAll('е','e')
+        .replaceAll('ё','yo').replaceAll('ж','zh').replaceAll('з','z')
+        .replaceAll('и','i').replaceAll('й','j').replaceAll('к','k')
+        .replaceAll('л','l').replaceAll('м','m').replaceAll('н','n')
+        .replaceAll('о','o').replaceAll('п','p').replaceAll('р','r')
+        .replaceAll('с','s').replaceAll('т','t').replaceAll('у','u')
+        .replaceAll('ф','f').replaceAll('х','h').replaceAll('ц','ts')
+        .replaceAll('ч','ch').replaceAll('ш','sh').replaceAll('щ','sch')
+        .replaceAll('ъ','').replaceAll('ы','y').replaceAll('ь','')
+        .replaceAll('э','e').replaceAll('ю','yu').replaceAll('я','ya');
+      if (translit != assistantName) result.add(translit);
+    }
+
+    // Кастомные слова через запятую
+    if (customRaw.isNotEmpty) {
+      for (final w in customRaw.split(',')) {
+        final clean = w.trim().toLowerCase();
+        if (clean.isNotEmpty) result.add(clean);
+      }
+    }
+
+    _triggers = result.toList();
+    debugPrint('[WakeWord] триггеры: \$_triggers');
   }
 
   // ─── Основной цикл ─────────────────────────────────────────────────────────
