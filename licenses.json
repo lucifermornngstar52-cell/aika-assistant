@@ -1,6 +1,6 @@
 {
   "test-id-123": {
-    "status": "active",
+    "status": "revoked",
     "expires_at": "2026-06-24T00:46:50.023886",
     "plan": "purchase",
     "approved_at": "2026-05-25T00:46:50.023901"
