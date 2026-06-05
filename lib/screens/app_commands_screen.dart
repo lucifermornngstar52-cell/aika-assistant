@@ -17,7 +17,7 @@ class _AppCommandsScreenState extends State<AppCommandsScreen>
   late TabController _tabs;
 
   // ── Voice → App tab ─────────────────────────────
-  static const _platform = MethodChannel('com.aika.assistant/apps');
+  static const _platform = MethodChannel('com.aika.assistant/launcher');
   List<Map<String, String>> _installedApps = [];
   List<Map<String, String>> _filteredApps = [];
   bool _appsLoading = true;
