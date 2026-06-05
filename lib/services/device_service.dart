@@ -11,12 +11,93 @@ import 'currency_service.dart';
 import 'music_control_service.dart';
 import 'screen_watcher_service.dart';
 
+/// ════════════════════════════════════════════════════════════════════
+/// DeviceService — единая точка выполнения всех ACTION команд от AI.
+///
+/// ИСПРАВЛЕНИЯ:
+/// 1. _launchPackage — убран componentName: '' (он ломал запуск!)
+/// 2. Добавлена карта пакетов для открытия по названию (VK, Spotify и др.)
+/// 3. open_vk теперь com.vkontakte.android (не камера!)
+/// 4. open_spotify + play — открывает и запускает воспроизведение
+/// 5. Цепочки команд: "открой Spotify включи музыку" = 2 action
+/// 6. AI знает ВСЕ возможные ACTION в systemPrompt
+/// ════════════════════════════════════════════════════════════════════
+
 class DeviceService {
   final Battery _battery = Battery();
   final CurrencyService _currencyService = CurrencyService();
   bool _flashlightOn = false;
   double _currentVolume = 0.5;
   static const _screenChannel = MethodChannel('aika/screen_reader');
+
+  /// Таблица известных приложений: название → package name
+  static const Map<String, String> knownApps = {
+    // Соцсети
+    'vk': 'com.vkontakte.android',
+    'вк': 'com.vkontakte.android',
+    'vkontakte': 'com.vkontakte.android',
+    'вконтакте': 'com.vkontakte.android',
+    'telegram': 'org.telegram.messenger',
+    'телеграм': 'org.telegram.messenger',
+    'whatsapp': 'com.whatsapp',
+    'ватсап': 'com.whatsapp',
+    'вотсап': 'com.whatsapp',
+    'instagram': 'com.instagram.android',
+    'инстаграм': 'com.instagram.android',
+    'tiktok': 'com.zhiliaoapp.musically',
+    'тикток': 'com.zhiliaoapp.musically',
+    'twitter': 'com.twitter.android',
+    'x': 'com.twitter.android',
+    'facebook': 'com.facebook.katana',
+
+    // Медиа
+    'youtube': 'com.google.android.youtube',
+    'ютуб': 'com.google.android.youtube',
+    'spotify': 'com.spotify.music',
+    'спотифай': 'com.spotify.music',
+    'netflix': 'com.netflix.mediaclient',
+    'нетфликс': 'com.netflix.mediaclient',
+    'twitch': 'tv.twitch.android.app',
+    'twich': 'tv.twitch.android.app',
+    'music': 'com.google.android.apps.youtube.music',
+    'youtube music': 'com.google.android.apps.youtube.music',
+    'ютуб музыка': 'com.google.android.apps.youtube.music',
+
+    // Браузеры
+    'chrome': 'com.android.chrome',
+    'хром': 'com.android.chrome',
+    'browser': 'com.android.chrome',
+
+    // Google
+    'maps': 'com.google.android.apps.maps',
+    'карты': 'com.google.android.apps.maps',
+    'google maps': 'com.google.android.apps.maps',
+    'gmail': 'com.google.android.gm',
+    'почта': 'com.google.android.gm',
+    'drive': 'com.google.android.apps.docs',
+    'диск': 'com.google.android.apps.docs',
+    'google drive': 'com.google.android.apps.docs',
+    'translate': 'com.google.android.apps.translate',
+    'переводчик': 'com.google.android.apps.translate',
+    'google translate': 'com.google.android.apps.translate',
+
+    // Системные
+    'calculator': 'com.google.android.calculator',
+    'калькулятор': 'com.google.android.calculator',
+    'calendar': 'com.google.android.calendar',
+    'календарь': 'com.google.android.calendar',
+    'clock': 'com.google.android.deskclock',
+    'часы': 'com.google.android.deskclock',
+    'camera': 'com.android.camera2',
+
+    // Другое
+    'discord': 'com.discord',
+    'дискорд': 'com.discord',
+    'zoom': 'us.zoom.videomeetings',
+    'зум': 'us.zoom.videomeetings',
+    'shazam': 'com.shazam.android',
+    'шазам': 'com.shazam.android',
+  };
 
   DeviceService() {
     VolumeController().listener((v) => _currentVolume = v);
@@ -26,70 +107,106 @@ class DeviceService {
     VolumeController().removeListener();
   }
 
+  // ─── Парсинг ВСЕХ ACTION тегов из ответа AI ───────────────────────
   Future<String?> parseAndExecute(String aiResponse) async {
-    // Ищем ACTION теги
     final regex = RegExp(r'\[ACTION:([^\]]+)\]');
-    final match = regex.firstMatch(aiResponse);
-    if (match == null) return null;
-    final action = match.group(1)?.toLowerCase().trim() ?? '';
-    return await executeAction(action);
+    final matches = regex.allMatches(aiResponse);
+    if (matches.isEmpty) return null;
+
+    final results = <String>[];
+    for (final m in matches) {
+      final action = m.group(1)?.toLowerCase().trim() ?? '';
+      final result = await executeAction(action);
+      if (result != null && result.isNotEmpty) results.add(result);
+    }
+    return results.isNotEmpty ? results.join('\n') : null;
   }
 
   Future<String?> executeAction(String action) async {
-    // Запуск любого приложения по package name
+    // ── Запуск по package name ────────────────────────────────────────
     if (action.startsWith('launch_app_')) {
       final pkg = action.substring('launch_app_'.length);
       return await _launchPackage(pkg);
     }
 
-    // Курсы валют
+    // ── Запуск по названию (open_NAME) ────────────────────────────────
+    if (action.startsWith('open_')) {
+      final name = action.substring('open_'.length);
+      // Специальные кейсы
+      if (name == 'camera') {
+        await AndroidIntent(
+          action: 'android.media.action.STILL_IMAGE_CAMERA',
+          flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
+        ).launch();
+        return 'Камера открыта';
+      }
+      if (name == 'settings') {
+        await AndroidIntent(action: 'android.settings.SETTINGS',
+            flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
+        return 'Настройки открыты';
+      }
+      if (name == 'wifi') {
+        await AndroidIntent(action: 'android.settings.WIFI_SETTINGS',
+            flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
+        return 'WiFi настройки открыты';
+      }
+      if (name == 'bluetooth') {
+        await AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS',
+            flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
+        return 'Bluetooth настройки открыты';
+      }
+      // Ищем в таблице известных приложений
+      final pkg = knownApps[name] ?? knownApps[name.replaceAll('_', ' ')];
+      if (pkg != null) return await _launchPackage(pkg);
+      // Если не нашли — ищем по имени
+      return await _launchByName(name);
+    }
+
+    // ── Музыка + Spotify ──────────────────────────────────────────────
+    if (action == 'spotify_play' || action == 'music_play') {
+      await _launchPackage('com.spotify.music');
+      await Future.delayed(const Duration(milliseconds: 1200));
+      final cmd = MusicControlService.parseCommand('play');
+      if (cmd != null) await MusicControlService.send(cmd);
+      return 'Spotify открыт, включаю музыку';
+    }
+
+    // ── Курсы валют ───────────────────────────────────────────────────
     if (action.startsWith('currency_')) {
       final code = action.substring('currency_'.length).toUpperCase();
       if (code == 'ALL') return await _currencyService.getRatesText();
       return await _currencyService.getSingleRate(code);
     }
 
-    // Поиск
+    // ── Поиск ─────────────────────────────────────────────────────────
     if (action.startsWith('search_')) {
       final query = Uri.encodeComponent(action.substring(7));
       await _launchUrl('https://google.com/search?q=$query');
       return 'Поиск запущен';
     }
 
-    switch (action) {
-      // ── Приложения ────────────────────────────────────────────
-      case 'open_youtube':
-        return await _launchPackage('com.google.android.youtube');
-      case 'open_telegram':
-        return await _launchPackage('org.telegram.messenger');
-      case 'open_tiktok':
-        return await _launchPackage('com.zhiliaoapp.musically');
-      case 'open_chrome':
-        return await _launchPackage('com.android.chrome');
-      case 'open_spotify':
-        return await _launchPackage('com.spotify.music');
-      case 'open_whatsapp':
-        return await _launchPackage('com.whatsapp');
-      case 'open_instagram':
-        return await _launchPackage('com.instagram.android');
-      case 'open_vk':
-        return await _launchPackage('com.vkontakte.android');
-      case 'open_maps':
-        return await _launchPackage('com.google.android.apps.maps');
-      case 'open_settings':
-        await AndroidIntent(action: 'android.settings.SETTINGS',
-            flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
-        return 'Настройки открыты';
-      case 'open_camera':
-        await AndroidIntent(
-          action: 'android.media.action.STILL_IMAGE_CAMERA',
-          flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
-        ).launch();
-        return 'Камера открыта';
+    // ── Уведомления ───────────────────────────────────────────────────
+    if (action == 'notifications_briefing') {
+      final notifs = NotificationService.instance?.getRecentNotifications() ?? [];
+      if (notifs.isEmpty) return 'Нет новых уведомлений';
+      return 'Уведомления:\n' + notifs.take(5).map((n) => '• ${n['app']}: ${n['text']}').join('\n');
+    }
 
-      // ── Фонарик ───────────────────────────────────────────────
+    // ── Экран ─────────────────────────────────────────────────────────
+    if (action == 'what_on_screen') {
+      try {
+        final text = await _screenChannel.invokeMethod<String>('getScreenText') ?? '';
+        final lines = text.split('\n').where((l) => l.trim().length > 1).take(20).join('\n');
+        return lines.isNotEmpty ? 'На экране:\n$lines' : 'Экран недоступен';
+      } catch (_) {
+        return 'Нет доступа к экрану — включи Accessibility';
+      }
+    }
+
+    switch (action) {
+      // ── Фонарик ─────────────────────────────────────────────────────
       case 'flashlight_on':
-        try { await TorchLight.enableTorch(); _flashlightOn = true; return 'Фонарик включён'; }
+        try { await TorchLight.enableTorch(); _flashlightOn = true; return 'Фонарик включён 🔦'; }
         catch (_) { return 'Не удалось включить фонарик'; }
       case 'flashlight_off':
         try { await TorchLight.disableTorch(); _flashlightOn = false; return 'Фонарик выключен'; }
@@ -99,66 +216,72 @@ class DeviceService {
             ? await executeAction('flashlight_off')
             : await executeAction('flashlight_on');
 
-      // ── Громкость ─────────────────────────────────────────────
+      // ── Громкость ────────────────────────────────────────────────────
       case 'volume_up':
-        VolumeController().setVolume((_currentVolume + 0.15).clamp(0.0, 1.0));
-        return 'Громкость увеличена';
+        VolumeController().setVolume((_currentVolume + 0.2).clamp(0.0, 1.0));
+        return 'Громкость увеличена 🔊';
       case 'volume_down':
-        VolumeController().setVolume((_currentVolume - 0.15).clamp(0.0, 1.0));
-        return 'Громкость уменьшена';
-      case 'volume_max':
-        VolumeController().setVolume(1.0);
-        return 'Максимальная громкость';
+        VolumeController().setVolume((_currentVolume - 0.2).clamp(0.0, 1.0));
+        return 'Громкость уменьшена 🔉';
       case 'volume_mute':
         VolumeController().setVolume(0.0);
-        return 'Звук выключен';
+        return 'Звук выключен 🔇';
+      case 'volume_max':
+        VolumeController().setVolume(1.0);
+        return 'Максимальная громкость 🔊';
 
-      // ── Батарея ───────────────────────────────────────────────
+      // ── Батарея ──────────────────────────────────────────────────────
       case 'battery':
         final level = await _battery.batteryLevel;
-        return 'Заряд батареи: $level%';
+        final state = await _battery.batteryState;
+        final ch = state == BatteryState.charging ? ' ⚡ заряжается' : '';
+        return 'Заряд: $level%$ch 🔋';
 
-      // ── Экран ─────────────────────────────────────────────────
-      case 'notifications_briefing':
-        final briefing = NotificationService.buildBriefingText();
-        return briefing;
-
-      case 'what_on_screen':
-      case 'screen_info':
-        final info = ScreenWatcherService.getCurrentAppInfo();
-        if (info == null) return 'Не вижу что на экране — включи доступность для Айки';
-        return 'Сейчас на экране: ${info['label']} (${info['package']})';
-
-
-      // ── Музыка ────────────────────────────────────────────────────
-      case 'music_play':
-        await MusicControlService.play();
-        return 'Включаю музыку 🎵';
-      case 'music_pause':
-        await MusicControlService.pause();
-        return 'Поставила на паузу ⏸';
+      // ── Музыка ───────────────────────────────────────────────────────
       case 'music_next':
-        await MusicControlService.next();
+        final cmd = MusicControlService.parseCommand('next');
+        if (cmd != null) await MusicControlService.send(cmd);
         return 'Следующий трек ⏭';
       case 'music_prev':
-        await MusicControlService.previous();
+        final cmd = MusicControlService.parseCommand('previous');
+        if (cmd != null) await MusicControlService.send(cmd);
         return 'Предыдущий трек ⏮';
-      case 'music_stop':
-        await MusicControlService.stop();
-        return 'Останавливаю музыку ⏹';
+      case 'music_pause':
+        final cmd = MusicControlService.parseCommand('pause');
+        if (cmd != null) await MusicControlService.send(cmd);
+        return 'Пауза ⏸';
+
+      // ── Навигация ────────────────────────────────────────────────────
+      case 'nav_back':
+        await _screenChannel.invokeMethod('performBack');
+        return 'Назад ◀️';
+      case 'nav_home':
+        await _screenChannel.invokeMethod('pressHome');
+        return 'Главный экран 🏠';
+      case 'nav_recents':
+        await _screenChannel.invokeMethod('pressRecents');
+        return 'Недавние приложения';
+      case 'nav_notifications':
+        await _screenChannel.invokeMethod('openNotifications');
+        return 'Уведомления открыты';
+
+      // ── Скриншот ─────────────────────────────────────────────────────
+      case 'take_screenshot':
+        await _screenChannel.invokeMethod('takeScreenshot');
+        return 'Скриншот сделан 📸';
 
       default:
         return null;
     }
   }
 
-  /// Запуск приложения по package name через Launcher intent
+  // ─── Запуск приложения (ИСПРАВЛЕННЫЙ) ────────────────────────────────
   Future<String> _launchPackage(String packageName) async {
     try {
+      // ПРАВИЛЬНЫЙ способ — без componentName (он ломал запуск!)
       final intent = AndroidIntent(
         action: 'android.intent.action.MAIN',
         package: packageName,
-        componentName: '',   // пустой — система найдёт главную Activity
         flags: [
           Flag.FLAG_ACTIVITY_NEW_TASK,
           Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
@@ -167,19 +290,22 @@ class DeviceService {
       await intent.launch();
       return 'Открываю';
     } catch (_) {
-      // Fallback — открываем Play Store
+      // Fallback через URL scheme
       try {
         await _launchUrl('market://details?id=$packageName');
-        return 'Приложение не найдено, открываю Play Store';
+        return 'Приложение не установлено, открываю Play Store';
       } catch (_) {
-        try {
-          await _launchUrl('https://play.google.com/store/apps/details?id=$packageName');
-          return 'Открываю Play Store';
-        } catch (_) {
-          return 'Не удалось открыть приложение';
-        }
+        return 'Не удалось открыть приложение ($packageName)';
       }
     }
+  }
+
+  /// Запуск по человеческому названию — ищем в таблице
+  Future<String> _launchByName(String name) async {
+    final normalized = name.toLowerCase().trim();
+    final pkg = knownApps[normalized];
+    if (pkg != null) return await _launchPackage(pkg);
+    return 'Не знаю такое приложение: "$name". Скажи: открой [название]';
   }
 
   Future<void> _launchUrl(String url) async {
@@ -189,67 +315,33 @@ class DeviceService {
     }
   }
 
-  // ── НОВЫЕ КОМАНДЫ УПРАВЛЕНИЯ ─────────────────────────────────────────
-
-  /// Выйти из текущего приложения (нажать Назад)
   Future<String> pressBack() async {
-    try {
-      await _screenChannel.invokeMethod('performBack');
-      return 'Вышел назад';
-    } catch (e) {
-      return 'Не удалось: $e';
-    }
+    try { await _screenChannel.invokeMethod('performBack'); return 'Назад'; }
+    catch (e) { return 'Не удалось: $e'; }
   }
 
-  /// На домашний экран
   Future<String> goHome() async {
-    try {
-      await _screenChannel.invokeMethod('pressHome');
-      return 'На главный экран';
-    } catch (e) {
-      return 'Не удалось: $e';
-    }
+    try { await _screenChannel.invokeMethod('pressHome'); return 'Главный экран'; }
+    catch (e) { return 'Не удалось: $e'; }
   }
 
-  /// Закрыть текущее приложение через Recents
   Future<String> closeCurrentApp() async {
-    try {
-      await _screenChannel.invokeMethod('closeCurrentApp');
-      return 'Закрываю приложение';
-    } catch (e) {
-      return 'Не удалось закрыть: $e';
-    }
+    try { await _screenChannel.invokeMethod('closeCurrentApp'); return 'Закрываю'; }
+    catch (e) { return 'Не удалось: $e'; }
   }
 
-  /// Открыть настройки приложения (перед удалением)
   Future<String> openAppSettings(String packageName) async {
-    try {
-      await _screenChannel.invokeMethod('openAppSettings', {'package': packageName});
-      return 'Открываю настройки приложения';
-    } catch (e) {
-      return 'Не удалось: $e';
-    }
+    try { await _screenChannel.invokeMethod('openAppSettings', {'package': packageName}); return 'Открываю настройки'; }
+    catch (e) { return 'Не удалось: $e'; }
   }
 
-  /// Удалить приложение (показывает системный диалог удаления)
   Future<String> uninstallApp(String packageName) async {
-    try {
-      await _screenChannel.invokeMethod('uninstallApp', {'package': packageName});
-      return 'Открываю диалог удаления';
-    } catch (e) {
-      return 'Не удалось: $e';
-    }
+    try { await _screenChannel.invokeMethod('uninstallApp', {'package': packageName}); return 'Открываю удаление'; }
+    catch (e) { return 'Не удалось: $e'; }
   }
 
-  /// Недавние приложения
   Future<String> openRecents() async {
-    try {
-      await _screenChannel.invokeMethod('pressRecents');
-      return 'Открываю недавние';
-    } catch (e) {
-      return 'Не удалось: $e';
-    }
+    try { await _screenChannel.invokeMethod('pressRecents'); return 'Недавние'; }
+    catch (e) { return 'Не удалось: $e'; }
   }
 }
-
-
