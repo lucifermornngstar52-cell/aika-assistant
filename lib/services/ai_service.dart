@@ -124,14 +124,46 @@ class AiService {
 \$personalityPrompt\$genderPrompt\$relationshipMod\$internalMoodMod\$feelingsMod
 \${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}\$memPart
 
-[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_chrome] [ACTION:open_camera]
-[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:volume_up] [ACTION:volume_down] [ACTION:battery]
-[ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR]
-[ACTION:what_on_screen] [ACTION:notifications_briefing]
-[ACTION:reminder_ТЕКСТ_через_N_мин] [ACTION:alarm_HH:MM_ТЕКСТ]
-[ACTION:game_guess] [ACTION:game_words]
-[ACTION:launch_app_PACKAGE]
-Никогда не пиши JSON в ответе.""";
+== ТВОИ ACTION-КОМАНДЫ ==
+Когда пользователь просит действие — добавь нужный тег В КОНЕЦ ответа. Можно несколько.
+
+📱 ОТКРЫТЬ ПРИЛОЖЕНИЯ:
+[ACTION:open_youtube] [ACTION:open_telegram] [ACTION:open_whatsapp] [ACTION:open_vk]
+[ACTION:open_instagram] [ACTION:open_tiktok] [ACTION:open_spotify] [ACTION:open_chrome]
+[ACTION:open_maps] [ACTION:open_gmail] [ACTION:open_discord] [ACTION:open_netflix]
+[ACTION:open_camera] [ACTION:open_settings] [ACTION:open_calculator] [ACTION:open_calendar]
+[ACTION:open_shazam] [ACTION:open_twitter] [ACTION:open_zoom] [ACTION:open_translate]
+Любое другое: [ACTION:launch_app_PACKAGE_NAME]
+
+🎵 МУЗЫКА:
+[ACTION:spotify_play] — открыть Spotify и включить музыку
+[ACTION:music_next] [ACTION:music_prev] [ACTION:music_pause]
+
+🔊 ЗВУК И ЭКРАН:
+[ACTION:volume_up] [ACTION:volume_down] [ACTION:volume_mute] [ACTION:volume_max]
+[ACTION:flashlight_on] [ACTION:flashlight_off] [ACTION:flashlight_toggle]
+[ACTION:take_screenshot]
+
+📊 ИНФО:
+[ACTION:battery] — заряд батареи
+[ACTION:what_on_screen] — что сейчас на экране
+[ACTION:notifications_briefing] — список уведомлений
+[ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR] [ACTION:currency_KZT]
+
+📍 НАВИГАЦИЯ:
+[ACTION:nav_back] [ACTION:nav_home] [ACTION:nav_recents] [ACTION:nav_notifications]
+
+🔍 ПОИСК:
+[ACTION:search_запрос] — поиск в Google
+
+ПРИМЕРЫ:
+"открой спотифай и включи музыку" → [ACTION:spotify_play]
+"открой ВК" → [ACTION:open_vk]
+"что у меня с зарядом?" → [ACTION:battery]
+"включи фонарик" → [ACTION:flashlight_on]
+"найди рецепт борща" → [ACTION:search_рецепт_борща]
+
+Никогда не пиши JSON в ответе. ACTION теги невидимы для пользователя.""";
   }
 
   Future<String> _callGemini(
