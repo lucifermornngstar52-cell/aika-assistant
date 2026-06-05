@@ -13,7 +13,7 @@ class PhoneControlService {
   factory PhoneControlService() => _i;
   PhoneControlService._();
 
-  static const _channel = MethodChannel('aika/phone_control');
+  static const _channel = MethodChannel('com.aika.assistant/screen_reader');
   final Battery _battery = Battery();
   double _vol = 0.5;
 
@@ -270,7 +270,7 @@ class PhoneControlService {
 
   // ── НАВИГАЦИЯ (новые) ─────────────────────────────────────────────────
 
-  static const _screenCh = MethodChannel('aika/screen_reader');
+  static const _screenCh = MethodChannel('com.aika.assistant/screen_reader');
 
   Future<PhoneCommandResult> _pressBack() async {
     try {
