@@ -22,5 +22,11 @@
     "expires_at": "2026-07-05T12:26:41.236Z",
     "plan": "subscription",
     "approved_at": "2026-06-05T12:26:41.563Z"
+  },
+  "test@gmail.com": {
+    "status": "active",
+    "expires_at": "2026-07-05T13:13:27.751Z",
+    "plan": "purchase",
+    "approved_at": "2026-06-05T13:13:28.063Z"
   }
 }
