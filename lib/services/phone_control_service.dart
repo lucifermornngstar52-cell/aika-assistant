@@ -157,7 +157,7 @@ class PhoneControlService {
       await AndroidIntent(action: 'android.media.action.STILL_IMAGE_CAMERA', flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
       return PhoneCommandResult.ok('📷 Камера открыта');
     }
-    if (_matches(t, ['видео', 'сними видео', 'включи видеокамеру'])) {
+    if (_matches(t, ['сними видео', 'включи видеокамеру', 'запись видео', 'video camera'])) {
       await AndroidIntent(action: 'android.media.action.VIDEO_CAMERA', flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
       return PhoneCommandResult.ok('🎥 Видеокамера открыта');
     }
@@ -196,6 +196,24 @@ class PhoneControlService {
     if (_matches(t, ['открой калькулятор', 'калькулятор', 'calculator'])) {
       await _launchPackage('com.google.android.calculator');
       return PhoneCommandResult.ok('🧮 Калькулятор открыт');
+    }
+
+    // ── SPOTIFY ───────────────────────────────────────────────
+    if (_matches(t, ['открой спотифай', 'открой spotify', 'спотифай', 'включи спотифай'])) {
+      await _launchPackage('com.spotify.music');
+      return PhoneCommandResult.ok('🎵 Spotify открыт');
+    }
+
+    // ── VK ────────────────────────────────────────────────────
+    if (_matches(t, ['открой вк', 'открой вконтакте', 'vkontakte', 'вконтакте'])) {
+      await _launchPackage('com.vkontakte.android');
+      return PhoneCommandResult.ok('💙 ВКонтакте открыт');
+    }
+
+    // ── DISCORD ───────────────────────────────────────────────
+    if (_matches(t, ['открой discord', 'открой дискорд', 'discord', 'дискорд'])) {
+      await _launchPackage('com.discord');
+      return PhoneCommandResult.ok('🎮 Discord открыт');
     }
 
     // ── ЗАПИСЬ ГОЛОСА ─────────────────────────────────────────
@@ -456,9 +474,15 @@ class PhoneControlService {
       await AndroidIntent(
         action: 'android.intent.action.MAIN',
         package: pkg,
-        flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
+        flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED],
       ).launch();
-    } catch (_) {}
+    } catch (_) {
+      // Fallback через url_launcher
+      try {
+        final uri = Uri.parse('market://details?id=$pkg');
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
   }
 
   // ══════════════════════════════════════════════════════════════
