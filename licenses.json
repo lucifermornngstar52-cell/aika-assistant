@@ -16,5 +16,11 @@
     "expires_at": "2026-06-24T01:21:39.536699",
     "plan": "purchase",
     "approved_at": "2026-05-25T01:21:39.536693"
+  },
+  "penkovnikita74@gmail.com": {
+    "status": "active",
+    "expires_at": "2026-07-05T12:26:41.236Z",
+    "plan": "subscription",
+    "approved_at": "2026-06-05T12:26:41.563Z"
   }
 }
