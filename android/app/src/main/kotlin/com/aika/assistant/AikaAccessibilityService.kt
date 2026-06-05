@@ -384,6 +384,44 @@ class AikaAccessibilityService : AccessibilityService() {
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
         dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
+    fun swipeDir(direction: String) {
+        val dm = resources.displayMetrics
+        val w  = dm.widthPixels.toFloat()
+        val h  = dm.heightPixels.toFloat()
+        val cx = w / 2f
+        val cy = h / 2f
+        when (direction.lowercase()) {
+            "up"    -> swipe(cx, cy + 300, cx, cy - 300)
+            "down"  -> swipe(cx, cy - 300, cx, cy + 300)
+            "left"  -> swipe(cx + 300, cy, cx - 300, cy)
+            "right" -> swipe(cx - 300, cy, cx + 300, cy)
+        }
+    }
+
+    fun launchApp(packageName: String): Boolean {
+        return try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+                ?: return false
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            applicationContext.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "launchApp: $e"); false
+        }
+    }
+
+    fun clearField(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        val args = Bundle()
+        args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+        args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT,
+            node.text?.length ?: 0)
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
+        val delArgs = Bundle()
+        delArgs.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, delArgs)
+    }
 
     // ── ДОПОЛНИТЕЛЬНЫЕ ДЕЙСТВИЯ ─────────────────────────────────────────
 
@@ -644,16 +682,29 @@ class AikaAccessibilityService : AccessibilityService() {
 
     private fun collectClickableNodes(node: AccessibilityNodeInfo?, result: MutableList<Map<String, Any>>) {
         if (node == null) return
-        if (node.isClickable) {
+        val isInteractive = node.isClickable || node.isFocusable || node.isEditable
+        if (isInteractive) {
             val rect = Rect(); node.getBoundsInScreen(rect)
-            val text = node.text?.toString() ?: node.contentDescription?.toString() ?: ""
-            if (text.isNotEmpty()) {
+            val text = node.text?.toString() ?: ""
+            val desc = node.contentDescription?.toString() ?: ""
+            val hint = if (android.os.Build.VERSION.SDK_INT >= 26) node.hintText?.toString() ?: "" else ""
+            val label = when {
+                text.isNotEmpty() -> text
+                desc.isNotEmpty() -> desc
+                hint.isNotEmpty() -> "($hint)"
+                else -> ""
+            }
+            if (label.isNotEmpty() || node.isEditable) {
                 result.add(mapOf(
-                    "text"  to text,
-                    "id"    to (node.viewIdResourceName ?: ""),
-                    "x"     to rect.centerX(),
-                    "y"     to rect.centerY(),
-                    "class" to (node.className?.toString() ?: "")
+                    "text"     to text,
+                    "desc"     to desc,
+                    "hint"     to hint,
+                    "class"    to (node.className?.toString() ?: ""),
+                    "id"       to (node.viewIdResourceName ?: ""),
+                    "x"        to rect.centerX(),
+                    "y"        to rect.centerY(),
+                    "editable" to node.isEditable,
+                    "enabled"  to node.isEnabled,
                 ))
             }
         }
