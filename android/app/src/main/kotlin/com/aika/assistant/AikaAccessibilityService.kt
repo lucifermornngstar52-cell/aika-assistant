@@ -114,10 +114,10 @@ class AikaAccessibilityService : AccessibilityService() {
         sendStep       = "waiting_for_app"
         // Сначала открываем приложение через Intent
         try {
-            val intent = context?.packageManager?.getLaunchIntentForPackage(pendingApp ?: "")
+            val intent = applicationContext.packageManager.getLaunchIntentForPackage(pendingApp ?: "")
             if (intent != null) {
                 intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                context?.startActivity(intent)
+                applicationContext.startActivity(intent)
             }
         } catch (_: Exception) {}
     }
