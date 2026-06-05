@@ -187,7 +187,7 @@ class DeviceService {
 
     // ── Уведомления ───────────────────────────────────────────────────
     if (action == 'notifications_briefing') {
-      final notifs = NotificationService.instance?.getRecentNotifications() ?? [];
+      final notifs = NotificationService.recent;
       if (notifs.isEmpty) return 'Нет новых уведомлений';
       return 'Уведомления:\n' + notifs.take(5).map((n) => '• ${n['app']}: ${n['text']}').join('\n');
     }
