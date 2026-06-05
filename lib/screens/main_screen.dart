@@ -472,8 +472,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       // Диалог показываем ОДИН раз за сессию
       if (!_accessibilityDialogShown) {
         _accessibilityDialogShown = true;
-        Future.delayed(const Duration(seconds: 8), () {
-          if (mounted && !_hasAccessibilityPermission) _showAccessibilityDialog();
+        // Ждём дольше — сервис может инициализироваться после запуска
+        Future.delayed(const Duration(seconds: 15), () async {
+          if (!mounted) return;
+          // Перепроверяем актуальный статус
+          final stillOff = !(await ScreenWatcherService.isAccessibilityEnabled());
+          if (mounted && stillOff) _showAccessibilityDialog();
         });
       }
     }
@@ -708,6 +712,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
       _bgCustomImage = prefs.getString('bg_custom_image');
     });
+    // Обновляем wake-word триггеры из настроек
+    await _wakeWordService.updateTriggers();
     // Восстанавливаем историю чата из памяти
     final savedHistory = await _memoryService.getHistory();
     if (savedHistory.isNotEmpty && _messages.isEmpty) {
