@@ -1122,6 +1122,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       timestamp: DateTime.now(),
     ));
 
+    // ── Обработка IMAGE_GENERATED от browser service ─────────────────
+    if (text.startsWith('[IMAGE_GENERATED]')) {
+      final b64 = text.substring('[IMAGE_GENERATED]'.length);
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: '[image]$b64',
+        timestamp: DateTime.now(),
+      ));
+      return;
+    }
+
     // ── Управление телефоном по голосу ─────────────────────────────────
     final phoneResult = await _phoneControl.parseCommand(text);
     if (phoneResult != null) {
