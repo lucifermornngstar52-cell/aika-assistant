@@ -11,6 +11,7 @@ class SettingsGeneralScreen extends StatefulWidget {
 class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
   final _nameCtrl = TextEditingController();
   final _userNameCtrl = TextEditingController();
+  final _wakeWordCtrl = TextEditingController();
   double _avatarSize = 160;
   bool _loading = true;
 
@@ -26,6 +27,7 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
       _nameCtrl.text = prefs.getString('assistant_name') ?? 'Aika';
       _userNameCtrl.text = prefs.getString('user_name') ?? '';
       _avatarSize = prefs.getDouble('avatar_size') ?? 160;
+      _wakeWordCtrl.text = prefs.getString('custom_wake_word') ?? '';
       _loading = false;
     });
   }
@@ -36,6 +38,9 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
     await prefs.setString('assistant_name', name.isEmpty ? 'Aika' : name);
     await prefs.setString('user_name', _userNameCtrl.text.trim());
     await prefs.setDouble('avatar_size', _avatarSize);
+    // Кастомный wake word
+    final customWW = _wakeWordCtrl.text.trim().toLowerCase();
+    await prefs.setString('custom_wake_word', customWW);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: const Text('Сохранено'),
@@ -77,6 +82,21 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
               hintStyle: const TextStyle(color: Colors.white38),
               prefixIcon: Icon(Icons.auto_awesome, color: AikaTheme.neonBlue),
               border: InputBorder.none,
+            ),
+          )),
+          const SizedBox(height: 16),
+          const SizedBox(height: 16),
+          _label('КАСТОМНЫЙ WAKE WORD'),
+          _card(TextField(
+            controller: _wakeWordCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'например: эй аика, слушай, привет',
+              hintStyle: const TextStyle(color: Colors.white38),
+              prefixIcon: Icon(Icons.record_voice_over, color: AikaTheme.neonPink),
+              border: InputBorder.none,
+              helperText: 'Добавь своё слово через запятую. Дефолт: аика, aika',
+              helperStyle: const TextStyle(color: Colors.white38, fontSize: 11),
             ),
           )),
           const SizedBox(height: 16),
