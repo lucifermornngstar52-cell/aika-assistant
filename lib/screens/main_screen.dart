@@ -2126,7 +2126,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       active: _wakeWordEnabled,
                       onTap: _toggleWakeWord,
                     ),
-                    _HudButton(
+                    _TopIconBtn(
                       icon: _chatMode ? Icons.chat_bubble_rounded : Icons.smart_toy_rounded,
                       active: _chatMode,
                       onTap: () {
