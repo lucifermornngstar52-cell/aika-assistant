@@ -7,6 +7,7 @@ import 'settings_background_screen.dart';
 import 'personality_screen.dart';
 import 'chat_history_screen.dart';
 import 'settings_overlay_screen.dart';
+import 'about_project_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -83,6 +84,13 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.tune,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsGeneralScreen())),
+          ),
+          _SettingsCard(
+            title: 'О проекте',
+            subtitle: 'Команда, возможности, стек технологий',
+            icon: Icons.code_rounded,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AboutProjectScreen())),
           ),
         ],
       ),
