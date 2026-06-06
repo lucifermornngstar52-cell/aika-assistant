@@ -39,15 +39,15 @@ jobs:
       - name: Restore keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/aika_release.keystore
-          echo "storeFile=aika_release.keystore"      >> android/local.properties
-          echo "storePassword=${{ secrets.KEY_STORE_PASSWORD }}" >> android/local.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}"    >> android/local.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/local.properties
+          echo "storeFile=aika_release.keystore"                    >> android/local.properties
+          echo "storePassword=${{ secrets.KEY_STORE_PASSWORD }}"    >> android/local.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}"                  >> android/local.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}"            >> android/local.properties
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK (signed)
+      - name: Build APK (signed, release)
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/android/app/aika_release.keystore
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
@@ -55,12 +55,26 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           flutter build apk --release \
-            --dart-define=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
-            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            --dart-define=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --dart-define=GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
 
-      - name: Upload APK
+      - name: Rename APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/aika-release.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: aika-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 14
+          path: build/app/outputs/flutter-apk/aika-release.apk
+          retention-days: 30
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/app/outputs/flutter-apk/aika-release.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
