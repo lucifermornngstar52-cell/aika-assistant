@@ -12,28 +12,56 @@
 <body>
 <canvas id="canvas"></canvas>
 <script>
-// МЬЮТ всего звука от Live2D моделей — патчируем Audio до загрузки библиотек
+// ПОЛНОЕ отключение звука от Live2D моделей
 (function() {
-  // Патч 1: HTMLAudioElement — мьют все <audio> теги
+  // Патч 1: HTMLAudioElement — полностью заглушаем
   var _origAudio = window.Audio;
   window.Audio = function(src) {
-    var a = new _origAudio(src);
-    a.volume = 0;
-    a.muted = true;
-    var _origPlay = a.play.bind(a);
-    a.play = function() { return Promise.resolve(); };
+    var a = _origAudio ? new _origAudio(src) : {};
+    try { a.volume = 0; a.muted = true; } catch(_) {}
+    a.play  = function() { return Promise.resolve(); };
+    a.pause = function() {};
+    a.load  = function() {};
     return a;
   };
-  // Патч 2: AudioContext — нет звука через Web Audio API
+  window.Audio.prototype = _origAudio ? _origAudio.prototype : {};
+
+  // Патч 2: AudioContext — нулевой volume через destination gain
   var AC = window.AudioContext || window.webkitAudioContext;
   if (AC) {
-    var _origGain = AC.prototype.createGain;
+    var _origCreate = AC.prototype.createGain;
     AC.prototype.createGain = function() {
-      var g = _origGain.call(this);
-      try { g.gain.value = 0; } catch(_) {}
+      var g = _origCreate.call(this);
+      try { g.gain.setValueAtTime(0, 0); g.gain.value = 0; } catch(_) {}
       return g;
     };
+    // Также мьютим destination напрямую при создании контекста
+    var _origAC = window.AudioContext;
+    var _origWAC = window.webkitAudioContext;
+    function wrapAC(OrigAC) {
+      if (!OrigAC) return OrigAC;
+      function WrappedAC(opts) {
+        var ctx = new OrigAC(opts);
+        try {
+          var g = _origCreate.call(ctx);
+          g.gain.value = 0;
+          ctx.destination && g.connect(ctx.destination);
+        } catch(_) {}
+        return ctx;
+      }
+      WrappedAC.prototype = OrigAC.prototype;
+      return WrappedAC;
+    }
+    window.AudioContext = wrapAC(_origAC);
+    window.webkitAudioContext = wrapAC(_origWAC);
   }
+
+  // Патч 3: HTMLMediaElement.play — глушим все media элементы
+  var _origMPlay = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function() {
+    this.volume = 0; this.muted = true;
+    return _origMPlay ? _origMPlay.call(this) : Promise.resolve();
+  };
 })();
 </script>
 <script>
@@ -265,3 +293,4 @@ initLive2D();
 </script>
 </body>
 </html>
+
