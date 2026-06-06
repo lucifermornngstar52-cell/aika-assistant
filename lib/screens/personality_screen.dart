@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/personality_service.dart';
 import '../theme/app_theme.dart';
 
@@ -88,6 +89,21 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
                   onTap: () async {
                     await PersonalityService.set(p);
                     setState(() => _selected = p);
+                    // Синхронизируем имя ассистента с персонажем
+                    // Если имя не задано вручную — ставим автоимя
+                    final prefs = await SharedPreferences.getInstance();
+                    final customName = prefs.getString('assistant_name') ?? '';
+                    final autoNames = ['Айка', 'Aika', 'Aivora', 'Джарвис', 'Gabimaru', 'Габимару', 'Китсунэ', ''];
+                    if (autoNames.contains(customName)) {
+                      String autoName;
+                      switch (p) {
+                        case AikaPersonality.sage:     autoName = 'Джарвис'; break;
+                        case AikaPersonality.gabimaru: autoName = 'Габимару'; break;
+                        case AikaPersonality.kitsune:  autoName = 'Китсунэ'; break;
+                        default:                       autoName = 'Айка'; break;
+                      }
+                      await prefs.setString('assistant_name', autoName);
+                    }
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
