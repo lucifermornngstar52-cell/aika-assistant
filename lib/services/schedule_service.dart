@@ -105,12 +105,19 @@ class ScheduleService {
 
   bool isScheduleRequest(String text) {
     final t = text.toLowerCase();
-    return t.contains('расписание') || t.contains('план на') ||
-        t.contains('что сегодня') || t.contains('что завтра') ||
-        t.contains('мои события') || t.contains('мой день') ||
-        t.contains('покажи события') || t.contains('мои дела') ||
-        t.contains('что у меня') || t.contains('планы на') ||
-        (t.contains('события') && (t.contains('сегодня') || t.contains('завтра')));
+    // Точные запросы расписания — не должны перехватывать разговорные фразы
+    if (t.contains('расписание')) return true;
+    if (t.contains('покажи события') || t.contains('мои события')) return true;
+    if (t.contains('план на') && (t.contains('сегодня') || t.contains('завтра') || t.contains('день'))) return true;
+    if (t.contains('планы на') && (t.contains('сегодня') || t.contains('завтра'))) return true;
+    if (t.contains('мой день') && (t.contains('сегодня') || t.contains('план') || t.contains('расписани'))) return true;
+    if (t.contains('мои дела') && (t.contains('сегодня') || t.contains('завтра'))) return true;
+    // 'что у меня' — только с контекстом времени/плана
+    if (t.contains('что у меня') && (t.contains('запланировано') || t.contains('стоит') || t.contains('план') || t.contains('сегодня') || t.contains('завтра'))) return true;
+    // 'что сегодня/завтра' — только с уточнением
+    if ((t.contains('что сегодня') || t.contains('что завтра')) && (t.contains('запланировано') || t.contains('план') || t.contains('дела') || t.contains('событи'))) return true;
+    if (t.contains('события') && (t.contains('сегодня') || t.contains('завтра'))) return true;
+    return false;
   }
 
   bool isAddEventRequest(String text) {
