@@ -8,14 +8,13 @@ import 'package:http/http.dart' as http;
 import 'aika_self_learning_service.dart';
 
 class AiService {
-  static const String _geminiKey = 'AIzaSyAOerCk0C4vyAkcenHgefVu9miuijaW46Y';
+  // Ключ задаётся через AikaConfig.geminiKey (не хранить в git)
+  static const String _geminiKey = String.fromEnvironment('GEMINI_KEY', defaultValue: '');
   static const String _geminiUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
-  static String get _openAiKey => 'sk-proj-yZjSi9Ce5puYb1kfGrgITw'
-      'JQIoRrab57qErCRPWlGN9DTKRLRNtE'
-      '68HOVbLo_xByy5FcH1PtEGT3BlbkFJ'
-      'q--UQq-fr6hEMtKPM4vrKfTMYIml8fo1KYZfOijKRaPP2Dn8pr73mrDwec7dKDxUdQQVHZj3MA';
+  // Ключ задаётся через AikaConfig.openAiKey (не хранить в git)
+  static String get _openAiKey => const String.fromEnvironment('OPENAI_KEY', defaultValue: '');
   static const String _openAiUrl = 'https://api.openai.com/v1/chat/completions';
 
   Future<String> sendMessage(
@@ -317,6 +316,7 @@ class AiService {
     return data['choices'][0]['message']['content'] as String;
   }
 }
+
 
 
 
