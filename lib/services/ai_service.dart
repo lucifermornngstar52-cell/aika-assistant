@@ -183,7 +183,11 @@ class AiService {
 
 📊 ИНФО:
 [ACTION:battery] — заряд батареи
-[ACTION:what_on_screen] — что сейчас на экране
+[ACTION:what_on_screen] — что сейчас на экране (текст из AccessibilityService)
+[ACTION:describe_screen] — Gemini смотрит скриншот и описывает экран визуально
+[ACTION:smart_tap:описание элемента] — Gemini делает скриншот и нажимает на нужный элемент
+Примеры smart_tap: [ACTION:smart_tap:кнопка Отправить] [ACTION:smart_tap:поле поиска] [ACTION:smart_tap:иконка Instagram]
+[ACTION:smart_do:задача] — Gemini видит экран и выполняет задачу (тап/ввод/скролл/назад)
 [ACTION:notifications_briefing] — список уведомлений
 [ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR] [ACTION:currency_KZT]
 
