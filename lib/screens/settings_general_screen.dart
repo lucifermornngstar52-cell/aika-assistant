@@ -24,7 +24,7 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _nameCtrl.text = prefs.getString('assistant_name') ?? 'Aika';
+      _nameCtrl.text = prefs.getString('assistant_name') ?? 'Aivora';
       _userNameCtrl.text = prefs.getString('user_name') ?? '';
       _avatarSize = prefs.getDouble('avatar_size') ?? 160;
       _wakeWordCtrl.text = prefs.getString('custom_wake_word') ?? '';
@@ -35,7 +35,7 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     final name = _nameCtrl.text.trim();
-    await prefs.setString('assistant_name', name.isEmpty ? 'Aika' : name);
+    await prefs.setString('assistant_name', name.isEmpty ? 'Aivora' : name);
     await prefs.setString('user_name', _userNameCtrl.text.trim());
     await prefs.setDouble('avatar_size', _avatarSize);
     // Кастомный wake word
@@ -78,7 +78,7 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
             controller: _nameCtrl,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-              hintText: 'Aika',
+              hintText: 'Aivora',
               hintStyle: const TextStyle(color: Colors.white38),
               prefixIcon: Icon(Icons.auto_awesome, color: AikaTheme.neonBlue),
               border: InputBorder.none,
@@ -91,7 +91,7 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
             controller: _wakeWordCtrl,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-              hintText: 'например: эй аика, слушай, привет',
+              hintText: 'например: эй аивора, слушай, привет',
               hintStyle: const TextStyle(color: Colors.white38),
               prefixIcon: Icon(Icons.record_voice_over, color: AikaTheme.neonPink),
               border: InputBorder.none,
