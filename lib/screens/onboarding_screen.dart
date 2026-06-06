@@ -87,7 +87,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(height: 32),
 
               const Text(
-                'Привет! Я — Айка ✨',
+                'Привет! Я — Aivora ✨',
                 style: TextStyle(
                   color: AikaTheme.textPrimary,
                   fontSize: 24,
