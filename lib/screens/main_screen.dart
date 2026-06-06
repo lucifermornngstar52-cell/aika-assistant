@@ -706,13 +706,28 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedPersonality = prefs.getString('aika_personality') ?? 'kawaii';
     setState(() {
-      _assistantName = prefs.getString('assistant_name') ?? 'Aivora';
+      String? savedName = prefs.getString('assistant_name');
+      // Если имя не задано вручную — берём из персонажа
+      if (savedName == null || savedName.isEmpty || savedName == 'Aivora' || savedName == 'Aika') {
+        switch (savedPersonality) {
+          case 'sage': savedName = 'Джарвис'; break;
+          case 'gabimaru': savedName = 'Габимару'; break;
+          case 'kitsune': savedName = 'Китсунэ'; break;
+          default: savedName = 'Айка'; break;
+        }
+      }
+      _assistantName = savedName;
       _userName = prefs.getString('user_name') ?? '';
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
       _bgCustomImage = prefs.getString('bg_custom_image');
     });
-    // Обновляем wake-word триггеры из настроек
+    // Синхронизируем имя ассистента с wake-word триггерами
+    if (!prefs.containsKey('assistant_name') || (prefs.getString('assistant_name') ?? '').isEmpty) {
+      // Сохраняем авто-имя чтобы wake word его подхватил
+      await prefs.setString('assistant_name', _assistantName);
+    }
     await _wakeWordService.updateTriggers();
     // Восстанавливаем историю чата из памяти
     final savedHistory = await _memoryService.getHistory();
@@ -764,9 +779,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final t = text.toLowerCase().trim();
 
     // Ключевые слова отправки
-    final sendWords = ['напиши', 'отправь', 'скажи', 'написать', 'отправить',
+    final sendWords = ['напиши', 'отправь', 'написать', 'отправить',
                        'send', 'напиши сообщение', 'отправь сообщение'];
     if (!sendWords.any((w) => t.contains(w))) return null;
+    // Guard: нужно явное приложение ИЛИ имя с большой буквы
+    final hasAppMention = t.contains('телеграм') || t.contains('telegram') || t.contains('тг') ||
+        t.contains('ватсап') || t.contains('вацап') || t.contains('whatsapp') || t.contains('вотсап') ||
+        t.contains('инстаграм') || t.contains('instagram') || t.contains('вконтакте') || t.contains('вк');
+    final hasCapitalContact = RegExp(r'(?:напиши|отправь)\s+[А-ЯЁ][а-яё]+').hasMatch(text);
+    if (!hasAppMention && !hasCapitalContact) return null;
 
     // Определяем приложение
     String app = 'whatsapp'; // дефолт
@@ -790,8 +811,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       RegExp(r'(?:напиши|отправь|скажи|написать|отправить)\s+([а-яёА-ЯЁa-zA-Z]+(?:\s+[а-яёА-ЯЁa-zA-Z]+)?)\s+(?:в|через)\s+(?:ватсап|вацап|вотсап|whatsapp|телеграм|telegram|тг|инстаграм|instagram|вконтакте|вк)\s+(.+)', caseSensitive: false),
       // напиши в [приложение] [контакт] [текст]
       RegExp(r'(?:напиши|отправь|скажи)\s+(?:в|через)\s+(?:ватсап|вацап|вотсап|whatsapp|телеграм|telegram|тг)\s+([а-яёА-ЯЁa-zA-Z]+)\s+(.+)', caseSensitive: false),
-      // напиши [контакт] [текст] (без упоминания приложения)
-      RegExp(r'(?:напиши|отправь|скажи)\s+([а-яёА-ЯЁa-zA-Z]{2,20})\s+(.{5,})', caseSensitive: false),
+      // напиши [ИМЯ с большой] [текст]
+      RegExp(r'(?:напиши|отправь)\s+([А-ЯЁ][а-яё]{1,15})\s+(.{5,})'),
     ];
 
     for (final p in patterns) {
@@ -801,7 +822,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         final message = m.group(2)?.trim() ?? '';
         if (contact.isNotEmpty && message.isNotEmpty && message.length > 2) {
           // Исключаем служебные слова как "контакт"
-          final skipWords = ['сообщение', 'message', 'текст'];
+          final skipWords = ['сообщение', 'message', 'текст', 'мне', 'ему', 'ей', 'им', 'нам', 'пожалуйста', 'просто', 'тоже', 'сейчас', 'ещё'];
           if (skipWords.any((w) => contact.toLowerCase() == w)) continue;
           return {'app': app, 'contact': contact, 'message': message};
         }
