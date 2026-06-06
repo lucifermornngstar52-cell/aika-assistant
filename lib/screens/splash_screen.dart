@@ -113,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen>
                 colors: [AikaTheme.neonBlue, AikaTheme.neonPurple],
               ).createShader(bounds),
               child: const Text(
-                'А И К А',
+                'А И В О Р А',
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
