@@ -441,9 +441,18 @@ class MainActivity : FlutterActivity() {
         // Все вызовы делегируются в AikaAccessibilityService.instance
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_READER_CHANNEL)
             .setMethodCallHandler { call, result ->
-                val svc = AikaAccessibilityService.instance
+                // Если сервис ещё не поднялся — ждём до 3 сек (race condition после выдачи разрешения)
+                var svc = AikaAccessibilityService.instance
                 if (svc == null) {
-                    result.error("NO_SERVICE", "AccessibilityService не запущен", null)
+                    var waited = 0
+                    while (svc == null && waited < 3000) {
+                        Thread.sleep(200)
+                        waited += 200
+                        svc = AikaAccessibilityService.instance
+                    }
+                }
+                if (svc == null) {
+                    result.error("NO_SERVICE", "Accessibility сервис не отвечает — проверь разрешения в настройках", null)
                     return@setMethodCallHandler
                 }
                 when (call.method) {
