@@ -203,6 +203,21 @@ class DeviceService {
       }
     }
 
+    // ── Gemini Vision: умный клик и описание экрана ────────────────────
+    if (action == 'describe_screen') {
+      return await GeminiComputerUseService.describeScreen();
+    }
+
+    if (action.startsWith('smart_tap:') || action.startsWith('smart_click:')) {
+      final task = action.contains(':') ? action.split(':').skip(1).join(':').trim() : action;
+      return await GeminiComputerUseService.executeTask(task);
+    }
+
+    if (action.startsWith('smart_do:')) {
+      final task = action.split(':').skip(1).join(':').trim();
+      return await GeminiComputerUseService.executeTask(task);
+    }
+
     switch (action) {
       // ── Фонарик ─────────────────────────────────────────────────────
       case 'flashlight_on':
