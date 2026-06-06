@@ -272,6 +272,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       // Перечитываем настройки голоса при возврате из Settings
       _applyTtsSettings();
       _loadPrefs();
+      // Перепроверяем accessibility — пользователь мог вернуться из настроек разрешений
+      // Retry: сервис может стартовать с задержкой до 3 сек
+      _recheckAccessibilityWithRetry();
     }
   }
 
@@ -432,6 +435,41 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (mounted && !_hasOverlayPermission) _showOverlayPermissionDialog();
       });
     }
+  }
+
+  /// Пробует до 5 раз с интервалом 1 сек — сервис может стартовать с задержкой
+  Future<void> _recheckAccessibilityWithRetry() async {
+    for (int attempt = 0; attempt < 5; attempt++) {
+      await Future.delayed(Duration(seconds: attempt == 0 ? 0 : 1));
+      if (!mounted) return;
+      final has = await ScreenWatcherService.isAccessibilityEnabled();
+      if (has) {
+        if (mounted) setState(() => _hasAccessibilityPermission = true);
+        // Запускаем watcher если ещё не запущен
+        ScreenWatcherService.startWatching(
+          onReaction: (reaction, overlayState) {
+            if (!_screenCommentsEnabled) return;
+            if (!_isListening && !_isThinking && !_isDancing && mounted) {
+              _addMessage(ChatMessage(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                role: MessageRole.aika,
+                content: reaction,
+                timestamp: DateTime.now(),
+              ));
+              _speak(reaction);
+              OverlayService().asyncState(overlayState);
+              Future.delayed(const Duration(seconds: 4), () {
+                if (mounted) OverlayService().asyncState('idle');
+              });
+            }
+          },
+        );
+        debugPrint('[Accessibility] ✅ подключён (попытка ${attempt + 1})');
+        return;
+      }
+    }
+    // После 5 попыток — статус остался false, не показываем диалог повторно
+    if (mounted) setState(() => _hasAccessibilityPermission = false);
   }
 
   Future<void> _recheckAccessibilityPermission() async {
