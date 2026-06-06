@@ -40,8 +40,8 @@ class MainActivity : FlutterActivity() {
     private val screenEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             // ACTION_SCREEN_EVENT removed — accessibility events are pull-based now
-            val pkg   = intent.getStringExtra("package") ?: return
-            val label = intent.getStringExtra("label")   ?: ""
+            val pkg   = intent?.getStringExtra("package") ?: return
+            val label = intent?.getStringExtra("label")   ?: ""
             screenEventSink?.success(mapOf("package" to pkg, "label" to label))
         }
     }
