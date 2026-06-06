@@ -79,7 +79,7 @@ class AikaOverlayService : Service() {
 
     private fun getHtmlPath(): String =
         if (currentMode == "3d") "file:///android_asset/flutter_assets/assets/3d_viewer.html"
-        else getHtmlPath()
+        else "file:///android_asset/flutter_assets/assets/live2d_viewer.html"
     private var sizeDp       = 200f
     private var opacity      = 1f
     private var side         = "left"
@@ -347,3 +347,4 @@ class AikaOverlayService : Service() {
             .setOngoing(true)
             .build()
 }
+
