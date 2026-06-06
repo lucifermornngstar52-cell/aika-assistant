@@ -25,12 +25,12 @@ class MemoryService {
   // ─── Имя ассистента ────────────────────────────────────────────────────────
   Future<String> getAssistantName() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAssistantName) ?? 'Aika';
+    return prefs.getString(_keyAssistantName) ?? 'Aivora';
   }
 
   Future<void> setAssistantName(String name) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyAssistantName, name.isEmpty ? 'Aika' : name.trim());
+    await prefs.setString(_keyAssistantName, name.isEmpty ? 'Aivora' : name.trim());
   }
 
   // ─── История чата ──────────────────────────────────────────────────────────
