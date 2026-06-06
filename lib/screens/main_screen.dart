@@ -114,6 +114,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _isThinking = false;
   Completer<void>? _ttsCompleter;
   bool _wakeWordEnabled = false;
+  bool _chatMode = false; // false = command mode, true = chat/conversation mode
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
   bool _screenCommentsEnabled = true;
@@ -1392,6 +1393,30 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── РЕЖИМ ОБЩЕНИЯ: в режиме чата пропускаем все команды → чистый AI ──
+    if (_chatMode) {
+      setState(() { _isThinking = true; });
+      try {
+        final resp = await _aiService.sendMessage(
+          text,
+          userName: _userName,
+          assistantName: _assistantName,
+          history: _messages.map((m) => '\${m.role.name}: \${m.content}').toList(),
+        );
+        _addMessage(ChatMessage(
+          id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+          role: MessageRole.aika,
+          content: resp,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(resp);
+        _moodService.onUserSpoke();
+      } finally {
+        setState(() { _isThinking = false; });
+      }
+      return;
+    }
+
     // ── Утренний брифинг ──
     if (_briefingService.isBriefingRequest(text)) {
       setState(() { _isThinking = true; });
@@ -2062,6 +2087,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       icon: _wakeWordEnabled ? Icons.hearing : Icons.hearing_disabled,
                       active: _wakeWordEnabled,
                       onTap: _toggleWakeWord,
+                    ),
+                    _HudButton(
+                      icon: _chatMode ? Icons.chat_bubble_rounded : Icons.smart_toy_rounded,
+                      active: _chatMode,
+                      onTap: () {
+                        setState(() => _chatMode = !_chatMode);
+                        _showSnack(_chatMode ? '💬 Режим общения — просто разговариваем!' : '⚡ Режим команд — выполняю задачи!');
+                      },
                     ),
                     const SizedBox(width: 6),
                     // Профиль/меню
