@@ -132,7 +132,7 @@ class AikaAccessibilityService : AccessibilityService() {
     /** Возвращает все видимые узлы. Лимит 512 — как в OpenClaw. */
     fun getAllNodes(limit: Int = 512): List<NodeSnapshot> {
         val result = mutableListOf<NodeSnapshot>()
-        val roots = runCatching { windows?.mapNotNull { it.root } }.getOrDefault(emptyList())
+        val roots = runCatching { windows?.mapNotNull { it.root }.orEmpty() }.getOrDefault(emptyList())
             .takeIf { it.isNotEmpty() } ?: listOfNotNull(rootInActiveWindow)
         roots.forEachIndexed { wi, root ->
             collectNodes(root, result, limit, wi)
