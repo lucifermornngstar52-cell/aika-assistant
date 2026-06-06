@@ -182,8 +182,8 @@ class AikaAccessibilityService : AccessibilityService() {
     /** Hash экрана — быстрая проверка изменился ли UI (из OpenClaw screenHash) */
     fun screenHash(): String {
         val nodes = getAllNodes(200)
-        val joined = nodes.joinToString("\u001e") {
-            "${it.className}|${it.text}|${it.contentDescription}|${it.viewId}|${it.bounds}"
+        val joined = nodes.joinToString("\u001e") { n ->
+            "${n.className}|${n.text}|${n.contentDescription}|${n.viewId}|${n.bounds.left},${n.bounds.top},${n.bounds.right},${n.bounds.bottom}"
         }
         return MessageDigest.getInstance("SHA-256")
             .digest(joined.toByteArray(Charsets.UTF_8))
@@ -321,12 +321,17 @@ class AikaAccessibilityService : AccessibilityService() {
     }
 
     fun clearField(): Boolean {
+        // Сначала пробуем через системный фокус
         val root = rootInActiveWindow ?: return false
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: getAllNodes().firstOrNull { it.editable && it.enabled }
-            ?: return false
-        val cx = ((focused.bounds.left + focused.bounds.right) / 2).toFloat()
-        val cy = ((focused.bounds.top + focused.bounds.bottom) / 2).toFloat()
+        val sysFocused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (sysFocused != null) {
+            val args = Bundle().apply { putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "") }
+            return sysFocused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        }
+        // Fallback: ищем EditText и тапаем
+        val editNode = getAllNodes().firstOrNull { it.editable && it.enabled } ?: return false
+        val cx = ((editNode.bounds.left + editNode.bounds.right) / 2).toFloat()
+        val cy = ((editNode.bounds.top + editNode.bounds.bottom) / 2).toFloat()
         tapAt(cx, cy)
         Thread.sleep(150)
         val refocused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
@@ -337,7 +342,8 @@ class AikaAccessibilityService : AccessibilityService() {
     fun pressEnter(): Boolean {
         val root = rootInActiveWindow ?: return false
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        return focused.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
+        // ACTION_IME_ENTER не существует в стандартном API — используем paste+enter через KeyEvent
+        return focused.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -471,4 +477,58 @@ class AikaAccessibilityService : AccessibilityService() {
         takeScreenshot()
         return null // реальный скриншот требует MediaProjection
     }
+    // ════════════════════════════════════════════════════════════════
+    // МЕТОДЫ ОБРАТНОЙ СОВМЕСТИМОСТИ (используются в MainActivity)
+    // ════════════════════════════════════════════════════════════════
+
+    /** @deprecated используй getAllNodes().filter{it.clickable} */
+    fun getClickableElements(): List<Map<String, Any>> {
+        return getAllNodes().filter { it.clickable || it.editable }.take(50).map { n ->
+            mapOf(
+                "text"  to (n.text ?: n.contentDescription ?: ""),
+                "desc"  to (n.contentDescription ?: ""),
+                "class" to (n.className?.split(".")?.last() ?: ""),
+                "id"    to (n.viewId?.split("/")?.last() ?: ""),
+                "x"     to ((n.bounds.left + n.bounds.right) / 2),
+                "y"     to ((n.bounds.top + n.bounds.bottom) / 2),
+                "editable" to n.editable
+            )
+        }
+    }
+
+    /** @deprecated используй rootInActiveWindow?.findFocus */
+    fun getFocusedElement(): Map<String, Any?>? {
+        val root = rootInActiveWindow ?: return null
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+        val rect = Rect(); focused.getBoundsInScreen(rect)
+        return mapOf(
+            "text"  to focused.text?.toString(),
+            "desc"  to focused.contentDescription?.toString(),
+            "class" to focused.className?.toString(),
+            "id"    to focused.viewIdResourceName?.toString(),
+            "x"     to ((rect.left + rect.right) / 2),
+            "y"     to ((rect.top + rect.bottom) / 2)
+        )
+    }
+
+    /** @deprecated используй clearField() */
+    fun clearText(): Boolean = clearField()
+
+    /** @deprecated используй scroll(direction) */
+    fun scrollScreen(direction: String) = scroll(direction)
+
+    /** @deprecated используй findNodes(className=className) */
+    fun findNodesByClass(className: String): List<Map<String, Any>> {
+        return findNodes(className = className).map { n ->
+            mapOf(
+                "text"  to (n.text ?: ""),
+                "desc"  to (n.contentDescription ?: ""),
+                "class" to (n.className ?: ""),
+                "id"    to (n.viewId ?: ""),
+                "x"     to ((n.bounds.left + n.bounds.right) / 2),
+                "y"     to ((n.bounds.top + n.bounds.bottom) / 2)
+            )
+        }
+    }
+
 }
