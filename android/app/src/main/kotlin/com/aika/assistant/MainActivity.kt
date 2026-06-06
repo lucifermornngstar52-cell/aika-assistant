@@ -39,7 +39,7 @@ class MainActivity : FlutterActivity() {
     // BroadcastReceiver — получает события от AikaAccessibilityService
     private val screenEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != AikaAccessibilityService.ACTION_SCREEN_EVENT) return
+            // ACTION_SCREEN_EVENT removed — accessibility events are pull-based now
             val pkg   = intent.getStringExtra("package") ?: return
             val label = intent.getStringExtra("label")   ?: ""
             screenEventSink?.success(mapOf("package" to pkg, "label" to label))
@@ -65,7 +65,7 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         autoStartOverlay()
         // Регистрируем ресивер событий смены приложений
-        val filter = IntentFilter(AikaAccessibilityService.ACTION_SCREEN_EVENT)
+        val filter = IntentFilter("com.aika.assistant.SCREEN_EVENT") // legacy
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(screenEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
