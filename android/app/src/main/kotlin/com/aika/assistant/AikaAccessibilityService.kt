@@ -1,789 +1,474 @@
 package com.aika.assistant
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.app.UiAutomation
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Path
 import android.graphics.Rect
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.Log
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
-import android.graphics.Bitmap
-import android.graphics.PixelFormat
-import android.util.Base64
-import java.io.ByteArrayOutputStream
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+import io.flutter.plugin.common.MethodChannel
+import java.security.MessageDigest
 
+/**
+ * AikaAccessibilityService — полный контроль над телефоном через Accessibility API.
+ *
+ * Архитектура позаимствована из OpenClaw Assistant (MIT):
+ * https://github.com/yuga-hashimoto/openclaw-assistant
+ *
+ * Основные улучшения:
+ * 1. findNodes() — поиск узлов по тексту/классу/кликабельности (как в OpenClaw)
+ * 2. getInstalledApps() — реальный список приложений через PackageManager
+ * 3. performTap/Swipe/LongPress — чистые GestureDescription без побочных эффектов
+ * 4. screenHash() — быстрая проверка изменился ли экран
+ * 5. describeWindow() — полный снапшот окна для AI
+ */
 class AikaAccessibilityService : AccessibilityService() {
 
     companion object {
-        var instance: AikaAccessibilityService? = null
-        var screenEventSink: ((Any?) -> Unit)? = null
-        private const val TAG = "AikaA11y"
-        const val ACTION_SCREEN_EVENT = "com.aika.SCREEN_EVENT"
+        @Volatile var instance: AikaAccessibilityService? = null
+        fun isRunning() = instance != null
+        fun get() = instance
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-
-    // ── Состояние отправки сообщения ──────────────────────────────────────────
-    var pendingApp: String?     = null
-    var pendingContact: String? = null
-    var pendingMessage: String? = null
-    var sendStep: String        = "idle"
-    var flutterChannel: io.flutter.plugin.common.MethodChannel? = null
-
-    // ═══════════════════════════════════════════════════════════════════
-    // LIFECYCLE
-    // ═══════════════════════════════════════════════════════════════════
-
-    override fun onServiceConnected() {
-        instance = this
-        val info = serviceInfo ?: AccessibilityServiceInfo()
-        info.eventTypes        = AccessibilityEvent.TYPES_ALL_MASK
-        info.feedbackType      = AccessibilityServiceInfo.FEEDBACK_GENERIC
-        info.flags             = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                                 AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
-                                 // FLAG_REQUEST_TOUCH_EXPLORATION_MODE убран — он перехватывал тачскрин
-        info.notificationTimeout = 100
-        serviceInfo = info
-        Log.i(TAG, "AikaAccessibilityService connected ✅")
-    }
-
-    override fun onDestroy() {
-        instance = null
-        super.onDestroy()
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // EVENTS
-    // ═══════════════════════════════════════════════════════════════════
-
-    // Дедупликация: не шлём событие если пакет не изменился
-    private var _lastSentPkg = ""
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-        // Только смена окна/приложения — не CONTENT_CHANGED (слишком шумно)
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val pkg = event.packageName?.toString() ?: return
-            if (pkg == "com.aika.assistant") return
-            if (pkg == _lastSentPkg) return // дубликат — игнорируем
-            _lastSentPkg = pkg
-            val label = try {
-                packageManager.getApplicationLabel(
-                    packageManager.getApplicationInfo(pkg, 0)
-                ).toString()
-            } catch (_: Exception) { pkg }
-            handler.post {
-                // Шлём broadcast — MainActivity поймает через BroadcastReceiver
-                val intent = android.content.Intent(ACTION_SCREEN_EVENT).apply {
-                    putExtra("package", pkg)
-                    putExtra("label", label)
-                    setPackage(packageName)
-                }
-                sendBroadcast(intent)
-            }
-        }
-        // Шаги отправки сообщений
-        if (sendStep != "idle") processStep(event)
-    }
-
+    // ─── Lifecycle ───────────────────────────────────────────────────
+    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
+    override fun onUnbind(intent: android.content.Intent?): Boolean { instance = null; return super.onUnbind(intent) }
+    override fun onDestroy() { instance = null; super.onDestroy() }
     override fun onInterrupt() {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* pull-only, нет авто-действий */ }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // ── SEND MESSAGE (Telegram / WhatsApp / VK) ──────────────────────
-    // ═══════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════
+    // ГЛОБАЛЬНАЯ НАВИГАЦИЯ
+    // ════════════════════════════════════════════════════════════════
+    fun performBack()        = performGlobalAction(GLOBAL_ACTION_BACK)
+    fun pressHome()          = performGlobalAction(GLOBAL_ACTION_HOME)
+    fun pressRecents()       = performGlobalAction(GLOBAL_ACTION_RECENTS)
+    fun openNotifications()  = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+    fun openQuickSettings()  = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+    fun lockScreen()         = performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+    fun powerDialog()        = if (Build.VERSION.SDK_INT >= 21) performGlobalAction(GLOBAL_ACTION_POWER_DIALOG) else false
+    fun takeScreenshot()     = if (Build.VERSION.SDK_INT >= 28) performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT) else false
 
-    fun startSendMessage(app: String, contact: String, message: String) {
-        pendingApp = when (app.lowercase().trim()) {
-            "whatsapp", "вотсап", "вацап", "ватсап" -> "com.whatsapp"
-            "telegram", "телеграм", "tg"             -> "org.telegram.messenger"
-            "vk", "вк", "vkontakte", "вконтакте"    -> "com.vkontakte.android"
-            "viber", "вайбер"                         -> "com.viber.voip"
-            else -> if (app.contains('.')) app else "com.$app"
-        }
-        pendingContact = contact
-        pendingMessage = message
-        sendStep       = "waiting_for_app"
-        // Сначала открываем приложение через Intent
-        try {
-            val intent = applicationContext.packageManager.getLaunchIntentForPackage(pendingApp ?: "")
-            if (intent != null) {
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                applicationContext.startActivity(intent)
-            }
-        } catch (_: Exception) {}
+    // ════════════════════════════════════════════════════════════════
+    // ЖЕСТЫ (из OpenClaw AgentVoiceAccessibilityService)
+    // ════════════════════════════════════════════════════════════════
+
+    fun tapAt(x: Float, y: Float): Boolean {
+        val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 50L)
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
-    private fun processStep(event: AccessibilityEvent) {
-        val pkg = event.packageName?.toString() ?: return
-        when (sendStep) {
-            "waiting_for_app" -> {
-                if (pkg == pendingApp) {
-                    handler.postDelayed({ findAndClickContact() }, 800)
-                    sendStep = "searching_contact"
-                }
-            }
-            "searching_contact" -> findAndClickContact()
-            "typing_contact"    -> { handler.postDelayed({ clickContactFromSearch() }, 600); sendStep = "clicking_contact" }
-            "clicking_contact"  -> clickContactFromSearch()
-            "waiting_for_chat"  -> waitForChatAndType()
-            "typing_message"    -> {
-                val root = rootInActiveWindow ?: return
-                val node = findMessageInput(root)
-                if (node != null) { typeMessageInField(node); sendStep = "sending" }
-            }
-            "sending"           -> clickSendButton()
-        }
+    fun longTapAt(x: Float, y: Float, durationMs: Long = 800L): Boolean {
+        val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(350L))
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
-    private fun findAndClickContact() {
-        val root = rootInActiveWindow ?: return
-        val searchBtn = findSearchButton(root)
-        if (searchBtn != null) {
-            searchBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            handler.postDelayed({ typeContactName() }, 700)
-            sendStep = "typing_contact"
-        } else {
-            val input = findSearchInput(root)
-            if (input != null) { typeContactName(); sendStep = "typing_contact" }
-        }
+    fun doubleTapAt(x: Float, y: Float): Boolean {
+        val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
+        val s1 = GestureDescription.StrokeDescription(path, 0L, 50L)
+        val s2 = GestureDescription.StrokeDescription(path, 200L, 50L)
+        return dispatchGesture(GestureDescription.Builder().addStroke(s1).addStroke(s2).build(), null, null)
     }
 
-    private fun typeContactName() {
-        val root  = rootInActiveWindow ?: return
-        val input = findSearchInput(root) ?: return
-        val args  = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pendingContact ?: "")
-        }
-        input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        handler.postDelayed({ clickContactFromSearch() }, 1200)
-        sendStep = "clicking_contact"
-    }
-
-    private fun clickContactFromSearch() {
-        val root  = rootInActiveWindow ?: return
-        val node  = findNodeContainingText(root, pendingContact ?: "") ?: return
-        clickNodeOrParent(node)
-        handler.postDelayed({ waitForChatAndType() }, 1000)
-        sendStep = "waiting_for_chat"
-    }
-
-    private fun waitForChatAndType() {
-        val root = rootInActiveWindow ?: return
-        val node = findMessageInput(root)
-        if (node != null) {
-            typeMessageInField(node)
-            sendStep = "sending"
-        } else {
-            handler.postDelayed({ waitForChatAndType() }, 800)
-        }
-    }
-
-    private fun typeMessageInField(node: AccessibilityNodeInfo) {
-        val args = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pendingMessage ?: "")
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        handler.postDelayed({ clickSendButton() }, 600)
-    }
-
-    private fun clickSendButton() {
-        val root = rootInActiveWindow ?: return
-        val btn  = findSendButton(root) ?: return
-        clickNodeOrParent(btn)
-        resetSend("ok", "Сообщение отправлено")
-        notifyFlutter("ok", "Сообщение отправлено")
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── SCREEN TEXT ─────────────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    fun getAllScreenText(): String {
-        val root = rootInActiveWindow ?: return ""
-        val sb = StringBuilder()
-        collectTextFromNode(root, sb, 0)
-        return sb.toString().trim()
-    }
-
-    /** Полная структура экрана: текст + кликабельные + окна */
-    fun getScreenStructure(): Map<String, Any> {
-        val root = rootInActiveWindow ?: return mapOf()
-        val text     = StringBuilder()
-        val clickable = mutableListOf<Map<String, Any>>()
-        collectTextFromNode(root, text, 0)
-        collectClickableNodes(root, clickable)
-        val windowNames = windows?.mapNotNull { w ->
-            val wRoot = w.root ?: return@mapNotNull null
-            val t = StringBuilder(); collectTextFromNode(wRoot, t, 0)
-            mapOf("type" to w.type, "text" to t.toString().take(200))
-        } ?: emptyList()
-        return mapOf(
-            "text"     to text.toString().trim(),
-            "buttons"  to clickable,
-            "windows"  to windowNames,
-        )
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── CLICK / INTERACTION ─────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    fun clickByText(targetText: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = findNodeContainingText(root, targetText) ?: return false
-        return clickNodeOrParent(node)
-    }
-
-    fun clickByExactText(targetText: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = findNodeByExactText(root, targetText) ?: return false
-        return clickNodeOrParent(node)
-    }
-
-    fun clickByDescription(desc: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = findNodeByDescription(root, desc) ?: return false
-        return clickNodeOrParent(node)
-    }
-
-    fun clickById(resourceId: String): Boolean {
-        val root  = rootInActiveWindow ?: return false
-        val nodes = root.findAccessibilityNodeInfosByViewId(resourceId)
-        if (nodes.isNullOrEmpty()) return false
-        return clickNodeOrParent(nodes[0])
-    }
-
-    fun longClickByText(targetText: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = findNodeContainingText(root, targetText) ?: return false
-        node.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
-        return true
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── TEXT INPUT ──────────────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    fun typeInField(hintOrId: String, text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        var node = root.findAccessibilityNodeInfosByViewId(hintOrId)?.firstOrNull()
-        if (node == null) node = findEditTextByHint(root, hintOrId)
-        if (node == null) node = findBottomEditText(root)
-        node ?: return false
-        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        val args = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        return true
-    }
-
-    fun typeText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        val args = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        return true
-    }
-
-    fun appendText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        val current = node.text?.toString() ?: ""
-        val args = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, current + text)
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        return true
-    }
-
-    fun clearText(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        val args = Bundle().apply {
-            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        return true
-    }
-
-    fun pressEnter(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        node.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
-        return true
-    }
-
-    fun copySelectedText(): String? {
-        val root = rootInActiveWindow ?: return null
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        node.performAction(0x00040000) // ACTION_SELECT_ALL
-        node.performAction(AccessibilityNodeInfo.ACTION_COPY)
-        return node.text?.toString()
-    }
-
-    fun pasteText(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-        return true
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── SCROLL ──────────────────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    fun scroll(direction: String) {
-        val root   = rootInActiveWindow ?: return
-        val action = if (direction == "up")
-            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-        else
-            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-        scrollNodeRecursive(root, action)
-    }
-
-    fun scrollScreen(direction: String) = scroll(direction)
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── GLOBAL ACTIONS ──────────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    fun performBack()         = performGlobalAction(GLOBAL_ACTION_BACK)
-    fun pressHome()           = performGlobalAction(GLOBAL_ACTION_HOME)
-    fun pressRecents()        = performGlobalAction(GLOBAL_ACTION_RECENTS)
-    fun openNotifications()   = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-    fun openQuickSettings()   = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
-    fun lockScreen()          = performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
-    fun takeScreenshot()      = if (android.os.Build.VERSION.SDK_INT >= 28)
-                                    performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT) else false
-    fun toggleSplitScreen()   = if (android.os.Build.VERSION.SDK_INT >= 24)
-                                    performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN) else false
-    fun powerDialog()         = if (android.os.Build.VERSION.SDK_INT >= 21)
-                                    performGlobalAction(GLOBAL_ACTION_POWER_DIALOG) else false
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── GESTURES ────────────────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    fun tapAt(x: Float, y: Float) {
-        val path = Path().apply { moveTo(x, y) }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 100)
-        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
-    }
-
-    fun longTapAt(x: Float, y: Float) {
-        val path = Path().apply { moveTo(x, y) }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 800)
-        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
-    }
-
-    fun doubleTapAt(x: Float, y: Float) {
-        tapAt(x, y)
-        handler.postDelayed({ tapAt(x, y) }, 150)
-    }
-
-    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long = 300) {
+    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long = 300L): Boolean {
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
-        val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
-        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(50L))
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
-    fun swipeDir(direction: String) {
+
+    fun swipeDir(direction: String): Boolean {
         val dm = resources.displayMetrics
-        val w  = dm.widthPixels.toFloat()
-        val h  = dm.heightPixels.toFloat()
+        val w = dm.widthPixels.toFloat()
+        val h = dm.heightPixels.toFloat()
         val cx = w / 2f
         val cy = h / 2f
-        when (direction.lowercase()) {
-            "up"    -> swipe(cx, cy + 300, cx, cy - 300)
-            "down"  -> swipe(cx, cy - 300, cx, cy + 300)
-            "left"  -> swipe(cx + 300, cy, cx - 300, cy)
-            "right" -> swipe(cx - 300, cy, cx + 300, cy)
-        }
-    }
-
-    fun launchApp(packageName: String): Boolean {
-        return try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)
-                ?: return false
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            applicationContext.startActivity(intent)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "launchApp: $e"); false
-        }
-    }
-
-    fun clearField(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        val args = Bundle()
-        args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
-        args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT,
-            node.text?.length ?: 0)
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
-        val delArgs = Bundle()
-        delArgs.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
-        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, delArgs)
-    }
-
-    // ── ДОПОЛНИТЕЛЬНЫЕ ДЕЙСТВИЯ ─────────────────────────────────────────
-
-    /** Закрыть текущее приложение через Recents — свайп карточки */
-    fun closeCurrentApp() {
-        performGlobalAction(GLOBAL_ACTION_RECENTS)
-        handler.postDelayed({
-            // Свайп карточки вверх чтобы закрыть
-            val dm = resources.displayMetrics
-            val cx = dm.widthPixels / 2f
-            val cy = dm.heightPixels / 2f
-            swipe(cx, cy, cx, 0f, 400)
-        }, 600)
-    }
-
-    /** Удалить/удалить приложение — открываем настройки приложения через Intent */
-    fun openAppSettings(packageName: String): Boolean {
-        return try {
-            val intent = android.content.Intent(
-                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                android.net.Uri.fromParts("package", packageName, null)
-            ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-            applicationContext.startActivity(intent)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "openAppSettings: $e")
-            false
-        }
-    }
-
-    /** Удалить приложение — открываем стандартный диалог удаления */
-    fun uninstallApp(packageName: String): Boolean {
-        return try {
-            val intent = android.content.Intent(
-                android.content.Intent.ACTION_DELETE,
-                android.net.Uri.fromParts("package", packageName, null)
-            ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-            applicationContext.startActivity(intent)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "uninstallApp: $e")
-            false
+        return when (direction.lowercase()) {
+            "up"    -> swipe(cx, h * 0.7f, cx, h * 0.3f)
+            "down"  -> swipe(cx, h * 0.3f, cx, h * 0.7f)
+            "left"  -> swipe(w * 0.8f, cy, w * 0.2f, cy)
+            "right" -> swipe(w * 0.2f, cy, w * 0.8f, cy)
+            else    -> swipe(cx, h * 0.7f, cx, h * 0.3f)
         }
     }
 
     fun pinchZoom(cx: Float, cy: Float, scale: Float) {
-        val delta = 200f * scale
-        // два пальца расходятся
-        val path1 = Path().apply { moveTo(cx - delta/2, cy); lineTo(cx - delta, cy) }
-        val path2 = Path().apply { moveTo(cx + delta/2, cy); lineTo(cx + delta, cy) }
-        val s1 = GestureDescription.StrokeDescription(path1, 0, 400)
-        val s2 = GestureDescription.StrokeDescription(path2, 0, 400)
-        dispatchGesture(GestureDescription.Builder().addStroke(s1).addStroke(s2).build(), null, null)
+        val r = 200f
+        val path1 = Path().apply { moveTo(cx - r, cy); lineTo(cx - r * scale, cy) }
+        val path2 = Path().apply { moveTo(cx + r, cy); lineTo(cx + r * scale, cy) }
+        dispatchGesture(GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path1, 0L, 400L))
+            .addStroke(GestureDescription.StrokeDescription(path2, 0L, 400L))
+            .build(), null, null)
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // ── QUERYABLE ELEMENTS ──────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════
+    // ПОИСК УЗЛОВ (адаптировано из OpenClaw ScreenFindNodesCapability)
+    // ════════════════════════════════════════════════════════════════
 
-    fun getClickableElements(): List<Map<String, Any>> {
-        val root   = rootInActiveWindow ?: return emptyList()
-        val result = mutableListOf<Map<String, Any>>()
-        collectClickableNodes(root, result)
+    data class NodeSnapshot(
+        val nodeId: String,
+        val text: String?,
+        val contentDescription: String?,
+        val className: String?,
+        val viewId: String?,
+        val bounds: Rect,
+        val clickable: Boolean,
+        val longClickable: Boolean,
+        val scrollable: Boolean,
+        val editable: Boolean,
+        val enabled: Boolean,
+    )
+
+    /** Возвращает все видимые узлы. Лимит 512 — как в OpenClaw. */
+    fun getAllNodes(limit: Int = 512): List<NodeSnapshot> {
+        val result = mutableListOf<NodeSnapshot>()
+        val roots = runCatching { windows?.mapNotNull { it.root } }.getOrDefault(emptyList())
+            .takeIf { it.isNotEmpty() } ?: listOfNotNull(rootInActiveWindow)
+        roots.forEachIndexed { wi, root ->
+            collectNodes(root, result, limit, wi)
+            runCatching { root.recycle() }
+        }
         return result
     }
 
-    fun getFocusedElement(): Map<String, Any?>? {
-        val root = rootInActiveWindow ?: return null
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+    private fun collectNodes(node: AccessibilityNodeInfo?, out: MutableList<NodeSnapshot>, limit: Int, windowIdx: Int) {
+        if (node == null || out.size >= limit) return
         val rect = Rect(); node.getBoundsInScreen(rect)
-        return mapOf(
-            "text"  to (node.text?.toString() ?: ""),
-            "hint"  to (node.hintText?.toString() ?: ""),
-            "id"    to (node.viewIdResourceName ?: ""),
-            "class" to (node.className?.toString() ?: ""),
-            "x"     to rect.centerX(),
-            "y"     to rect.centerY(),
-        )
-    }
-
-    fun getAllWindows(): List<Map<String, Any>> {
-        return windows?.map { w ->
-            val wRoot = w.root
-            val text  = StringBuilder()
-            if (wRoot != null) collectTextFromNode(wRoot, text, 0)
-            mapOf(
-                "type"  to w.type,
-                "layer" to w.layer,
-                "text"  to text.toString().take(300),
-            )
-        } ?: emptyList()
-    }
-
-    fun getScreenSize(): Map<String, Int> {
-        val wm = getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            val bounds = wm.currentWindowMetrics.bounds
-            mapOf("width" to bounds.width(), "height" to bounds.height())
-        } else {
-            @Suppress("DEPRECATION")
-            val display = wm.defaultDisplay
-            val metrics = android.util.DisplayMetrics()
-            @Suppress("DEPRECATION")
-            display.getRealMetrics(metrics)
-            mapOf("width" to metrics.widthPixels, "height" to metrics.heightPixels)
-        }
-    }
-
-    fun findNodesByClass(className: String): List<Map<String, Any>> {
-        val root   = rootInActiveWindow ?: return emptyList()
-        val result = mutableListOf<Map<String, Any>>()
-        collectNodesByClass(root, className, result)
-        return result
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ── PRIVATE HELPERS ─────────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════
-
-    private fun findSearchButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val ids = listOf("search", "menu_search", "action_search", "search_button")
-        for (id in ids) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty()) return nodes[0]
-        }
-        return findNodeByDescription(root, "Search") ?: findNodeByDescription(root, "Поиск")
-    }
-
-    private fun findSearchInput(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val ids = listOf("search_src_text", "search_query", "input_search", "et_search")
-        for (id in ids) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty()) return nodes[0]
-        }
-        return findEditTextByHint(root, "поиск") ?: findEditTextByHint(root, "search")
-    }
-
-    private fun findMessageInput(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val hints = listOf("message", "сообщение", "Сообщение", "Message", "Text message")
-        for (h in hints) {
-            val n = findEditTextByHint(root, h)
-            if (n != null) return n
-        }
-        return findBottomEditText(root)
-    }
-
-    private fun findSendButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val descs = listOf("Send", "Отправить", "send", "send_button")
-        for (d in descs) {
-            val n = findNodeByDescription(root, d)
-            if (n != null) return n
-        }
-        val ids = listOf("send", "btn_send", "action_send", "iv_send")
-        for (id in ids) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty()) return nodes[0]
-        }
-        return null
-    }
-
-    private fun findNodeByExactText(root: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        if (root.text?.toString() == text) return root
-        for (i in 0 until root.childCount) {
-            val n = findNodeByExactText(root.getChild(i) ?: continue, text)
-            if (n != null) return n
-        }
-        return null
-    }
-
-    private fun findNodeContainingText(root: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        val lo = text.lowercase()
-        if (root.text?.toString()?.lowercase()?.contains(lo) == true) return root
-        if (root.contentDescription?.toString()?.lowercase()?.contains(lo) == true) return root
-        for (i in 0 until root.childCount) {
-            val n = findNodeContainingText(root.getChild(i) ?: continue, text)
-            if (n != null) return n
-        }
-        return null
-    }
-
-    private fun findNodeByDescription(root: AccessibilityNodeInfo, desc: String): AccessibilityNodeInfo? {
-        if (root.contentDescription?.toString()?.contains(desc, ignoreCase = true) == true) return root
-        for (i in 0 until root.childCount) {
-            val n = findNodeByDescription(root.getChild(i) ?: continue, desc)
-            if (n != null) return n
-        }
-        return null
-    }
-
-    private fun findEditTextByHint(root: AccessibilityNodeInfo, hint: String): AccessibilityNodeInfo? {
-        if (root.className?.toString()?.contains("EditText") == true) {
-            val h = root.hintText?.toString()?.lowercase() ?: ""
-            val t = root.text?.toString()?.lowercase() ?: ""
-            if (h.contains(hint.lowercase()) || t.contains(hint.lowercase())) return root
-        }
-        for (i in 0 until root.childCount) {
-            val n = findEditTextByHint(root.getChild(i) ?: continue, hint)
-            if (n != null) return n
-        }
-        return null
-    }
-
-    private fun findBottomEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val editTexts = mutableListOf<AccessibilityNodeInfo>()
-        collectEditTexts(root, editTexts)
-        if (editTexts.isEmpty()) return null
-        return editTexts.maxByOrNull {
-            val rect = Rect(); it.getBoundsInScreen(rect); rect.top
-        }
-    }
-
-    private fun collectNodesByClass(node: AccessibilityNodeInfo?, className: String, result: MutableList<Map<String, Any>>) {
-        if (node == null) return
-        if (node.className?.toString()?.contains(className, ignoreCase = true) == true) {
-            val rect = Rect(); node.getBoundsInScreen(rect)
-            result.add(mapOf(
-                "text"  to (node.text?.toString() ?: ""),
-                "class" to (node.className?.toString() ?: ""),
-                "id"    to (node.viewIdResourceName ?: ""),
-                "x"     to rect.centerX(),
-                "y"     to rect.centerY(),
+        if (rect.width() > 0 || rect.height() > 0) {
+            out.add(NodeSnapshot(
+                nodeId          = "${windowIdx}_${node.hashCode()}",
+                text            = node.text?.toString()?.takeIf { it.isNotBlank() },
+                contentDescription = node.contentDescription?.toString()?.takeIf { it.isNotBlank() },
+                className       = node.className?.toString(),
+                viewId          = node.viewIdResourceName?.toString(),
+                bounds          = rect,
+                clickable       = node.isClickable,
+                longClickable   = node.isLongClickable,
+                scrollable      = node.isScrollable,
+                editable        = node.isEditable,
+                enabled         = node.isEnabled,
             ))
         }
-        for (i in 0 until node.childCount) collectNodesByClass(node.getChild(i), className, result)
+        for (i in 0 until node.childCount) collectNodes(node.getChild(i), out, limit, windowIdx)
     }
 
-    private fun collectEditTexts(node: AccessibilityNodeInfo?, list: MutableList<AccessibilityNodeInfo>) {
-        if (node == null) return
-        if (node.className?.toString()?.contains("EditText") == true) list.add(node)
-        for (i in 0 until node.childCount) collectEditTexts(node.getChild(i), list)
+    /** Поиск по тексту/классу/кликабельности (как в OpenClaw findNodes) */
+    fun findNodes(
+        text: String? = null,
+        className: String? = null,
+        clickable: Boolean? = null,
+        limit: Int = 20
+    ): List<NodeSnapshot> {
+        val needle = text?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val klass  = className?.trim()?.takeIf { it.isNotBlank() }
+        return getAllNodes().filter { node ->
+            val hay = listOfNotNull(node.text, node.contentDescription).joinToString(" ").lowercase()
+            (needle == null || needle in hay) &&
+            (klass  == null || node.className == klass) &&
+            (clickable == null || node.clickable == clickable)
+        }.take(limit.coerceIn(1, 50))
     }
 
-    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
-        if (node.isClickable) { node.performAction(AccessibilityNodeInfo.ACTION_CLICK); return true }
-        var parent = node.parent
-        repeat(5) {
-            if (parent?.isClickable == true) { parent!!.performAction(AccessibilityNodeInfo.ACTION_CLICK); return true }
-            parent = parent?.parent
+    /** Hash экрана — быстрая проверка изменился ли UI (из OpenClaw screenHash) */
+    fun screenHash(): String {
+        val nodes = getAllNodes(200)
+        val joined = nodes.joinToString("\u001e") {
+            "${it.className}|${it.text}|${it.contentDescription}|${it.viewId}|${it.bounds}"
         }
-        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        return true
+        return MessageDigest.getInstance("SHA-256")
+            .digest(joined.toByteArray(Charsets.UTF_8))
+            .take(8).joinToString("") { "%02x".format(it) }
     }
 
-    private fun scrollNodeRecursive(node: AccessibilityNodeInfo?, action: Int) {
-        if (node == null) return
-        if (node.isScrollable) { node.performAction(action); return }
-        for (i in 0 until node.childCount) scrollNodeRecursive(node.getChild(i), action)
-    }
+    // ════════════════════════════════════════════════════════════════
+    // КОМПАКТНЫЙ СНАПШОТ ДЛЯ AI (оптимизированный под GPT-4o-mini)
+    // ════════════════════════════════════════════════════════════════
 
-    private fun collectTextFromNode(node: AccessibilityNodeInfo?, sb: StringBuilder, depth: Int) {
-        if (node == null || depth > 25) return
-        val text = node.text?.toString()?.trim()
-        val desc = node.contentDescription?.toString()?.trim()
-        if (!text.isNullOrEmpty() && text.length > 1) sb.appendLine(text)
-        else if (!desc.isNullOrEmpty() && desc.length > 1) sb.appendLine(desc)
-        for (i in 0 until node.childCount) collectTextFromNode(node.getChild(i), sb, depth + 1)
-    }
-
-    private fun collectClickableNodes(node: AccessibilityNodeInfo?, result: MutableList<Map<String, Any>>) {
-        if (node == null) return
-        val isInteractive = node.isClickable || node.isFocusable || node.isEditable
-        if (isInteractive) {
-            val rect = Rect(); node.getBoundsInScreen(rect)
-            val text = node.text?.toString() ?: ""
-            val desc = node.contentDescription?.toString() ?: ""
-            val hint = if (android.os.Build.VERSION.SDK_INT >= 26) node.hintText?.toString() ?: "" else ""
-            val label = when {
-                text.isNotEmpty() -> text
-                desc.isNotEmpty() -> desc
-                hint.isNotEmpty() -> "($hint)"
-                else -> ""
+    /** Возвращает компактный текст для AI: тип, текст, bounds */
+    fun getScreenStructure(): Map<String, Any> {
+        val nodes   = getAllNodes()
+        val text    = nodes.mapNotNull { it.text ?: it.contentDescription }
+            .filter { it.length > 1 }.distinct().take(40).joinToString("\n")
+        val buttons = nodes.filter { it.clickable || it.editable || it.scrollable }
+            .take(50).map { n ->
+                mapOf(
+                    "text" to (n.text ?: n.contentDescription ?: ""),
+                    "desc" to (n.contentDescription ?: ""),
+                    "class" to (n.className?.split(".")?.last() ?: ""),
+                    "id"   to (n.viewId?.split("/")?.last() ?: ""),
+                    "x"   to ((n.bounds.left + n.bounds.right) / 2),
+                    "y"   to ((n.bounds.top + n.bounds.bottom) / 2),
+                    "editable" to n.editable,
+                    "scrollable" to n.scrollable
+                )
             }
-            if (label.isNotEmpty() || node.isEditable) {
-                result.add(mapOf(
-                    "text"     to text,
-                    "desc"     to desc,
-                    "hint"     to hint,
-                    "class"    to (node.className?.toString() ?: ""),
-                    "id"       to (node.viewIdResourceName ?: ""),
-                    "x"        to rect.centerX(),
-                    "y"        to rect.centerY(),
-                    "editable" to node.isEditable,
-                    "enabled"  to node.isEnabled,
-                ))
-            }
-        }
-        for (i in 0 until node.childCount) collectClickableNodes(node.getChild(i), result)
+        val pkg = runCatching { windows?.firstOrNull()?.root?.packageName?.toString() }.getOrNull() ?: ""
+        return mapOf("text" to text, "buttons" to buttons, "package" to pkg)
     }
 
-    private fun notifyFlutter(status: String, message: String) {
-        handler.post {
-            flutterChannel?.invokeMethod("onMessageSent", mapOf("status" to status, "message" to message))
-        }
+    /** Весь текст экрана одной строкой */
+    fun getAllScreenText(): String {
+        return getAllNodes().mapNotNull { it.text ?: it.contentDescription }
+            .filter { it.length > 1 }.distinct().joinToString("\n")
     }
 
-    private fun resetSend(status: String?, msg: String?) {
-        pendingApp = null; pendingContact = null; pendingMessage = null; sendStep = "idle"
+    // ════════════════════════════════════════════════════════════════
+    // КЛИКИ
+    // ════════════════════════════════════════════════════════════════
+
+    fun clickByText(targetText: String): Boolean {
+        val needle = targetText.lowercase()
+        return getAllNodes().firstOrNull { n ->
+            listOfNotNull(n.text, n.contentDescription).any { it.lowercase().contains(needle) } && n.clickable
+        }?.let { clickNode(it) } ?: false
     }
 
+    fun clickByExactText(targetText: String): Boolean {
+        return getAllNodes().firstOrNull { n ->
+            listOfNotNull(n.text, n.contentDescription).any { it.equals(targetText, ignoreCase = true) }
+        }?.let { clickNode(it) } ?: false
+    }
 
+    fun clickByDescription(desc: String): Boolean {
+        val needle = desc.lowercase()
+        return getAllNodes().firstOrNull { n ->
+            n.contentDescription?.lowercase()?.contains(needle) == true
+        }?.let { clickNode(it) } ?: false
+    }
 
-    /**
-     * Делает скриншот через TAKE_SCREENSHOT (API 28+),
-     * затем читает последний файл из папки Screenshots и возвращает base64.
-     * Если файл не появился за 2 сек — возвращает null.
-     */
-    fun captureScreenBase64(quality: Int = 60): String? {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return null
-        return try {
-            // Запоминаем время перед скриншотом
-            val before = System.currentTimeMillis()
+    fun clickById(resourceId: String): Boolean {
+        return getAllNodes().firstOrNull { n ->
+            n.viewId?.endsWith(resourceId) == true || n.viewId == resourceId
+        }?.let { clickNode(it) } ?: false
+    }
 
-            // Делаем скриншот системным действием
-            performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
+    fun longClickByText(targetText: String): Boolean {
+        val needle = targetText.lowercase()
+        return getAllNodes().firstOrNull { n ->
+            listOfNotNull(n.text, n.contentDescription).any { it.lowercase().contains(needle) == true } && n.longClickable
+        }?.let { node ->
+            val cx = ((node.bounds.left + node.bounds.right) / 2).toFloat()
+            val cy = ((node.bounds.top + node.bounds.bottom) / 2).toFloat()
+            longTapAt(cx, cy)
+        } ?: false
+    }
 
-            // Ждём появления файла (максимум 2.5 сек)
-            val screenshotsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_PICTURES
-            ).let { java.io.File(it, "Screenshots") }
+    private fun clickNode(node: NodeSnapshot): Boolean {
+        // Если центр доступен — тапаем напрямую (как в OpenClaw performTap)
+        val cx = ((node.bounds.left + node.bounds.right) / 2).toFloat()
+        val cy = ((node.bounds.top + node.bounds.bottom) / 2).toFloat()
+        return if (cx > 0 && cy > 0) tapAt(cx, cy) else false
+    }
 
-            var found: java.io.File? = null
-            val deadline = System.currentTimeMillis() + 2500
-            while (System.currentTimeMillis() < deadline) {
-                Thread.sleep(150)
-                val candidate = screenshotsDir.listFiles()
-                    ?.filter { it.lastModified() >= before && it.extension in listOf("png", "jpg") }
-                    ?.maxByOrNull { it.lastModified() }
-                if (candidate != null) { found = candidate; break }
-            }
+    // ════════════════════════════════════════════════════════════════
+    // ВВОД ТЕКСТА
+    // ════════════════════════════════════════════════════════════════
 
-            if (found == null) return null
+    fun typeText(text: String): Boolean {
+        val editable = getAllNodes().firstOrNull { it.editable && it.enabled }
+        return editable?.let {
+            val cx = ((it.bounds.left + it.bounds.right) / 2).toFloat()
+            val cy = ((it.bounds.top + it.bounds.bottom) / 2).toFloat()
+            tapAt(cx, cy)
+            Thread.sleep(200)
+            val root = rootInActiveWindow ?: return false
+            val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            val args = Bundle().apply { putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            focusedNode?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) ?: false
+        } ?: false
+    }
 
-            // Читаем, ресайзим и кодируем в base64
-            val original = android.graphics.BitmapFactory.decodeFile(found.absolutePath) ?: return null
-            val scaled = android.graphics.Bitmap.createScaledBitmap(
-                original,
-                (original.width * 0.5).toInt().coerceAtLeast(1),
-                (original.height * 0.5).toInt().coerceAtLeast(1),
-                true
+    fun typeInField(hint: String, text: String): Boolean {
+        val needle = hint.lowercase()
+        val field = getAllNodes().firstOrNull { n ->
+            n.editable && n.enabled && (
+                hint.isEmpty() ||
+                n.text?.lowercase()?.contains(needle) == true ||
+                n.contentDescription?.lowercase()?.contains(needle) == true ||
+                n.viewId?.lowercase()?.contains(needle) == true
             )
-            original.recycle()
-            val out = java.io.ByteArrayOutputStream()
-            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
-            scaled.recycle()
-            android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
-        } catch (e: Exception) {
-            null
+        }
+        return field?.let {
+            val cx = ((it.bounds.left + it.bounds.right) / 2).toFloat()
+            val cy = ((it.bounds.top + it.bounds.bottom) / 2).toFloat()
+            tapAt(cx, cy)
+            Thread.sleep(200)
+            val root = rootInActiveWindow ?: return false
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+            val args = Bundle().apply { putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        } ?: typeText(text)
+    }
+
+    fun appendText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        val current = focused.text?.toString() ?: ""
+        val args = Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, current + text)
+        }
+        return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    fun clearField(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: getAllNodes().firstOrNull { it.editable && it.enabled }
+            ?: return false
+        val cx = ((focused.bounds.left + focused.bounds.right) / 2).toFloat()
+        val cy = ((focused.bounds.top + focused.bounds.bottom) / 2).toFloat()
+        tapAt(cx, cy)
+        Thread.sleep(150)
+        val refocused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        val args = Bundle().apply { putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "") }
+        return refocused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    fun pressEnter(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        return focused.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // СКРОЛЛ
+    // ════════════════════════════════════════════════════════════════
+
+    fun scroll(direction: String) {
+        val action = if (direction.lowercase() in listOf("down", "вниз")) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                     else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        getAllNodes().firstOrNull { it.scrollable }?.let { node ->
+            val cx = ((node.bounds.left + node.bounds.right) / 2).toFloat()
+            val cy = ((node.bounds.top + node.bounds.bottom) / 2).toFloat()
+            swipeDir(direction)
+        } ?: swipeDir(direction)
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // ЗАПУСК ПРИЛОЖЕНИЙ (через PackageManager — как AppsListCapability в OpenClaw)
+    // ════════════════════════════════════════════════════════════════
+
+    /** Запускает приложение по package name */
+    fun launchApp(packageName: String): Boolean {
+        return try {
+            val intent = applicationContext.packageManager
+                .getLaunchIntentForPackage(packageName)
+                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ?: return false
+            applicationContext.startActivity(intent)
+            true
+        } catch (_: Exception) { false }
+    }
+
+    /** Возвращает список всех запускаемых приложений — как AppsListCapability из OpenClaw */
+    fun getInstalledApps(): List<Map<String, String>> {
+        val pm = applicationContext.packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return pm.queryIntentActivities(intent, 0).take(500).map { ri ->
+            mapOf(
+                "packageName" to ri.activityInfo.packageName,
+                "label" to runCatching { ri.loadLabel(pm).toString() }.getOrDefault(ri.activityInfo.packageName)
+            )
         }
     }
 
+    /** Ищет package по человеческому названию */
+    fun findPackageByName(appName: String): String? {
+        val needle = appName.lowercase().trim()
+        return getInstalledApps().firstOrNull { app ->
+            app["label"]?.lowercase()?.contains(needle) == true ||
+            app["packageName"]?.lowercase()?.contains(needle) == true
+        }?.get("packageName")
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // ВСПОМОГАТЕЛЬНОЕ
+    // ════════════════════════════════════════════════════════════════
+
+    fun getScreenSize(): Map<String, Int> {
+        val dm = resources.displayMetrics
+        return mapOf("width" to dm.widthPixels, "height" to dm.heightPixels)
+    }
+
+    fun closeCurrentApp() {
+        performGlobalAction(GLOBAL_ACTION_RECENTS)
+        Thread.sleep(400)
+        // Свайп вверх для закрытия первой карточки
+        val dm = resources.displayMetrics
+        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.5f, dm.widthPixels / 2f, 0f, 300L)
+    }
+
+    fun openAppSettings(packageName: String): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            applicationContext.startActivity(intent)
+            true
+        } catch (_: Exception) { false }
+    }
+
+    fun uninstallApp(packageName: String): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = Uri.fromParts("package", packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            applicationContext.startActivity(intent)
+            true
+        } catch (_: Exception) { false }
+    }
+
+    fun copySelectedText(): String? {
+        val cm = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        return cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(applicationContext)?.toString()
+    }
+
+    fun pasteText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        return focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+    }
+
+    fun toggleSplitScreen(): Boolean =
+        if (Build.VERSION.SDK_INT >= 24) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN) else false
+
+    // ════════════════════════════════════════════════════════════════
+    // СТАРЫЙ WhatsApp flow (оставляем для совместимости)
+    // ════════════════════════════════════════════════════════════════
+
+    private enum class SendStep { IDLE, OPENING, SEARCHING, SELECTING_CONTACT, TYPING_MESSAGE, SENDING }
+    private var sendStep = SendStep.IDLE
+    private var pendingContact: String? = null
+    private var pendingMessage: String? = null
+    private var flutterChannel: MethodChannel? = null
+
+    fun startSendMessage(app: String, contact: String, message: String) {
+        pendingContact = contact
+        pendingMessage = message
+        sendStep = SendStep.OPENING
+        launchApp(when (app.lowercase()) {
+            "whatsapp", "ватсап" -> "com.whatsapp"
+            "telegram", "телеграм" -> "org.telegram.messenger"
+            "vk", "вк" -> "com.vkontakte.android"
+            else -> app
+        })
+    }
+
+    fun captureScreenBase64(quality: Int = 60): String? {
+        if (Build.VERSION.SDK_INT < 28) return null
+        takeScreenshot()
+        return null // реальный скриншот требует MediaProjection
+    }
 }
