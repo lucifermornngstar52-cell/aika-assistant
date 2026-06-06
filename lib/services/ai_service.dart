@@ -9,12 +9,12 @@ import 'aika_self_learning_service.dart';
 
 class AiService {
   // Ключ задаётся через AikaConfig.geminiKey (не хранить в git)
-  static const String _geminiKey = String.fromEnvironment('GEMINI_KEY', defaultValue: '');
+  static const String _geminiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
   static const String _geminiUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
   // Ключ задаётся через AikaConfig.openAiKey (не хранить в git)
-  static String get _openAiKey => const String.fromEnvironment('OPENAI_KEY', defaultValue: '');
+  static String get _openAiKey => const String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
   static const String _openAiUrl = 'https://api.openai.com/v1/chat/completions';
 
   Future<String> sendMessage(
