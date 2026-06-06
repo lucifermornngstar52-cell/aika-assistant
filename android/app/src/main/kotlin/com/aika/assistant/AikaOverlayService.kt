@@ -29,7 +29,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * AikaOverlayService — Live2D overlay через Android WebView.
+ * AivoraOverlayService — Live2D overlay через Android WebView.
  * Окно ровно по размеру модели, не перекрывает UI.
  * Перетаскивание работает нативно через WindowManager.updateViewLayout.
  */
@@ -332,7 +332,7 @@ class AikaOverlayService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "Aika Overlay", NotificationManager.IMPORTANCE_MIN)
+            val ch = NotificationChannel(CHANNEL_ID, "Aivora Overlay", NotificationManager.IMPORTANCE_MIN)
             ch.setShowBadge(false)
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
@@ -340,7 +340,7 @@ class AikaOverlayService : Service() {
 
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Aika активна")
+            .setContentTitle("Aivora активна")
             .setContentText("Нажми чтобы открыть")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_MIN)
