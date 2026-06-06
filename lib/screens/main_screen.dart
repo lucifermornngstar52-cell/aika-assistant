@@ -131,7 +131,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _accessibilityDialogShown = false;
   bool _notifDialogShown        = false;
   Timer? _idleTimer;      // Таймер бездействия → stretch
-  String _assistantName = 'Aika';
+  String _assistantName = 'Aivora';
   String _userName = '';
 
   AikaState get _avatarState {
@@ -707,7 +707,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _assistantName = prefs.getString('assistant_name') ?? 'Aika';
+      _assistantName = prefs.getString('assistant_name') ?? 'Aivora';
       _userName = prefs.getString('user_name') ?? '';
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
       _bgCustomImage = prefs.getString('bg_custom_image');
