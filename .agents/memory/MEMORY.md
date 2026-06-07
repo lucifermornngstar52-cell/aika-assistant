@@ -1,0 +1,3 @@
+- [Aika architecture](aika-architecture.md) — Flutter/Android аниме AI ассистент; голос → VoiceCommandProcessor → PhoneControl → AI → DeviceService; лендинг на Node.js port 5000.
+- [Voice command pipeline](voice-pipeline.md) — новый VoiceCommandProcessor (150+ команд) вставлен ПЕРЕД PhoneControlService в _sendMessage() main_screen.dart; обрабатывает оффлайн без AI.
+- [DeviceService actions](device-service-actions.md) — executeAction() расширен: brightness_*, open_wifi/bt/airplane/hotspot/dnd/power_save, lock_screen, power_menu, youtube_search_*, maps_route_*, maps_search_*, get_weather, volume_%, extraApps map (22 приложения).

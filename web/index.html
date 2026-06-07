@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aika Assistant — Anime AI Assistant</title>
+  <title>Айка — AI Ассистент | Голосовое управление</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -40,7 +40,7 @@
     .container {
       position: relative;
       z-index: 1;
-      max-width: 900px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 40px 24px 80px;
     }
@@ -52,13 +52,13 @@
 
     .avatar-wrapper {
       display: inline-block;
-      width: 130px;
-      height: 130px;
+      width: 140px;
+      height: 140px;
       border-radius: 50%;
       background: linear-gradient(135deg, #a18cd1, #fbc2eb);
       padding: 4px;
       margin-bottom: 20px;
-      box-shadow: 0 0 40px rgba(161,140,209,0.6);
+      box-shadow: 0 0 50px rgba(161,140,209,0.7);
       animation: float 4s ease-in-out infinite;
     }
 
@@ -76,8 +76,8 @@
     }
 
     h1 {
-      font-size: 2.8rem;
-      font-weight: 800;
+      font-size: 3rem;
+      font-weight: 900;
       background: linear-gradient(135deg, #a18cd1, #fbc2eb);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -86,9 +86,9 @@
     }
 
     .tagline {
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       color: #c9b8e8;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
 
     .badge-row {
@@ -111,21 +111,22 @@
     .alert {
       background: rgba(255,200,80,0.12);
       border: 1px solid rgba(255,200,80,0.35);
-      border-radius: 12px;
-      padding: 16px 20px;
-      margin-bottom: 40px;
+      border-radius: 14px;
+      padding: 16px 22px;
+      margin-bottom: 44px;
       color: #ffe08a;
       font-size: 0.95rem;
       text-align: center;
+      line-height: 1.6;
     }
 
     .alert strong { color: #ffd43b; }
 
     .section-title {
       font-size: 1.3rem;
-      font-weight: 700;
+      font-weight: 800;
       color: #d4c6f0;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -133,40 +134,40 @@
 
     .card-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 16px;
-      margin-bottom: 40px;
+      margin-bottom: 44px;
     }
 
     .card {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 20px;
+      border-radius: 18px;
+      padding: 22px;
       transition: transform 0.2s, box-shadow 0.2s;
     }
 
     .card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 12px 40px rgba(161,140,209,0.2);
+      transform: translateY(-5px);
+      box-shadow: 0 14px 44px rgba(161,140,209,0.25);
     }
 
-    .card-icon { font-size: 2rem; margin-bottom: 10px; }
-    .card-title { font-size: 1rem; font-weight: 700; margin-bottom: 6px; color: #e0d4f7; }
-    .card-desc  { font-size: 0.85rem; color: #b0a0d0; line-height: 1.5; }
+    .card-icon { font-size: 2.2rem; margin-bottom: 12px; }
+    .card-title { font-size: 1rem; font-weight: 800; margin-bottom: 7px; color: #e0d4f7; }
+    .card-desc  { font-size: 0.85rem; color: #b0a0d0; line-height: 1.55; }
 
     .setup-box {
       background: rgba(0,0,0,0.3);
       border: 1px solid rgba(161,140,209,0.3);
-      border-radius: 16px;
-      padding: 28px;
-      margin-bottom: 40px;
+      border-radius: 18px;
+      padding: 30px;
+      margin-bottom: 44px;
     }
 
     .step {
       display: flex;
-      gap: 16px;
-      margin-bottom: 20px;
+      gap: 18px;
+      margin-bottom: 22px;
       align-items: flex-start;
     }
 
@@ -174,20 +175,20 @@
 
     .step-num {
       flex-shrink: 0;
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       background: linear-gradient(135deg, #a18cd1, #fbc2eb);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
+      font-weight: 900;
       font-size: 0.9rem;
       color: #1a0a2e;
     }
 
-    .step-body h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 4px; color: #e0d4f7; }
-    .step-body p  { font-size: 0.85rem; color: #b0a0d0; line-height: 1.5; }
+    .step-body h3 { font-size: 0.98rem; font-weight: 800; margin-bottom: 5px; color: #e0d4f7; }
+    .step-body p  { font-size: 0.86rem; color: #b0a0d0; line-height: 1.55; }
 
     code {
       background: rgba(0,0,0,0.4);
@@ -202,51 +203,108 @@
     .cmd-block {
       background: rgba(0,0,0,0.5);
       border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
-      padding: 14px 18px;
+      border-radius: 12px;
+      padding: 16px 20px;
       margin-top: 10px;
       font-family: 'Cascadia Code', 'Fira Code', monospace;
       font-size: 0.85rem;
       color: #a8e6cf;
-      line-height: 1.8;
+      line-height: 1.9;
     }
 
     .cmd-block .comment { color: #7a6d9a; }
 
-    .commands-table {
+    /* ── Команды голосового управления ── */
+    .voice-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 44px;
+    }
+
+    .voice-category {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(161,140,209,0.2);
+      border-radius: 16px;
+      padding: 18px 20px;
+    }
+
+    .voice-category h4 {
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: #c9b8e8;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .voice-category ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .voice-category li {
+      font-size: 0.82rem;
+      color: #a08ec0;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      line-height: 1.5;
+    }
+
+    .voice-category li:last-child { border-bottom: none; }
+
+    .voice-category li em {
+      font-style: normal;
+      color: #e0d4f7;
+      font-weight: 600;
+    }
+
+    /* ── Архитектура ── */
+    .arch-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 40px;
+      margin-bottom: 44px;
+      font-size: 0.86rem;
     }
 
-    .commands-table th {
+    .arch-table th {
       text-align: left;
-      padding: 10px 14px;
+      padding: 10px 16px;
       background: rgba(161,140,209,0.15);
       color: #d4c6f0;
-      font-size: 0.85rem;
     }
 
-    .commands-table td {
-      padding: 10px 14px;
+    .arch-table td {
+      padding: 10px 16px;
       border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 0.85rem;
-      color: #c0b0e0;
+      color: #b8a8d8;
+      vertical-align: top;
     }
 
-    .commands-table tr:hover td { background: rgba(161,140,209,0.07); }
+    .arch-table tr:hover td { background: rgba(161,140,209,0.06); }
 
-    .commands-table th:first-child,
-    .commands-table td:first-child { border-radius: 8px 0 0 8px; }
-    .commands-table th:last-child,
-    .commands-table td:last-child  { border-radius: 0 8px 8px 0; }
+    .tag {
+      display: inline-block;
+      background: rgba(161,140,209,0.25);
+      border-radius: 6px;
+      padding: 1px 8px;
+      font-size: 0.75rem;
+      color: #d4c6f0;
+      margin-right: 4px;
+      margin-bottom: 3px;
+    }
 
     footer {
       text-align: center;
       color: #6a5a8a;
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       margin-top: 60px;
+      line-height: 2;
     }
+
+    footer a { color: #a18cd1; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -254,94 +312,302 @@
 <div class="stars" id="stars"></div>
 
 <div class="container">
+  <!-- ══ Шапка ══ -->
   <header>
     <div class="avatar-wrapper">
-      <img src="/assets/images/aika_avatar.png" alt="Aika" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:3rem;\'>🌸</div>'" />
+      <img src="/assets/images/aika_avatar.png" alt="Айка"
+        onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:3rem;\'>🌸</div>'" />
     </div>
-    <h1>Aika Assistant</h1>
-    <p class="tagline">Anime AI Assistant · Flutter · Android</p>
+    <h1>Айка — AI Ассистент</h1>
+    <p class="tagline">Аниме AI ассистент с мощным голосовым управлением · Flutter · Android</p>
     <div class="badge-row">
       <span class="badge">Flutter 3.0+</span>
       <span class="badge">Gemini 2.0 Flash</span>
       <span class="badge">GPT-4o-mini</span>
-      <span class="badge">Live2D Avatar</span>
+      <span class="badge">150+ голосовых команд</span>
+      <span class="badge">Live2D аватар</span>
       <span class="badge">Android 6.0+</span>
     </div>
   </header>
 
+  <!-- ══ Предупреждение ══ -->
   <div class="alert">
-    <strong>📱 Android Mobile App</strong><br />
-    This project is a Flutter/Android application. It cannot run in a web browser — it needs to be built and installed on an Android device or emulator.
-    See the setup guide below to build and run it.
+    <strong>📱 Это Android-приложение</strong><br />
+    Айка — Flutter/Android приложение. В браузере не запускается — нужно собрать APK и установить на Android телефон (Android 6.0+, API 23+).<br />
+    Смотри инструкцию по сборке ниже.
   </div>
 
-  <p class="section-title">✨ Features</p>
+  <!-- ══ Возможности ══ -->
+  <p class="section-title">✨ Возможности</p>
   <div class="card-grid">
     <div class="card">
+      <div class="card-icon">🎤</div>
+      <div class="card-title">150+ голосовых команд</div>
+      <div class="card-desc">Новый VoiceCommandProcessor обрабатывает команды мгновенно — без AI и без интернета. Фонарик, яркость, Wi-Fi, звук, приложения, таймеры, карты и многое другое.</div>
+    </div>
+    <div class="card">
       <div class="card-icon">🤖</div>
-      <div class="card-title">Dual AI Engine</div>
-      <div class="card-desc">Powered by Gemini 2.0 Flash and GPT-4o-mini. Vision-capable — can analyze your screen and take action.</div>
+      <div class="card-title">Двойной AI: Gemini + GPT-4o</div>
+      <div class="card-desc">Если команда сложная — она уходит в AI. Gemini 2.0 Flash как запасной, GPT-4o-mini как основной. Vision: видит экран и выполняет задачи.</div>
     </div>
     <div class="card">
       <div class="card-icon">🌸</div>
-      <div class="card-title">Live2D Avatar</div>
-      <div class="card-desc">Interactive anime character rendered via PIXI.js and Live2D Cubism SDK inside a transparent overlay.</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">🎤</div>
-      <div class="card-title">Voice Control</div>
-      <div class="card-desc">Full speech-to-text and text-to-speech. Wake word detection and natural language commands.</div>
+      <div class="card-title">Live2D аватар</div>
+      <div class="card-desc">Интерактивный аниме-персонаж на PIXI.js + Live2D Cubism SDK в прозрачном оверлее поверх всех приложений. Танцует под музыку!</div>
     </div>
     <div class="card">
       <div class="card-icon">📱</div>
-      <div class="card-title">Device Automation</div>
-      <div class="card-desc">Launches apps, controls volume, toggles flashlight, reads battery, performs screen taps via Accessibility.</div>
+      <div class="card-title">Полное управление телефоном</div>
+      <div class="card-desc">Запуск 50+ приложений, яркость, Wi-Fi, Bluetooth, авиарежим, горячая точка, DND, экономия энергии, блокировка, скриншот.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📞</div>
+      <div class="card-title">Звонки и сообщения</div>
+      <div class="card-desc">Голосовые звонки по имени, отправка SMS, сообщения в WhatsApp/Telegram/VK по голосу. Чтение уведомлений вслух.</div>
     </div>
     <div class="card">
       <div class="card-icon">🧠</div>
-      <div class="card-title">Self-Learning</div>
-      <div class="card-desc">Users can teach Aika custom commands. Tracks relationships, mood, habits, and memory across sessions.</div>
+      <div class="card-title">Самообучение и память</div>
+      <div class="card-desc">Айка запоминает привычки, настроение, отношения. Учится новым командам: "когда я говорю [фраза] делай [действие]".</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⏰</div>
+      <div class="card-title">Таймеры и будильники</div>
+      <div class="card-desc">"Таймер на 5 минут", "Разбуди меня в 7:30", "Напомни через 10 минут" — всё понимает с первого раза.</div>
     </div>
     <div class="card">
       <div class="card-icon">🎮</div>
-      <div class="card-title">Game Helper</div>
-      <div class="card-desc">Monitors screen zones during gaming — alerts when HP is low, enemies appear, or events trigger.</div>
+      <div class="card-title">Помощь в играх</div>
+      <div class="card-desc">Мониторит экран во время игры: предупреждает о мало HP, видит врагов. Записывает экран, делает скриншоты по команде.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🗺</div>
+      <div class="card-title">Навигация и карты</div>
+      <div class="card-desc">"Проложи маршрут до Кремля", "Найди ближайшую аптеку", "Где находится [место]" — открывает Google Карты с адресом.</div>
     </div>
   </div>
 
-  <p class="section-title">🚀 Build &amp; Run</p>
+  <!-- ══ Голосовые команды ══ -->
+  <p class="section-title">🎤 Голосовые команды (150+)</p>
+  <div class="voice-grid">
+
+    <div class="voice-category">
+      <h4>🔦 Фонарик</h4>
+      <ul>
+        <li><em>«включи фонарик»</em> — фонарик вкл</li>
+        <li><em>«выключи фонарик»</em> — фонарик выкл</li>
+        <li><em>«фонарик»</em> — переключить</li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>🔊 Звук</h4>
+      <ul>
+        <li><em>«громкость 70%»</em> — установить 70%</li>
+        <li><em>«громче» / «тише»</em> — +/- 15%</li>
+        <li><em>«без звука»</em> — mute</li>
+        <li><em>«максимальная громкость»</em></li>
+        <li><em>«вибро»</em> — виброрежим</li>
+        <li><em>«не беспокоить»</em> — режим DND</li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>☀️ Яркость</h4>
+      <ul>
+        <li><em>«яркость максимум»</em></li>
+        <li><em>«яркость минимум»</em></li>
+        <li><em>«яркость 50%»</em></li>
+        <li><em>«автояркость»</em></li>
+        <li><em>«ярче» / «темнее»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>📶 Сети</h4>
+      <ul>
+        <li><em>«вай фай»</em> — настройки Wi-Fi</li>
+        <li><em>«блютуз»</em> — настройки Bluetooth</li>
+        <li><em>«авиарежим»</em></li>
+        <li><em>«горячая точка»</em></li>
+        <li><em>«экономия энергии»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>📱 Приложения (50+)</h4>
+      <ul>
+        <li><em>«открой YouTube»</em> / <em>«ютуб»</em></li>
+        <li><em>«открой Telegram»</em></li>
+        <li><em>«открой ВКонтакте»</em></li>
+        <li><em>«открой Spotify»</em></li>
+        <li><em>«открой Сбербанк»</em></li>
+        <li><em>«открой Авито»</em></li>
+        <li>...и 44+ других приложения</li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>📞 Звонки</h4>
+      <ul>
+        <li><em>«позвони Маше»</em></li>
+        <li><em>«набери +7 999...»</em></li>
+        <li><em>«сбрось звонок»</em></li>
+        <li><em>«принять звонок»</em></li>
+        <li><em>«отправь смс Пете»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>⏰ Время</h4>
+      <ul>
+        <li><em>«таймер на 5 минут»</em></li>
+        <li><em>«таймер на 1 час 30 минут»</em></li>
+        <li><em>«будильник на 7:30»</em></li>
+        <li><em>«разбуди в 8 утра»</em></li>
+        <li><em>«напомни через 10 минут»</em></li>
+        <li><em>«сколько времени?»</em></li>
+        <li><em>«какой сегодня день?»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>🔍 Поиск</h4>
+      <ul>
+        <li><em>«найди рецепт борща»</em></li>
+        <li><em>«погугли погода Москва»</em></li>
+        <li><em>«найди на ютубе котики»</em></li>
+        <li><em>«переведи hello</em></li>
+        <li><em>«что такое квантовая физика»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>🗺 Карты</h4>
+      <ul>
+        <li><em>«маршрут до Красной площади»</em></li>
+        <li><em>«как добраться до аэропорта»</em></li>
+        <li><em>«найди на карте пиццерию»</em></li>
+        <li><em>«погода»</em> — текущая погода</li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>📸 Камера</h4>
+      <ul>
+        <li><em>«открой камеру»</em></li>
+        <li><em>«сделай скриншот»</em></li>
+        <li><em>«сними видео»</em></li>
+        <li><em>«включи диктофон»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>🔒 Система</h4>
+      <ul>
+        <li><em>«заблокируй экран»</em></li>
+        <li><em>«выключи телефон»</em> — меню питания</li>
+        <li><em>«назад»</em> / <em>«домой»</em></li>
+        <li><em>«недавние приложения»</em></li>
+        <li><em>«закрой приложение»</em></li>
+        <li><em>«открой уведомления»</em></li>
+        <li><em>«удали приложение [имя]»</em></li>
+      </ul>
+    </div>
+
+    <div class="voice-category">
+      <h4>🎵 Музыка</h4>
+      <ul>
+        <li><em>«следующий трек»</em></li>
+        <li><em>«предыдущий трек»</em></li>
+        <li><em>«пауза»</em></li>
+        <li><em>«включи спотифай»</em></li>
+        <li><em>«потанцуй!»</em> — Айка танцует</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- ══ Архитектура ══ -->
+  <p class="section-title">🏗 Архитектура голосового управления</p>
+  <table class="arch-table">
+    <thead>
+      <tr><th>Слой</th><th>Файл</th><th>Описание</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1️⃣ Пробуждение</td>
+        <td><code>wake_word_service.dart</code></td>
+        <td>Всегда слушает «Айка» / кастомное слово. Бесконечный цикл STT.</td>
+      </tr>
+      <tr>
+        <td>2️⃣ Голосовые команды</td>
+        <td><code>voice_command_processor.dart</code></td>
+        <td><span class="tag">NEW</span> 150+ команд без AI. Мгновенный ответ, работает оффлайн.</td>
+      </tr>
+      <tr>
+        <td>3️⃣ Телефон (legacy)</td>
+        <td><code>phone_control_service.dart</code></td>
+        <td>Дополнительные команды: SMS, звонки, навигация.</td>
+      </tr>
+      <tr>
+        <td>4️⃣ Автоматизация</td>
+        <td><code>aika_automation_service.dart</code></td>
+        <td>Сложные макросы, игровой мониторинг, поиск в приложении.</td>
+      </tr>
+      <tr>
+        <td>5️⃣ AI (GPT/Gemini)</td>
+        <td><code>ai_service.dart</code></td>
+        <td>Всё что не распознано локально. 60+ ACTION-тегов: приложения, яркость, Wi-Fi, YouTube-поиск, маршруты и др.</td>
+      </tr>
+      <tr>
+        <td>6️⃣ Исполнение</td>
+        <td><code>device_service.dart</code></td>
+        <td>Выполняет ACTION-теги из ответов AI. <span class="tag">РАСШИРЕН</span></td>
+      </tr>
+      <tr>
+        <td>7️⃣ Оверлей</td>
+        <td><code>AikaOverlayService.kt</code></td>
+        <td>Live2D аватар поверх всех приложений. Меняет анимацию по состоянию.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ══ Сборка ══ -->
+  <p class="section-title">🚀 Сборка и запуск</p>
   <div class="setup-box">
     <div class="step">
       <div class="step-num">1</div>
       <div class="step-body">
-        <h3>Install Flutter SDK (3.0+)</h3>
-        <p>Download from <strong>flutter.dev</strong> and add to PATH. Requires Java JDK 17 and Android Studio.</p>
+        <h3>Установи Flutter SDK (3.0+) и Java JDK 17</h3>
+        <p>Скачай с <strong>flutter.dev</strong> и добавь в PATH. Нужен Android Studio или VS Code с Flutter плагином.</p>
       </div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
       <div class="step-body">
-        <h3>Install dependencies</h3>
+        <h3>Установи зависимости</h3>
         <div class="cmd-block">flutter pub get</div>
       </div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
       <div class="step-body">
-        <h3>Connect Android device</h3>
-        <p>Enable Developer Mode on your phone: <em>Settings → About → tap Build Number 7×</em>, then enable USB Debugging.</p>
+        <h3>Подключи Android телефон</h3>
+        <p>Включи режим разработчика: <em>Настройки → О телефоне → нажми 7 раз на "Номер сборки"</em>.
+        Затем включи «Отладка по USB».</p>
       </div>
     </div>
     <div class="step">
       <div class="step-num">4</div>
       <div class="step-body">
-        <h3>Run or build APK</h3>
+        <h3>Запусти или собери APK</h3>
         <div class="cmd-block">
-          <span class="comment"># Run directly on connected device</span><br />
+          <span class="comment"># Запуск прямо на телефоне</span><br />
           flutter run<br /><br />
-          <span class="comment"># Or build a release APK</span><br />
+          <span class="comment"># Или собрать release APK</span><br />
           flutter build apk --release<br /><br />
-          <span class="comment"># APK output path:</span><br />
+          <span class="comment"># APK будет здесь:</span><br />
           build/app/outputs/flutter-apk/app-release.apk
         </div>
       </div>
@@ -349,54 +615,62 @@
     <div class="step">
       <div class="step-num">5</div>
       <div class="step-body">
-        <h3>API Keys</h3>
-        <p>Edit <code>lib/services/ai_service.dart</code> and set your Gemini and OpenAI keys, or pass them via <code>--dart-define</code>.</p>
+        <h3>API ключи (необязательно)</h3>
+        <p>Отредактируй <code>lib/services/ai_service.dart</code> — вставь ключи Gemini и OpenAI.
+        Без ключей часть AI-функций недоступна, но базовые голосовые команды работают без интернета.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <h3>Дай разрешения при первом запуске</h3>
+        <p>✅ Микрофон — для голосового ввода<br />
+        ✅ Accessibility — для управления экраном<br />
+        ✅ Оверлей — для Live2D аватара поверх приложений<br />
+        ✅ Уведомления — для чтения уведомлений вслух</p>
       </div>
     </div>
   </div>
 
-  <p class="section-title">🗣️ Voice Commands</p>
-  <table class="commands-table">
-    <thead>
-      <tr><th>Command</th><th>Action</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>"Open YouTube"</td><td>Launches YouTube</td></tr>
-      <tr><td>"Turn on flashlight"</td><td>Toggles torch on</td></tr>
-      <tr><td>"Turn off flashlight"</td><td>Toggles torch off</td></tr>
-      <tr><td>"Increase volume"</td><td>Raises media volume</td></tr>
-      <tr><td>"Open Telegram"</td><td>Launches Telegram</td></tr>
-      <tr><td>"How much battery?"</td><td>Reads battery percentage</td></tr>
-      <tr><td>"Open settings"</td><td>Opens Android Settings</td></tr>
-      <tr><td>"Search [query]"</td><td>Google search</td></tr>
-    </tbody>
-  </table>
-
-  <p class="section-title">📁 Project Structure</p>
+  <!-- ══ Структура ══ -->
+  <p class="section-title">📁 Структура проекта</p>
   <div class="cmd-block">
 <span class="comment">aika_assistant/</span>
 ├── lib/
-│   ├── main.dart               <span class="comment"># Entry point</span>
-│   ├── screens/                <span class="comment"># UI screens (Chat, Settings, Wardrobe…)</span>
-│   ├── services/               <span class="comment"># AI, Speech, Device, Memory services</span>
-│   ├── widgets/                <span class="comment"># Avatar, ChatBubble, VoiceButton</span>
-│   └── models/                 <span class="comment"># Data models</span>
-├── android/                    <span class="comment"># Native Android (Kotlin overlay, accessibility)</span>
-├── assets/
-│   ├── images/                 <span class="comment"># Aika avatar images</span>
-│   ├── models/                 <span class="comment"># Live2D models (Haru, Hiyori, Natori…)</span>
-│   └── live2d_viewer.html      <span class="comment"># Live2D renderer</span>
-└── pubspec.yaml                <span class="comment"># Flutter dependencies</span>
+│   ├── main.dart                         <span class="comment"># Точка входа</span>
+│   ├── screens/
+│   │   ├── main_screen.dart              <span class="comment"># Главный экран, обработка голоса</span>
+│   │   ├── settings_screen.dart          <span class="comment"># Настройки</span>
+│   │   └── wardrobe_screen.dart          <span class="comment"># Смена аватара</span>
+│   ├── services/
+│   │   ├── voice_command_processor.dart  <span class="comment"># ★ NEW: 150+ команд без AI</span>
+│   │   ├── wake_word_service.dart        <span class="comment"># Постоянное прослушивание</span>
+│   │   ├── speech_service.dart           <span class="comment"># STT + TTS движок</span>
+│   │   ├── ai_service.dart               <span class="comment"># Gemini + OpenAI (расширен)</span>
+│   │   ├── device_service.dart           <span class="comment"># Выполнение ACTION тегов (расширен)</span>
+│   │   ├── phone_control_service.dart    <span class="comment"># Звонки, SMS, навигация</span>
+│   │   └── aika_automation_service.dart  <span class="comment"># Автоматизация, игры</span>
+│   └── widgets/
+│       ├── aika_avatar.dart              <span class="comment"># Анимированный аватар</span>
+│       └── live2d_widget.dart            <span class="comment"># Live2D через WebView</span>
+├── android/                              <span class="comment"># Kotlin: оверлей, Accessibility</span>
+└── assets/
+    ├── images/                           <span class="comment"># Изображения Айки</span>
+    └── models/                           <span class="comment"># Live2D модели</span>
   </div>
 
   <footer>
-    Aika v1.0.0 &nbsp;·&nbsp; Flutter + Gemini 2.0 + GPT-4o-mini &nbsp;·&nbsp; Anime AI Assistant
+    Айка v1.0.0 &nbsp;·&nbsp; Flutter + Gemini 2.0 + GPT-4o-mini &nbsp;·&nbsp;
+    Голосовое управление телефоном &nbsp;·&nbsp; Аниме AI ассистент<br />
+    <a href="https://flutter.dev" target="_blank">Flutter</a> &nbsp;·&nbsp;
+    <a href="https://ai.google.dev" target="_blank">Gemini API</a> &nbsp;·&nbsp;
+    <a href="https://platform.openai.com" target="_blank">OpenAI API</a>
   </footer>
 </div>
 
 <script>
   const starsEl = document.getElementById('stars');
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 130; i++) {
     const s = document.createElement('div');
     s.className = 'star';
     s.style.cssText = `

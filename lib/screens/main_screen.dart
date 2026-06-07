@@ -80,6 +80,7 @@ import '../services/contacts_service.dart';
 import '../services/calendar_service.dart';
 import '../services/shoplist_service.dart';
 import '../services/step_counter_service.dart';
+import '../services/voice_command_processor.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -120,6 +121,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final ScheduleService _scheduleService = ScheduleService();
   final WeatherService _weatherService = WeatherService();
   final BriefingService _briefingService = BriefingService();
+  final VoiceCommandProcessor _voiceProcessor = VoiceCommandProcessor();
   final FlutterTts _tts = FlutterTts();
   final EdgeTtsService _edgeTts = EdgeTtsService();
   bool _useEdgeTts = true; // Microsoft Neural Voice by default
@@ -300,6 +302,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // КРИТИЧНО: WakeWordService использует тот же STT что и SpeechService
     // Два отдельных SpeechToText() конфликтуют за микрофон!
     await _wakeWordService.initWithSharedStt(_speechService.sharedStt);
+    // Инициализируем мощный процессор голосовых команд
+    _voiceProcessor.init();
     await _applyTtsSettings();
     await _loadPrefs();
     await HabitMemoryService.load();
@@ -1228,7 +1232,28 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // ── Управление телефоном по голосу ─────────────────────────────────
+    // ── Мощный процессор голосовых команд (150+ команд, без AI) ───────────
+    final voiceResult = await _voiceProcessor.process(text);
+    if (voiceResult != null) {
+      final reply = voiceResult.message;
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: reply,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(reply);
+      // Специальные действия от процессора
+      if (voiceResult.action == 'dance') {
+        setState(() => _isDancing = true);
+        OverlayService().asyncState('dance');
+        await Future.delayed(const Duration(seconds: 4));
+        if (mounted) { setState(() => _isDancing = false); OverlayService().asyncState('idle'); }
+      }
+      return;
+    }
+
+    // ── Управление телефоном по голосу (legacy PhoneControlService) ────────
     final phoneResult = await _phoneControl.parseCommand(text);
     if (phoneResult != null) {
       final reply = phoneResult.message;

@@ -219,6 +219,139 @@ class DeviceService {
       return await GeminiComputerUseService.executeTask(task);
     }
 
+    // ── Поиск в Google ───────────────────────────────────────────────────
+    if (action.startsWith('maps_route_')) {
+      final dest = Uri.encodeComponent(action.substring('maps_route_'.length).replaceAll('_', ' '));
+      await _launchUrl('https://maps.google.com/maps?daddr=$dest');
+      return 'Прокладываю маршрут 🗺';
+    }
+    if (action.startsWith('maps_search_')) {
+      final place = Uri.encodeComponent(action.substring('maps_search_'.length).replaceAll('_', ' '));
+      await _launchUrl('https://maps.google.com/maps?q=$place');
+      return 'Ищу на карте 📍';
+    }
+    if (action.startsWith('youtube_search_')) {
+      final q = Uri.encodeComponent(action.substring('youtube_search_'.length).replaceAll('_', ' '));
+      await _launchUrl('https://www.youtube.com/results?search_query=$q');
+      return 'Ищу на YouTube ▶️';
+    }
+
+    // ── Яркость ──────────────────────────────────────────────────────────
+    if (action == 'brightness_max') {
+      try { await _screenChannel.invokeMethod('setBrightness', {'value': 255}); return 'Максимальная яркость ☀️'; }
+      catch (_) { await _openSettings('android.settings.DISPLAY_SETTINGS'); return 'Открываю настройки яркости'; }
+    }
+    if (action == 'brightness_min') {
+      try { await _screenChannel.invokeMethod('setBrightness', {'value': 20}); return 'Минимальная яркость 🌑'; }
+      catch (_) { await _openSettings('android.settings.DISPLAY_SETTINGS'); return 'Открываю настройки яркости'; }
+    }
+    if (action == 'brightness_50') {
+      try { await _screenChannel.invokeMethod('setBrightness', {'value': 128}); return 'Яркость 50% ☀️'; }
+      catch (_) { await _openSettings('android.settings.DISPLAY_SETTINGS'); return 'Открываю настройки яркости'; }
+    }
+    if (action == 'brightness_auto') {
+      try { await _screenChannel.invokeMethod('setAutoBrightness'); return 'Автояркость включена ☀️'; }
+      catch (_) { return 'Не удалось включить автояркость'; }
+    }
+    if (action.startsWith('brightness_')) {
+      final val = int.tryParse(action.substring('brightness_'.length)) ?? 50;
+      final raw = (val / 100 * 255).round().clamp(0, 255);
+      try { await _screenChannel.invokeMethod('setBrightness', {'value': raw}); return 'Яркость $val% ☀️'; }
+      catch (_) { return 'Не удалось установить яркость'; }
+    }
+
+    // ── Беспроводные сети ─────────────────────────────────────────────────
+    if (action == 'open_wifi') {
+      await _openSettings('android.settings.WIFI_SETTINGS');
+      return 'Настройки Wi-Fi открыты 📶';
+    }
+    if (action == 'open_bluetooth') {
+      await _openSettings('android.settings.BLUETOOTH_SETTINGS');
+      return 'Настройки Bluetooth открыты 🔵';
+    }
+    if (action == 'open_airplane_mode') {
+      await _openSettings('android.settings.AIRPLANE_MODE_SETTINGS');
+      return 'Авиарежим — открываю настройки ✈️';
+    }
+    if (action == 'open_hotspot') {
+      await _openSettings('android.settings.TETHER_SETTINGS');
+      return 'Горячая точка — открываю настройки 📡';
+    }
+    if (action == 'open_dnd') {
+      await _openSettings('android.settings.ZEN_MODE_SETTINGS');
+      return 'Режим "Не беспокоить" — открываю настройки 🤫';
+    }
+    if (action == 'open_power_save') {
+      await _openSettings('android.settings.BATTERY_SAVER_SETTINGS');
+      return 'Экономия энергии — открываю настройки 🔋';
+    }
+
+    // ── Системные действия ────────────────────────────────────────────────
+    if (action == 'lock_screen') {
+      try { await _screenChannel.invokeMethod('performGlobalAction', {'action': 8}); return 'Экран заблокирован 🔒'; }
+      catch (_) { return 'Для блокировки нужен Accessibility + Device Admin'; }
+    }
+    if (action == 'power_menu') {
+      try { await _screenChannel.invokeMethod('performGlobalAction', {'action': 12}); return 'Меню питания 🔌'; }
+      catch (_) { return 'Не удалось открыть меню питания'; }
+    }
+    if (action == 'close_app') {
+      try { await _screenChannel.invokeMethod('closeCurrentApp'); return 'Закрываю приложение ✅'; }
+      catch (_) { return 'Не удалось закрыть приложение'; }
+    }
+    if (action == 'open_dialer') {
+      return await _launchPackage('com.google.android.dialer');
+    }
+    if (action == 'open_messages') {
+      return await _launchPackage('com.google.android.apps.messaging');
+    }
+    if (action == 'open_clock') {
+      return await _launchPackage('com.google.android.deskclock');
+    }
+    if (action == 'get_weather') {
+      await _launchUrl('https://weather.com');
+      return 'Открываю погоду 🌤';
+    }
+
+    // ── Громкость % ──────────────────────────────────────────────────────
+    if (action.startsWith('volume_')) {
+      final pctStr = action.substring('volume_'.length);
+      final pct = int.tryParse(pctStr);
+      if (pct != null) {
+        VolumeController().setVolume(pct / 100);
+        return 'Громкость $pct% 🔊';
+      }
+    }
+
+    // ── Открытие новых приложений ─────────────────────────────────────────
+    final extraApps = <String, String>{
+      'open_drive':          'com.google.android.apps.docs',
+      'open_photos':         'com.google.android.apps.photos',
+      'open_play_store':     'com.android.vending',
+      'open_viber':          'com.viber.voip',
+      'open_skype':          'com.skype.raider',
+      'open_firefox':        'org.mozilla.firefox',
+      'open_opera':          'com.opera.browser',
+      'open_twitch':         'tv.twitch.android.app',
+      'open_tinder':         'com.tinder',
+      'open_duolingo':       'com.duolingo',
+      'open_uber':           'com.ubercab',
+      'open_yandex_taxi':    'ru.yandex.taxi',
+      'open_sber':           'ru.sberbankmobile',
+      'open_tinkoff':        'com.idamob.tinkoff.android',
+      'open_avito':          'ru.avito.android',
+      'open_ozon':           'ru.ozon.app.android',
+      'open_wildberries':    'com.wildberries.ru',
+      'open_ok':             'ru.ok.android',
+      'open_gosuslugi':      'ru.rostelekom.portal',
+      'open_yandex_music':   'com.yandex.music',
+      'open_yandex_browser': 'com.yandex.browser',
+      'open_signal':         'org.thoughtcrime.securesms',
+    };
+    if (extraApps.containsKey(action)) {
+      return await _launchPackage(extraApps[action]!);
+    }
+
     switch (action) {
       // ── Фонарик ─────────────────────────────────────────────────────
       case 'flashlight_on':
@@ -234,10 +367,10 @@ class DeviceService {
 
       // ── Громкость ────────────────────────────────────────────────────
       case 'volume_up':
-        VolumeController().setVolume((_currentVolume + 0.2).clamp(0.0, 1.0));
+        VolumeController().setVolume((_currentVolume + 0.15).clamp(0.0, 1.0));
         return 'Громкость увеличена 🔊';
       case 'volume_down':
-        VolumeController().setVolume((_currentVolume - 0.2).clamp(0.0, 1.0));
+        VolumeController().setVolume((_currentVolume - 0.15).clamp(0.0, 1.0));
         return 'Громкость уменьшена 🔉';
       case 'volume_mute':
         VolumeController().setVolume(0.0);
@@ -266,29 +399,39 @@ class DeviceService {
         final cmd = MusicControlService.parseCommand('pause');
         if (cmd != null) await MusicControlService.send(cmd);
         return 'Пауза ⏸';
+      case 'music_play':
+        final cmd = MusicControlService.parseCommand('play');
+        if (cmd != null) await MusicControlService.send(cmd);
+        return 'Включаю музыку 🎵';
 
       // ── Навигация ────────────────────────────────────────────────────
       case 'nav_back':
-        await _screenChannel.invokeMethod('performBack');
+        try { await _screenChannel.invokeMethod('performBack'); } catch (_) {}
         return 'Назад ◀️';
       case 'nav_home':
-        await _screenChannel.invokeMethod('pressHome');
+        try { await _screenChannel.invokeMethod('pressHome'); } catch (_) {}
         return 'Главный экран 🏠';
       case 'nav_recents':
-        await _screenChannel.invokeMethod('pressRecents');
+        try { await _screenChannel.invokeMethod('pressRecents'); } catch (_) {}
         return 'Недавние приложения';
       case 'nav_notifications':
-        await _screenChannel.invokeMethod('openNotifications');
+        try { await _screenChannel.invokeMethod('openNotifications'); } catch (_) {}
         return 'Уведомления открыты';
 
       // ── Скриншот ─────────────────────────────────────────────────────
       case 'take_screenshot':
-        await _screenChannel.invokeMethod('takeScreenshot');
-        return 'Скриншот сделан 📸';
+        try { await _screenChannel.invokeMethod('takeScreenshot'); return 'Скриншот сделан 📸'; }
+        catch (_) { await _screenChannel.invokeMethod('performGlobalAction', {'action': 9}); return 'Скриншот 📸'; }
 
       default:
         return null;
     }
+  }
+
+  Future<void> _openSettings(String action) async {
+    try {
+      await AndroidIntent(action: action, flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
+    } catch (_) {}
   }
 
   // ─── Запуск приложения (ИСПРАВЛЕННЫЙ) ────────────────────────────────
