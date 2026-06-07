@@ -797,6 +797,66 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+
+        // ── 8. Background Voice Service — фоновое прослушивание wake word ──────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "aika/voice_bg")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "startVoiceBg" -> {
+                        val triggers = call.argument<List<String>>("triggers")
+                        val intent = Intent(this, AikaVoiceService::class.java).apply {
+                            action = AikaVoiceService.ACTION_START
+                            if (!triggers.isNullOrEmpty()) {
+                                putStringArrayListExtra(AikaVoiceService.EXTRA_TRIGGERS, ArrayList(triggers))
+                            }
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(true)
+                    }
+                    "stopVoiceBg" -> {
+                        startService(Intent(this, AikaVoiceService::class.java).apply {
+                            action = AikaVoiceService.ACTION_STOP
+                        })
+                        result.success(true)
+                    }
+                    "pauseVoiceBg" -> {
+                        AikaVoiceService.instance?.pauseListening()
+                        result.success(true)
+                    }
+                    "resumeVoiceBg" -> {
+                        AikaVoiceService.instance?.resumeListening()
+                        result.success(true)
+                    }
+                    "setVoiceTriggers" -> {
+                        val triggers = call.argument<List<String>>("triggers")
+                        if (!triggers.isNullOrEmpty()) {
+                            AikaVoiceService.triggers = triggers
+                        }
+                        result.success(true)
+                    }
+                    "isVoiceBgRunning" -> {
+                        result.success(AikaVoiceService.isRunning)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // EventChannel — события от фонового распознавателя → Flutter
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "aika/voice_events")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    AikaVoiceService.eventSink = events
+                    Log.d("Aika", "voice_events: stream opened")
+                }
+                override fun onCancel(arguments: Any?) {
+                    AikaVoiceService.eventSink = null
+                    Log.d("Aika", "voice_events: stream closed")
+                }
+            })
         // ── Новые каналы: Calendar, Contacts, Sensors ────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALENDAR_CHANNEL)
             .setMethodCallHandler(calendarHandler)
