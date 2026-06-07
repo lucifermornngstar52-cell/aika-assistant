@@ -28,7 +28,15 @@ class MainActivity : FlutterActivity() {
         private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
         private const val NOTIFICATION_EVENTS_CHANNEL  = "com.aika.assistant/notification_events"
         private const val NOTIFICATIONS_CHANNEL          = "com.aika.assistant/notifications"
+        private const val CALENDAR_CHANNEL                = "com.aika.assistant/calendar"
+        private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
+        private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
     }
+
+    // Новые нативные обработчики (openclaw-inspired)
+    private val calendarHandler by lazy { CalendarHandler(applicationContext) }
+    private val contactsHandler by lazy { ContactsHandler(applicationContext) }
+    private val sensorsHandler  by lazy { SensorsHandler(applicationContext) }
 
     // EventChannel sink для отправки событий смены приложений во Flutter
     private var screenEventSink: EventChannel.EventSink? = null
@@ -788,6 +796,16 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // ── Новые каналы: Calendar, Contacts, Sensors ────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALENDAR_CHANNEL)
+            .setMethodCallHandler(calendarHandler)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CONTACTS_CHANNEL)
+            .setMethodCallHandler(contactsHandler)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SENSORS_CHANNEL)
+            .setMethodCallHandler(sensorsHandler)
     }
 
     private fun startOverlay(intent: Intent) {
@@ -804,3 +822,4 @@ class MainActivity : FlutterActivity() {
         }
     }
 }
+
