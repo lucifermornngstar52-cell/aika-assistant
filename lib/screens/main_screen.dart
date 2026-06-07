@@ -2289,7 +2289,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 chips: _currentChips,
                 onChipTap: (query) {
                   setState(() => _currentChips = []);
-                  _handleUserText(query);
+                  _sendMessage(query);
                 },
               ),
             ),
