@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aika Assistant — Anime AI Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      color: #fff;
+      overflow-x: hidden;
+    }
+
+    .stars {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .star {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: #fff;
+      border-radius: 50%;
+      animation: twinkle var(--d, 3s) infinite alternate;
+      opacity: var(--o, 0.5);
+    }
+
+    @keyframes twinkle {
+      from { opacity: var(--o, 0.5); transform: scale(1); }
+      to   { opacity: 0.1; transform: scale(0.5); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .avatar-wrapper {
+      display: inline-block;
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+      padding: 4px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 40px rgba(161,140,209,0.6);
+      animation: float 4s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-12px); }
+    }
+
+    .avatar-wrapper img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #1a1a2e;
+    }
+
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    .tagline {
+      font-size: 1.1rem;
+      color: #c9b8e8;
+      margin-bottom: 20px;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .badge {
+      background: rgba(161,140,209,0.2);
+      border: 1px solid rgba(161,140,209,0.4);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.82rem;
+      color: #d4c6f0;
+    }
+
+    .alert {
+      background: rgba(255,200,80,0.12);
+      border: 1px solid rgba(255,200,80,0.35);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 40px;
+      color: #ffe08a;
+      font-size: 0.95rem;
+      text-align: center;
+    }
+
+    .alert strong { color: #ffd43b; }
+
+    .section-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #d4c6f0;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 20px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(161,140,209,0.2);
+    }
+
+    .card-icon { font-size: 2rem; margin-bottom: 10px; }
+    .card-title { font-size: 1rem; font-weight: 700; margin-bottom: 6px; color: #e0d4f7; }
+    .card-desc  { font-size: 0.85rem; color: #b0a0d0; line-height: 1.5; }
+
+    .setup-box {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(161,140,209,0.3);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 40px;
+    }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: flex-start;
+    }
+
+    .step:last-child { margin-bottom: 0; }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.9rem;
+      color: #1a0a2e;
+    }
+
+    .step-body h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 4px; color: #e0d4f7; }
+    .step-body p  { font-size: 0.85rem; color: #b0a0d0; line-height: 1.5; }
+
+    code {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 0.82rem;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      color: #fbc2eb;
+    }
+
+    .cmd-block {
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 10px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      color: #a8e6cf;
+      line-height: 1.8;
+    }
+
+    .cmd-block .comment { color: #7a6d9a; }
+
+    .commands-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 40px;
+    }
+
+    .commands-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: rgba(161,140,209,0.15);
+      color: #d4c6f0;
+      font-size: 0.85rem;
+    }
+
+    .commands-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.85rem;
+      color: #c0b0e0;
+    }
+
+    .commands-table tr:hover td { background: rgba(161,140,209,0.07); }
+
+    .commands-table th:first-child,
+    .commands-table td:first-child { border-radius: 8px 0 0 8px; }
+    .commands-table th:last-child,
+    .commands-table td:last-child  { border-radius: 0 8px 8px 0; }
+
+    footer {
+      text-align: center;
+      color: #6a5a8a;
+      font-size: 0.8rem;
+      margin-top: 60px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="stars" id="stars"></div>
+
+<div class="container">
+  <header>
+    <div class="avatar-wrapper">
+      <img src="/assets/images/aika_avatar.png" alt="Aika" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:3rem;\'>🌸</div>'" />
+    </div>
+    <h1>Aika Assistant</h1>
+    <p class="tagline">Anime AI Assistant · Flutter · Android</p>
+    <div class="badge-row">
+      <span class="badge">Flutter 3.0+</span>
+      <span class="badge">Gemini 2.0 Flash</span>
+      <span class="badge">GPT-4o-mini</span>
+      <span class="badge">Live2D Avatar</span>
+      <span class="badge">Android 6.0+</span>
+    </div>
+  </header>
+
+  <div class="alert">
+    <strong>📱 Android Mobile App</strong><br />
+    This project is a Flutter/Android application. It cannot run in a web browser — it needs to be built and installed on an Android device or emulator.
+    See the setup guide below to build and run it.
+  </div>
+
+  <p class="section-title">✨ Features</p>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🤖</div>
+      <div class="card-title">Dual AI Engine</div>
+      <div class="card-desc">Powered by Gemini 2.0 Flash and GPT-4o-mini. Vision-capable — can analyze your screen and take action.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌸</div>
+      <div class="card-title">Live2D Avatar</div>
+      <div class="card-desc">Interactive anime character rendered via PIXI.js and Live2D Cubism SDK inside a transparent overlay.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎤</div>
+      <div class="card-title">Voice Control</div>
+      <div class="card-desc">Full speech-to-text and text-to-speech. Wake word detection and natural language commands.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📱</div>
+      <div class="card-title">Device Automation</div>
+      <div class="card-desc">Launches apps, controls volume, toggles flashlight, reads battery, performs screen taps via Accessibility.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🧠</div>
+      <div class="card-title">Self-Learning</div>
+      <div class="card-desc">Users can teach Aika custom commands. Tracks relationships, mood, habits, and memory across sessions.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎮</div>
+      <div class="card-title">Game Helper</div>
+      <div class="card-desc">Monitors screen zones during gaming — alerts when HP is low, enemies appear, or events trigger.</div>
+    </div>
+  </div>
+
+  <p class="section-title">🚀 Build &amp; Run</p>
+  <div class="setup-box">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>Install Flutter SDK (3.0+)</h3>
+        <p>Download from <strong>flutter.dev</strong> and add to PATH. Requires Java JDK 17 and Android Studio.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>Install dependencies</h3>
+        <div class="cmd-block">flutter pub get</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>Connect Android device</h3>
+        <p>Enable Developer Mode on your phone: <em>Settings → About → tap Build Number 7×</em>, then enable USB Debugging.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>Run or build APK</h3>
+        <div class="cmd-block">
+          <span class="comment"># Run directly on connected device</span><br />
+          flutter run<br /><br />
+          <span class="comment"># Or build a release APK</span><br />
+          flutter build apk --release<br /><br />
+          <span class="comment"># APK output path:</span><br />
+          build/app/outputs/flutter-apk/app-release.apk
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h3>API Keys</h3>
+        <p>Edit <code>lib/services/ai_service.dart</code> and set your Gemini and OpenAI keys, or pass them via <code>--dart-define</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="section-title">🗣️ Voice Commands</p>
+  <table class="commands-table">
+    <thead>
+      <tr><th>Command</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>"Open YouTube"</td><td>Launches YouTube</td></tr>
+      <tr><td>"Turn on flashlight"</td><td>Toggles torch on</td></tr>
+      <tr><td>"Turn off flashlight"</td><td>Toggles torch off</td></tr>
+      <tr><td>"Increase volume"</td><td>Raises media volume</td></tr>
+      <tr><td>"Open Telegram"</td><td>Launches Telegram</td></tr>
+      <tr><td>"How much battery?"</td><td>Reads battery percentage</td></tr>
+      <tr><td>"Open settings"</td><td>Opens Android Settings</td></tr>
+      <tr><td>"Search [query]"</td><td>Google search</td></tr>
+    </tbody>
+  </table>
+
+  <p class="section-title">📁 Project Structure</p>
+  <div class="cmd-block">
+<span class="comment">aika_assistant/</span>
+├── lib/
+│   ├── main.dart               <span class="comment"># Entry point</span>
+│   ├── screens/                <span class="comment"># UI screens (Chat, Settings, Wardrobe…)</span>
+│   ├── services/               <span class="comment"># AI, Speech, Device, Memory services</span>
+│   ├── widgets/                <span class="comment"># Avatar, ChatBubble, VoiceButton</span>
+│   └── models/                 <span class="comment"># Data models</span>
+├── android/                    <span class="comment"># Native Android (Kotlin overlay, accessibility)</span>
+├── assets/
+│   ├── images/                 <span class="comment"># Aika avatar images</span>
+│   ├── models/                 <span class="comment"># Live2D models (Haru, Hiyori, Natori…)</span>
+│   └── live2d_viewer.html      <span class="comment"># Live2D renderer</span>
+└── pubspec.yaml                <span class="comment"># Flutter dependencies</span>
+  </div>
+
+  <footer>
+    Aika v1.0.0 &nbsp;·&nbsp; Flutter + Gemini 2.0 + GPT-4o-mini &nbsp;·&nbsp; Anime AI Assistant
+  </footer>
+</div>
+
+<script>
+  const starsEl = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    s.style.cssText = `
+      left: ${Math.random()*100}%;
+      top:  ${Math.random()*100}%;
+      --d:  ${2 + Math.random()*4}s;
+      --o:  ${0.2 + Math.random()*0.7};
+      width:  ${Math.random() > 0.8 ? 3 : 2}px;
+      height: ${Math.random() > 0.8 ? 3 : 2}px;
+    `;
+    starsEl.appendChild(s);
+  }
+</script>
+
+</body>
+</html>
