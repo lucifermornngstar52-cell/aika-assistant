@@ -39,54 +39,52 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Flutter version info
-        run: flutter --version
-
       - name: Get Flutter dependencies
         run: flutter pub get
 
-      # speech_to_text ≤7.x accesses android.flutter in build.gradle which
-      # AGP ≥8 removed. Patch: drop those lines before Gradle runs.
+      # speech_to_text ≤7.x uses `flutter.compileSdkVersion` inside android{}
+      # which AGP 8 removed from LibraryExtension. Replace with hardcoded values.
       - name: Patch speech_to_text Gradle (AGP 8 fix)
         run: |
-          # Find the build.gradle regardless of patch version
           STT_GRADLE=$(find "$HOME/.pub-cache" \
             -path "*/speech_to_text-*/android/build.gradle" 2>/dev/null | head -1)
-          
+
           if [ -z "$STT_GRADLE" ]; then
-            echo "⚠️  speech_to_text build.gradle not found — skipping patch"
-          else
-            echo "📝 Patching: $STT_GRADLE"
-            
-            # Show original lines 12-22 for debugging
-            sed -n '12,22p' "$STT_GRADLE"
-            
-            # Remove any line that references android.flutter.*
-            sed -i '/android\.flutter\./d' "$STT_GRADLE"
-            
-            # Also comment out the buildMode if statement block
-            sed -i 's/if (android\.flutter/\/\/ if (android.flutter/' "$STT_GRADLE"
-            
-            echo "✅ Patch applied. Lines 12-22 after patch:"
-            sed -n '12,22p' "$STT_GRADLE"
+            echo "speech_to_text build.gradle not found — skipping"
+            exit 0
           fi
+
+          echo "=== Before patch (lines 10-30) ==="
+          sed -n '10,30p' "$STT_GRADLE"
+
+          # Replace flutter.* property references with hardcoded values
+          sed -i \
+            -e 's/compileSdkVersion flutter\.compileSdkVersion/compileSdkVersion 34/g' \
+            -e 's/compileSdk flutter\.compileSdkVersion/compileSdk 34/g' \
+            -e 's/ndkVersion flutter\.ndkVersion/\/\/ ndkVersion omitted/g' \
+            -e 's/sourceCompatibility flutter\.javaVersion/sourceCompatibility JavaVersion.VERSION_11/g' \
+            -e 's/targetCompatibility flutter\.javaVersion/targetCompatibility JavaVersion.VERSION_11/g' \
+            -e 's/jvmTarget = flutter\.javaVersion\.toString()/jvmTarget = "11"/g' \
+            -e 's/jvmTarget = flutter\.javaVersion/jvmTarget = "11"/g' \
+            -e 's/flutter\.compileSdkVersion/34/g' \
+            -e 's/flutter\.ndkVersion/"25.1.8937393"/g' \
+            -e 's/flutter\.javaVersion/JavaVersion.VERSION_11/g' \
+            "$STT_GRADLE"
+
+          echo "=== After patch (lines 10-30) ==="
+          sed -n '10,30p' "$STT_GRADLE"
+          echo "✅ Patch applied"
 
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
 
       - name: Build Release APK
         if: ${{ github.event.inputs.build_type != 'debug' }}
-        run: |
-          flutter build apk \
-            --release \
-            --split-per-abi \
-            --obfuscate \
-            --split-debug-info=build/debug-info \
-            -v 2>&1 | tail -80
+        run: flutter build apk --release --split-per-abi
 
       - name: Build Debug APK
         if: ${{ github.event.inputs.build_type == 'debug' }}
-        run: flutter build apk --debug -v 2>&1 | tail -40
+        run: flutter build apk --debug
 
       - name: List built APKs
         if: always()
@@ -131,7 +129,7 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7
 
-      - name: Comment on PR with APK download link
+      - name: Comment on PR with APK link
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
@@ -140,8 +138,8 @@ jobs:
             const run_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const icon = status === 'success' ? '✅' : '❌';
             const body = status === 'success'
-              ? `## ${icon} APK собран успешно\n\n📦 [Скачать APK](${run_url}) — доступно 30 дней\n\n| Архитектура | Для чего |\n|---|---|\n| **arm64-v8a** | Все современные телефоны (2016+) |\n| **armeabi-v7a** | Старые устройства |`
-              : `## ${icon} Ошибка сборки APK\n\n[Посмотреть логи](${run_url})`;
+              ? `## ${icon} APK собран\n\n📦 [Скачать APK](${run_url}) (доступно 30 дней)\n\n| Файл | Для кого |\n|---|---|\n| arm64-v8a | Все современные телефоны |\n| armeabi-v7a | Старые устройства |`
+              : `## ${icon} Ошибка сборки\n\n[Логи](${run_url})`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
