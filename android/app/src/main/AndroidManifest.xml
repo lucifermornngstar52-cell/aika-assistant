@@ -46,6 +46,11 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" android:minSdkVersion="33" />
     <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
+    <!-- Календарь — CalendarService -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- Шагомер — StepCounterService -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
     <!-- Android 11+ — явно объявляем приложения которые хотим запускать -->
@@ -191,3 +196,4 @@
 
     </application>
 </manifest>
+
