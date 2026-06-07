@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import 'main_screen.dart';
 import 'onboarding_screen.dart';
+import 'permissions_onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -57,10 +58,17 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
+    Widget nextScreen;
+    if (name == null) {
+      nextScreen = const OnboardingScreen();
+    } else {
+      final permsDone = prefs.getBool('permissions_done') ?? false;
+      nextScreen = permsDone ? const MainScreen() : const PermissionsOnboardingScreen();
+    }
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) =>
-            name == null ? const OnboardingScreen() : const MainScreen(),
+        pageBuilder: (_, __, ___) => nextScreen,
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 600),
