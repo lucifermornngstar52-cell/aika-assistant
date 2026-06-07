@@ -42,38 +42,73 @@ jobs:
       - name: Get Flutter dependencies
         run: flutter pub get
 
-      # speech_to_text ≤7.x uses `flutter.compileSdkVersion` inside android{}
-      # which AGP 8 removed from LibraryExtension. Replace with hardcoded values.
-      - name: Patch speech_to_text Gradle (AGP 8 fix)
+      # Fix: speech_to_text ≤7.x uses flutter.compileSdkVersion inside android{}
+      # which AGP 8 removed. Two-layer fix:
+      # 1) Gradle init script that provides flutter.* properties to all library modules
+      # 2) Direct file patch (exclude example/ to find the real plugin build.gradle)
+      - name: Fix speech_to_text AGP 8 incompatibility
         run: |
-          STT_GRADLE=$(find "$HOME/.pub-cache" \
-            -path "*/speech_to_text-*/android/build.gradle" 2>/dev/null | head -1)
+          # ── Layer 1: Gradle init script (most reliable) ───────────────────
+          mkdir -p "$HOME/.gradle/init.d"
+          cat > "$HOME/.gradle/init.d/flutter-compat.gradle" << 'GRADLE'
+          // Provides flutter.* properties to library plugins that reference them
+          // Required for speech_to_text ≤7.x with AGP ≥8
+          allprojects {
+              plugins.withId('com.android.library') {
+                  android.buildFeatures.buildConfig = false
+              }
+              afterEvaluate { proj ->
+                  if (proj.plugins.hasPlugin('com.android.library')) {
+                      if (!proj.android.extensions.findByName('flutter')) {
+                          proj.android.extensions.extraProperties['flutter'] = [
+                              compileSdkVersion: 34,
+                              targetSdkVersion: 34,
+                              minSdkVersion: 21,
+                              ndkVersion: '25.1.8937393',
+                              javaVersion: JavaVersion.VERSION_11,
+                          ]
+                      }
+                  }
+              }
+          }
+          GRADLE
+          echo "✅ Gradle init script created"
+          cat "$HOME/.gradle/init.d/flutter-compat.gradle"
+
+          # ── Layer 2: Direct file patch (exclude example/ dirs) ───────────
+          # Find speech_to_text plugin build.gradle — NOT the example project one
+          STT_GRADLE=$(find "$HOME/.pub-cache/hosted/pub.dev" \
+            -path "*/speech_to_text-*/android/build.gradle" \
+            ! -path "*/example/*" \
+            -maxdepth 5 2>/dev/null | head -1)
 
           if [ -z "$STT_GRADLE" ]; then
-            echo "speech_to_text build.gradle not found — skipping"
-            exit 0
+            echo "⚠️ speech_to_text build.gradle not found — relying on init script"
+          else
+            echo "📝 Found: $STT_GRADLE"
+            echo "=== Full file (with line numbers) ==="
+            cat -n "$STT_GRADLE"
+            echo ""
+
+            # Use node for reliable regex replacement
+            node - "$STT_GRADLE" << 'JSEOF'
+          const fs = require('fs');
+          const file = process.argv[1];
+          let src = fs.readFileSync(file, 'utf8');
+          const before = src;
+          src = src
+            .replace(/flutter\.compileSdkVersion/g, '34')
+            .replace(/flutter\.targetSdkVersion/g,  '34')
+            .replace(/flutter\.minSdkVersion/g,      '21')
+            .replace(/flutter\.ndkVersion/g,         '"25.1.8937393"')
+            .replace(/flutter\.javaVersion/g,        'JavaVersion.VERSION_11');
+          fs.writeFileSync(file, src);
+          const changed = src !== before;
+          console.log(changed ? '✅ flutter.* references replaced' : 'ℹ️  No flutter.* references found (init script will handle it)');
+          console.log('=== After patch ===');
+          console.log(src);
+          JSEOF
           fi
-
-          echo "=== Before patch (lines 10-30) ==="
-          sed -n '10,30p' "$STT_GRADLE"
-
-          # Replace flutter.* property references with hardcoded values
-          sed -i \
-            -e 's/compileSdkVersion flutter\.compileSdkVersion/compileSdkVersion 34/g' \
-            -e 's/compileSdk flutter\.compileSdkVersion/compileSdk 34/g' \
-            -e 's/ndkVersion flutter\.ndkVersion/\/\/ ndkVersion omitted/g' \
-            -e 's/sourceCompatibility flutter\.javaVersion/sourceCompatibility JavaVersion.VERSION_11/g' \
-            -e 's/targetCompatibility flutter\.javaVersion/targetCompatibility JavaVersion.VERSION_11/g' \
-            -e 's/jvmTarget = flutter\.javaVersion\.toString()/jvmTarget = "11"/g' \
-            -e 's/jvmTarget = flutter\.javaVersion/jvmTarget = "11"/g' \
-            -e 's/flutter\.compileSdkVersion/34/g' \
-            -e 's/flutter\.ndkVersion/"25.1.8937393"/g' \
-            -e 's/flutter\.javaVersion/JavaVersion.VERSION_11/g' \
-            "$STT_GRADLE"
-
-          echo "=== After patch (lines 10-30) ==="
-          sed -n '10,30p' "$STT_GRADLE"
-          echo "✅ Patch applied"
 
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
@@ -134,15 +169,13 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const status = '${{ job.status }}';
-            const run_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const icon = status === 'success' ? '✅' : '❌';
-            const body = status === 'success'
-              ? `## ${icon} APK собран\n\n📦 [Скачать APK](${run_url}) (доступно 30 дней)\n\n| Файл | Для кого |\n|---|---|\n| arm64-v8a | Все современные телефоны |\n| armeabi-v7a | Старые устройства |`
-              : `## ${icon} Ошибка сборки\n\n[Логи](${run_url})`;
+            const ok = '${{ job.status }}' === 'success';
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body
+              body: ok
+                ? `## ✅ APK собран\n\n📦 [Скачать APK](${url}) — 30 дней\n\n| Файл | Устройство |\n|---|---|\n| arm64-v8a | Все современные телефоны |\n| armeabi-v7a | Старые устройства |`
+                : `## ❌ Ошибка сборки\n\n[Посмотреть логи](${url})`
             });
