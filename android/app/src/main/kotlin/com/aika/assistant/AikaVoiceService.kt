@@ -43,6 +43,7 @@ class AikaVoiceService : Service() {
 
         @Volatile var isRunning = false
         @Volatile var eventSink: EventChannel.EventSink? = null
+        @Volatile var instance: AikaVoiceService? = null
 
         // Триггеры, которые слушаем в фоне
         var triggers: List<String> = listOf("айка", "aika", "aivora", "эй айка")
@@ -59,6 +60,7 @@ class AikaVoiceService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
+        AikaVoiceService.instance = this
         super.onCreate()
         restartHandler = android.os.Handler(mainLooper)
         Log.d(TAG, "onCreate")
@@ -93,6 +95,7 @@ class AikaVoiceService : Service() {
     }
 
     override fun onDestroy() {
+        AikaVoiceService.instance = null
         isRunning = false
         paused = false
         restartHandler?.removeCallbacksAndMessages(null)
