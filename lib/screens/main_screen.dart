@@ -72,6 +72,9 @@ import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
 import '../services/phone_control_service.dart';
 import '../services/screen_command_service.dart';
+import '../services/conversation_history_service.dart';
+import '../services/suggestion_chips_service.dart';
+import '../services/ping_sound_service.dart';
 import '../services/clipboard_service.dart';
 import '../services/contacts_service.dart';
 import '../services/calendar_service.dart';
@@ -110,6 +113,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final CalendarService _calendarService = CalendarService();
   final ShoplistService _shoplistService = ShoplistService();
   final StepCounterService _stepCounter = StepCounterService();
+  final ConversationHistoryService _convHistory = ConversationHistoryService();
+  final SuggestionChipsService _suggestionsService = SuggestionChipsService();
+  final PingSoundService _pingSound = PingSoundService();
+  List<SuggestionChip> _currentChips = [];
   final ScheduleService _scheduleService = ScheduleService();
   final WeatherService _weatherService = WeatherService();
   final BriefingService _briefingService = BriefingService();
@@ -342,6 +349,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _resetIdleTimer();
     // Инициализируем новые сервисы
     await _reminderService.initialize();
+    await _convHistory.initialize();
     await _alarmService.initialize();
 
     // Smart alarm init
@@ -706,6 +714,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await OverlayService().show(state: 'listening');
     await _speak('Да?');
     setState(() => _isListening = true);
+    await _pingSound.pingStart();
     await _speechService.startListening(
       (text) async {
         // Если Айка задремала — радостное приветствие
@@ -988,7 +997,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _addMessage(ChatMessage msg) {
-    setState(() => _messages.add(msg));
+    setState(() {
+      _messages.add(msg);
+      if (msg.role == MessageRole.aika) {
+        _currentChips = _suggestionsService.getSuggestionsForResponse(msg.content);
+        _convHistory.addAssistant(msg.content);
+      } else {
+        _convHistory.addUser(msg.content);
+        _currentChips = [];
+      }
+    });
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -2262,6 +2280,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     },
                   ),
           ),
+
+          // ── Suggestion chips (GA Desktop Client inspired) ───────────────
+          if (_currentChips.isNotEmpty)
+            Positioned(
+              left: 0, right: 0, bottom: 68,
+              child: SuggestionChipsWidget(
+                chips: _currentChips,
+                onChipTap: (query) {
+                  setState(() => _currentChips = []);
+                  _handleUserText(query);
+                },
+              ),
+            ),
 
           // ── Индикатор "думает" ───────────────────────────────────────────
           if (_isThinking)
