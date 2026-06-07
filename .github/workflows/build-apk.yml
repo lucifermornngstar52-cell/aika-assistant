@@ -31,7 +31,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Flutter 3.24.x ships with Dart 3.5 — required by flutter_inappwebview >=6.1.0
       - name: Setup Flutter 3.24.4
         uses: subosito/flutter-action@v2
         with:
@@ -42,73 +41,66 @@ jobs:
       - name: Get Flutter dependencies
         run: flutter pub get
 
-      # Fix: speech_to_text ≤7.x uses flutter.compileSdkVersion inside android{}
-      # which AGP 8 removed. Two-layer fix:
-      # 1) Gradle init script that provides flutter.* properties to all library modules
-      # 2) Direct file patch (exclude example/ to find the real plugin build.gradle)
       - name: Fix speech_to_text AGP 8 incompatibility
         run: |
-          # ── Layer 1: Gradle init script (most reliable) ───────────────────
-          mkdir -p "$HOME/.gradle/init.d"
-          cat > "$HOME/.gradle/init.d/flutter-compat.gradle" << 'GRADLE'
-          // Provides flutter.* properties to library plugins that reference them
-          // Required for speech_to_text ≤7.x with AGP ≥8
+          python3 - << 'PYEOF'
+          import os, re, glob, sys
+
+          # ── 1. Gradle init script ─────────────────────────────────────────
+          init_dir = os.path.expanduser('~/.gradle/init.d')
+          os.makedirs(init_dir, exist_ok=True)
+          gradle_init = r"""
           allprojects {
-              plugins.withId('com.android.library') {
-                  android.buildFeatures.buildConfig = false
-              }
               afterEvaluate { proj ->
                   if (proj.plugins.hasPlugin('com.android.library')) {
-                      if (!proj.android.extensions.findByName('flutter')) {
-                          proj.android.extensions.extraProperties['flutter'] = [
-                              compileSdkVersion: 34,
-                              targetSdkVersion: 34,
-                              minSdkVersion: 21,
-                              ndkVersion: '25.1.8937393',
-                              javaVersion: JavaVersion.VERSION_11,
-                          ]
-                      }
+                      try {
+                          proj.android.ext.set('flutter', [
+                              compileSdkVersion : 34,
+                              targetSdkVersion  : 34,
+                              minSdkVersion     : 21,
+                              ndkVersion        : '25.1.8937393',
+                              javaVersion       : JavaVersion.VERSION_11,
+                          ])
+                      } catch (Exception ignored) {}
                   }
               }
           }
-          GRADLE
-          echo "✅ Gradle init script created"
-          cat "$HOME/.gradle/init.d/flutter-compat.gradle"
+          """
+          with open(os.path.join(init_dir, 'flutter-compat.gradle'), 'w') as f:
+              f.write(gradle_init)
+          print('✅ Gradle init script written')
 
-          # ── Layer 2: Direct file patch (exclude example/ dirs) ───────────
-          # Find speech_to_text plugin build.gradle — NOT the example project one
-          STT_GRADLE=$(find "$HOME/.pub-cache/hosted/pub.dev" \
-            -path "*/speech_to_text-*/android/build.gradle" \
-            ! -path "*/example/*" \
-            -maxdepth 5 2>/dev/null | head -1)
+          # ── 2. Direct patch of speech_to_text build.gradle ───────────────
+          pub_base = os.path.expanduser('~/.pub-cache/hosted/pub.dev')
+          # Find ALL speech_to_text build.gradle files, exclude example dirs
+          candidates = glob.glob(f'{pub_base}/speech_to_text-*/android/build.gradle')
+          targets = [f for f in candidates if 'example' not in f.split(os.sep)]
 
-          if [ -z "$STT_GRADLE" ]; then
-            echo "⚠️ speech_to_text build.gradle not found — relying on init script"
-          else
-            echo "📝 Found: $STT_GRADLE"
-            echo "=== Full file (with line numbers) ==="
-            cat -n "$STT_GRADLE"
-            echo ""
+          if not targets:
+              print('⚠️  speech_to_text build.gradle not found (Gradle init will handle)')
+              sys.exit(0)
 
-            # Use node for reliable regex replacement
-            node - "$STT_GRADLE" << 'JSEOF'
-          const fs = require('fs');
-          const file = process.argv[1];
-          let src = fs.readFileSync(file, 'utf8');
-          const before = src;
-          src = src
-            .replace(/flutter\.compileSdkVersion/g, '34')
-            .replace(/flutter\.targetSdkVersion/g,  '34')
-            .replace(/flutter\.minSdkVersion/g,      '21')
-            .replace(/flutter\.ndkVersion/g,         '"25.1.8937393"')
-            .replace(/flutter\.javaVersion/g,        'JavaVersion.VERSION_11');
-          fs.writeFileSync(file, src);
-          const changed = src !== before;
-          console.log(changed ? '✅ flutter.* references replaced' : 'ℹ️  No flutter.* references found (init script will handle it)');
-          console.log('=== After patch ===');
-          console.log(src);
-          JSEOF
-          fi
+          for path in targets:
+              print(f'📝 Patching: {path}')
+              with open(path, 'r') as f:
+                  src = f.read()
+              print('─── Original ───')
+              for i, line in enumerate(src.splitlines(), 1):
+                  print(f'{i:3d}| {line}')
+              patched = src
+              patched = re.sub(r'flutter\.compileSdkVersion', '34', patched)
+              patched = re.sub(r'flutter\.targetSdkVersion',  '34', patched)
+              patched = re.sub(r'flutter\.minSdkVersion',     '21', patched)
+              patched = re.sub(r'flutter\.ndkVersion',        '"25.1.8937393"', patched)
+              patched = re.sub(r'flutter\.javaVersion',       'JavaVersion.VERSION_11', patched)
+              with open(path, 'w') as f:
+                  f.write(patched)
+              changed = src != patched
+              print('─── Patched ───')
+              for i, line in enumerate(patched.splitlines(), 1):
+                  print(f'{i:3d}| {line}')
+              print(f'✅ Done ({"changed" if changed else "no flutter.* found — init.gradle handles it"})')
+          PYEOF
 
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
@@ -176,6 +168,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: ok
-                ? `## ✅ APK собран\n\n📦 [Скачать APK](${url}) — 30 дней\n\n| Файл | Устройство |\n|---|---|\n| arm64-v8a | Все современные телефоны |\n| armeabi-v7a | Старые устройства |`
-                : `## ❌ Ошибка сборки\n\n[Посмотреть логи](${url})`
+                ? `## ✅ APK собран\n\n📦 [Скачать APK](${url}) — 30 дней\n\n| Файл | Устройство |\n|---|---|\n| arm64-v8a | Современные телефоны |\n| armeabi-v7a | Старые устройства |`
+                : `## ❌ Ошибка сборки — [логи](${url})`
             });
