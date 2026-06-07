@@ -16,10 +16,6 @@ on:
           - release
           - debug
 
-env:
-  FLUTTER_VERSION: '3.22.3'
-  JAVA_VERSION: '17'
-
 jobs:
   build:
     name: Build Flutter APK
@@ -29,16 +25,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java ${{ env.JAVA_VERSION }}
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      # Flutter 3.24.x ships with Dart 3.5 — required by flutter_inappwebview >=6.1.0
+      - name: Setup Flutter 3.24.4
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+          flutter-version: '3.24.4'
           channel: 'stable'
           cache: true
 
@@ -48,22 +45,30 @@ jobs:
       - name: Get Flutter dependencies
         run: flutter pub get
 
-      - name: Patch speech_to_text Gradle incompatibility
-        # speech_to_text ≤7.4.x accesses android.flutter in LibraryExtension,
-        # which AGP ≥8 removed. Patch: make that block a no-op.
+      # speech_to_text ≤7.x accesses android.flutter in build.gradle which
+      # AGP ≥8 removed. Patch: drop those lines before Gradle runs.
+      - name: Patch speech_to_text Gradle (AGP 8 fix)
         run: |
-          STT_GRADLE="$HOME/.pub-cache/hosted/pub.dev/speech_to_text-7.4.0/android/build.gradle"
-          if [ -f "$STT_GRADLE" ]; then
-            echo "Patching $STT_GRADLE"
-            # Replace `android { ... flutter { ... } ... }` with no-op
-            # Safer: just comment out the problematic block
-            sed -i 's/android\.flutter\.buildMode/\/* android.flutter.buildMode *\/ "release"/' "$STT_GRADLE" || true
-            sed -i '/android\.flutter\./d' "$STT_GRADLE" || true
-            echo "Patch applied to speech_to_text build.gradle"
-            head -30 "$STT_GRADLE"
+          # Find the build.gradle regardless of patch version
+          STT_GRADLE=$(find "$HOME/.pub-cache" \
+            -path "*/speech_to_text-*/android/build.gradle" 2>/dev/null | head -1)
+          
+          if [ -z "$STT_GRADLE" ]; then
+            echo "⚠️  speech_to_text build.gradle not found — skipping patch"
           else
-            echo "speech_to_text build.gradle not found at expected path:"
-            find "$HOME/.pub-cache" -name "build.gradle" -path "*/speech_to_text*" 2>/dev/null | head -5
+            echo "📝 Patching: $STT_GRADLE"
+            
+            # Show original lines 12-22 for debugging
+            sed -n '12,22p' "$STT_GRADLE"
+            
+            # Remove any line that references android.flutter.*
+            sed -i '/android\.flutter\./d' "$STT_GRADLE"
+            
+            # Also comment out the buildMode if statement block
+            sed -i 's/if (android\.flutter/\/\/ if (android.flutter/' "$STT_GRADLE"
+            
+            echo "✅ Patch applied. Lines 12-22 after patch:"
+            sed -n '12,22p' "$STT_GRADLE"
           fi
 
       - name: Analyze code (non-fatal)
@@ -75,21 +80,24 @@ jobs:
           flutter build apk \
             --release \
             --split-per-abi \
-            -v 2>&1 | tail -60
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            -v 2>&1 | tail -80
 
       - name: Build Debug APK
         if: ${{ github.event.inputs.build_type == 'debug' }}
-        run: flutter build apk --debug -v 2>&1 | tail -60
+        run: flutter build apk --debug -v 2>&1 | tail -40
 
       - name: List built APKs
+        if: always()
         run: |
-          echo "=== Built APKs ==="
+          echo "=== Build outputs ==="
           find build/app/outputs -name "*.apk" 2>/dev/null \
-            | while read f; do echo "  $(du -h "$f" | cut -f1)  $(basename $f)"; done \
+            | while read f; do echo "  $(du -h "$f" | cut -f1)  $(basename "$f")"; done \
             || echo "No APKs found"
 
-      - name: Upload arm64 Release APK
-        if: ${{ github.event.inputs.build_type != 'debug' && success() }}
+      - name: Upload arm64-v8a Release APK
+        if: success() && github.event.inputs.build_type != 'debug'
         uses: actions/upload-artifact@v4
         with:
           name: aika-assistant-arm64-release
@@ -97,8 +105,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload armeabi Release APK
-        if: ${{ github.event.inputs.build_type != 'debug' && success() }}
+      - name: Upload armeabi-v7a Release APK
+        if: success() && github.event.inputs.build_type != 'debug'
         uses: actions/upload-artifact@v4
         with:
           name: aika-assistant-armeabi-release
@@ -106,23 +114,37 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Upload x86_64 Release APK
+        if: success() && github.event.inputs.build_type != 'debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-assistant-x86_64-release
+          path: build/app/outputs/flutter-apk/app-x86_64-release.apk
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload Debug APK
-        if: ${{ github.event.inputs.build_type == 'debug' && success() }}
+        if: success() && github.event.inputs.build_type == 'debug'
         uses: actions/upload-artifact@v4
         with:
           name: aika-assistant-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7
 
-      - name: Comment PR with APK link
-        if: github.event_name == 'pull_request' && success()
+      - name: Comment on PR with APK download link
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
+            const status = '${{ job.status }}';
             const run_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const icon = status === 'success' ? '✅' : '❌';
+            const body = status === 'success'
+              ? `## ${icon} APK собран успешно\n\n📦 [Скачать APK](${run_url}) — доступно 30 дней\n\n| Архитектура | Для чего |\n|---|---|\n| **arm64-v8a** | Все современные телефоны (2016+) |\n| **armeabi-v7a** | Старые устройства |`
+              : `## ${icon} Ошибка сборки APK\n\n[Посмотреть логи](${run_url})`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ✅ APK собран\n\n📦 [Скачать APK (30 дней)](${run_url})\n\n| Архитектура | Файл |\n|---|---|\n| arm64 (современные) | app-arm64-v8a-release.apk |\n| armeabi (старые) | app-armeabi-v7a-release.apk |`
+              body
             });
