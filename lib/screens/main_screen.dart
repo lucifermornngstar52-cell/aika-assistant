@@ -72,6 +72,11 @@ import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
 import '../services/phone_control_service.dart';
 import '../services/screen_command_service.dart';
+import '../services/clipboard_service.dart';
+import '../services/contacts_service.dart';
+import '../services/calendar_service.dart';
+import '../services/shoplist_service.dart';
+import '../services/step_counter_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -100,6 +105,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final ThemeSwitcherService _themeSwitcher = ThemeSwitcherService();
   final PhoneControlService _phoneControl = PhoneControlService();
   final AlarmService _alarmService = AlarmService();
+  final ClipboardService _clipboardService = ClipboardService();
+  final ContactsService _contactsService = ContactsService();
+  final CalendarService _calendarService = CalendarService();
+  final ShoplistService _shoplistService = ShoplistService();
+  final StepCounterService _stepCounter = StepCounterService();
   final ScheduleService _scheduleService = ScheduleService();
   final WeatherService _weatherService = WeatherService();
   final BriefingService _briefingService = BriefingService();
@@ -1211,6 +1221,71 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
       await _speak(reply);
+      return;
+    }
+
+    // ── Список покупок / дел (vasisualy-inspired) ──────────────────────────
+    final shopResult = await _shoplistService.parseCommand(text);
+    if (shopResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: shopResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(shopResult);
+      return;
+    }
+
+    // ── Буфер обмена (openclaw-inspired) ───────────────────────────────────
+    final clipResult = await _clipboardService.parseCommand(text);
+    if (clipResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: clipResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(clipResult);
+      return;
+    }
+
+    // ── Контакты (openclaw-inspired) ───────────────────────────────────────
+    final contactResult = await _contactsService.parseCommand(text);
+    if (contactResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: contactResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(contactResult);
+      return;
+    }
+
+    // ── Календарь (openclaw-inspired) ──────────────────────────────────────
+    final calResult = await _calendarService.parseCommand(text);
+    if (calResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: calResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(calResult);
+      return;
+    }
+
+    // ── Шагомер (openclaw MotionHandler) ───────────────────────────────────
+    final stepResult = await _stepCounter.parseCommand(text);
+    if (stepResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: stepResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(stepResult);
       return;
     }
 
