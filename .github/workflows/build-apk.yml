@@ -1,0 +1,67 @@
+name: Сборка APK Айки
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Собрать APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Получить код
+        uses: actions/checkout@v4
+
+      - name: Настроить Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Настроить Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Установить зависимости
+        run: flutter pub get
+
+      - name: Анализ кода (не блокирует сборку)
+        run: flutter analyze --no-fatal-infos || true
+
+      - name: Собрать DEBUG APK
+        run: |
+          flutter build apk --debug \
+            --dart-define=FLUTTER_WEB_AUTO_DETECT=false
+
+      - name: Собрать RELEASE APK
+        run: |
+          flutter build apk --release \
+            --dart-define=FLUTTER_WEB_AUTO_DETECT=false
+        continue-on-error: true
+
+      - name: Загрузить DEBUG APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+      - name: Загрузить RELEASE APK (если собрался)
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+        if: success() || true
+
+      - name: Показать размер APK
+        run: |
+          echo "=== Результаты сборки ==="
+          ls -lh build/app/outputs/flutter-apk/*.apk 2>/dev/null || echo "APK не найден"
