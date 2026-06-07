@@ -1,0 +1,173 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, feature/voice-background-listening ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+jobs:
+  build:
+    name: Build Flutter APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Flutter 3.24.4
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.4'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Fix speech_to_text AGP 8 incompatibility
+        run: |
+          python3 - << 'PYEOF'
+          import os, re, glob, sys
+
+          # ── 1. Gradle init script ─────────────────────────────────────────
+          init_dir = os.path.expanduser('~/.gradle/init.d')
+          os.makedirs(init_dir, exist_ok=True)
+          gradle_init = r"""
+          allprojects {
+              afterEvaluate { proj ->
+                  if (proj.plugins.hasPlugin('com.android.library')) {
+                      try {
+                          proj.android.ext.set('flutter', [
+                              compileSdkVersion : 34,
+                              targetSdkVersion  : 34,
+                              minSdkVersion     : 21,
+                              ndkVersion        : '25.1.8937393',
+                              javaVersion       : JavaVersion.VERSION_11,
+                          ])
+                      } catch (Exception ignored) {}
+                  }
+              }
+          }
+          """
+          with open(os.path.join(init_dir, 'flutter-compat.gradle'), 'w') as f:
+              f.write(gradle_init)
+          print('✅ Gradle init script written')
+
+          # ── 2. Direct patch of speech_to_text build.gradle ───────────────
+          pub_base = os.path.expanduser('~/.pub-cache/hosted/pub.dev')
+          # Find ALL speech_to_text build.gradle files, exclude example dirs
+          candidates = glob.glob(f'{pub_base}/speech_to_text-*/android/build.gradle')
+          targets = [f for f in candidates if 'example' not in f.split(os.sep)]
+
+          if not targets:
+              print('⚠️  speech_to_text build.gradle not found (Gradle init will handle)')
+              sys.exit(0)
+
+          for path in targets:
+              print(f'📝 Patching: {path}')
+              with open(path, 'r') as f:
+                  src = f.read()
+              print('─── Original ───')
+              for i, line in enumerate(src.splitlines(), 1):
+                  print(f'{i:3d}| {line}')
+              patched = src
+              patched = re.sub(r'flutter\.compileSdkVersion', '34', patched)
+              patched = re.sub(r'flutter\.targetSdkVersion',  '34', patched)
+              patched = re.sub(r'flutter\.minSdkVersion',     '21', patched)
+              patched = re.sub(r'flutter\.ndkVersion',        '"25.1.8937393"', patched)
+              patched = re.sub(r'flutter\.javaVersion',       'JavaVersion.VERSION_11', patched)
+              with open(path, 'w') as f:
+                  f.write(patched)
+              changed = src != patched
+              print('─── Patched ───')
+              for i, line in enumerate(patched.splitlines(), 1):
+                  print(f'{i:3d}| {line}')
+              print(f'✅ Done ({"changed" if changed else "no flutter.* found — init.gradle handles it"})')
+          PYEOF
+
+      - name: Analyze code (non-fatal)
+        run: flutter analyze --no-fatal-infos || true
+
+      - name: Build Release APK
+        if: ${{ github.event.inputs.build_type != 'debug' }}
+        run: flutter build apk --release --split-per-abi
+
+      - name: Build Debug APK
+        if: ${{ github.event.inputs.build_type == 'debug' }}
+        run: flutter build apk --debug
+
+      - name: List built APKs
+        if: always()
+        run: |
+          echo "=== Build outputs ==="
+          find build/app/outputs -name "*.apk" 2>/dev/null \
+            | while read f; do echo "  $(du -h "$f" | cut -f1)  $(basename "$f")"; done \
+            || echo "No APKs found"
+
+      - name: Upload arm64-v8a Release APK
+        if: success() && github.event.inputs.build_type != 'debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-assistant-arm64-release
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload armeabi-v7a Release APK
+        if: success() && github.event.inputs.build_type != 'debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-assistant-armeabi-release
+          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload x86_64 Release APK
+        if: success() && github.event.inputs.build_type != 'debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-assistant-x86_64-release
+          path: build/app/outputs/flutter-apk/app-x86_64-release.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Debug APK
+        if: success() && github.event.inputs.build_type == 'debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aika-assistant-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
+      - name: Comment on PR with APK link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ok = '${{ job.status }}' === 'success';
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: ok
+                ? `## ✅ APK собран\n\n📦 [Скачать APK](${url}) — 30 дней\n\n| Файл | Устройство |\n|---|---|\n| arm64-v8a | Современные телефоны |\n| armeabi-v7a | Старые устройства |`
+                : `## ❌ Ошибка сборки — [логи](${url})`
+            });
