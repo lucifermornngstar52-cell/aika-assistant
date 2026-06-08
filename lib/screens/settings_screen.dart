@@ -8,6 +8,7 @@ import 'personality_screen.dart';
 import 'chat_history_screen.dart';
 import 'settings_overlay_screen.dart';
 import 'about_project_screen.dart';
+import 'ai_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -36,6 +37,34 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
           const SizedBox(height: 8),
+
+          // ── AI ─────────────────────────────────────────────────────
+          _SettingsCard(
+            title: '🧠 AI Двигатели',
+            subtitle: 'GPT-4o, Gemini, Groq, Claude, Deepseek, веб-поиск',
+            icon: Icons.auto_awesome,
+            accent: const Color(0xFF00BFFF),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AiSettingsScreen())),
+          ),
+
+          // ── Характер ───────────────────────────────────────────────
+          _SettingsCard(
+            title: 'Персонаж',
+            subtitle: 'Айка, JARVIS, FRIDAY, Призрак, Оракул и др.',
+            icon: Icons.face_retouching_natural,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const PersonalityScreen())),
+          ),
+
+          _SettingsCard(
+            title: 'Голос',
+            subtitle: 'Скорость, тон, Microsoft Neural Voice',
+            icon: Icons.graphic_eq,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SettingsVoiceScreen())),
+          ),
+
           _SettingsCard(
             title: 'Оверлей',
             subtitle: 'Размер модели, перетаскивание, прозрачность',
@@ -43,20 +72,7 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsOverlayScreen())),
           ),
-          _SettingsCard(
-            title: 'Персонаж',
-            subtitle: 'Имя ассистента, личность и характер',
-            icon: Icons.face_retouching_natural,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const PersonalityScreen())),
-          ),
-          _SettingsCard(
-            title: 'Голос',
-            subtitle: 'Скорость, тон, громкость речи',
-            icon: Icons.graphic_eq,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsVoiceScreen())),
-          ),
+
           _SettingsCard(
             title: 'Модели',
             subtitle: 'Live2D, загрузка своих моделей',
@@ -64,13 +80,15 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const ModelPickerScreen())),
           ),
+
           _SettingsCard(
             title: 'Фон',
-            subtitle: 'Задний фон за персонажем, атмосфера',
+            subtitle: 'Задний фон, атмосфера',
             icon: Icons.landscape_outlined,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsBackgroundScreen())),
           ),
+
           _SettingsCard(
             title: 'История чата',
             subtitle: 'Все прошлые сообщения, очистка',
@@ -78,13 +96,15 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const ChatHistoryScreen())),
           ),
+
           _SettingsCard(
             title: 'Общие',
-            subtitle: 'Имя пользователя, размер аватара',
+            subtitle: 'Имя пользователя, wake word, размер аватара',
             icon: Icons.tune,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsGeneralScreen())),
           ),
+
           _SettingsCard(
             title: 'О проекте',
             subtitle: 'Команда, возможности, стек технологий',
@@ -102,6 +122,7 @@ class _SettingsCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
+  final Color? accent;
   final VoidCallback onTap;
 
   const _SettingsCard({
@@ -109,18 +130,25 @@ class _SettingsCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.onTap,
+    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = accent;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
+          color: color != null
+              ? color.withOpacity(0.08)
+              : const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(18),
+          border: color != null
+              ? Border.all(color: color.withOpacity(0.3), width: 1)
+              : null,
         ),
         child: Row(
           children: [
@@ -129,21 +157,23 @@ class _SettingsCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
+                      style: TextStyle(
+                          color: color ?? Colors.white,
+                          fontSize: 17,
                           fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(subtitle,
                       style: const TextStyle(
                           color: Colors.white54,
-                          fontSize: 13,
+                          fontSize: 12,
                           height: 1.4)),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            Icon(icon, color: Colors.white12, size: 52),
+            Icon(icon,
+                color: color != null ? color.withOpacity(0.4) : Colors.white12,
+                size: 48),
           ],
         ),
       ),
