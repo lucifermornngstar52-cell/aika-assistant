@@ -143,14 +143,14 @@ class OfflineVoiceService extends ChangeNotifier {
     _lastCommand = text;
     debugPrint('[OfflineVoice] 📝 команда: "$text"');
 
-    final cmd = _parser.parse(text);
+    final cmd = VoiceCommandParser.parse(text);
     debugPrint('[OfflineVoice] 🔍 intent: $cmd');
 
     String feedback = '';
 
-    if (!cmd.isUnknown) {
+    if (cmd != null) {
       // Офлайн исполнение
-      feedback = await _executor.execute(cmd);
+      feedback = await _executor.execute(cmd!);
     } else {
       // Команда не распознана
       feedback = '';
