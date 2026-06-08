@@ -68,6 +68,7 @@ import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
 import '../services/edge_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
+import '../widgets/friday_hud.dart';
 import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
 import '../services/phone_control_service.dart';
@@ -2096,6 +2097,36 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_themeSwitcher.isFriday) {
+      return FridayHud(
+        isListening: _isListening,
+        isThinking: _isThinking,
+        lastResponse: _messages.isNotEmpty ? _messages.last.content : '',
+        messages: _messages.map((m) => FridayMessage(
+          content: m.content,
+          isUser: m.role == MessageRole.user,
+          timestamp: m.timestamp,
+        )).toList(),
+        textController: _textController,
+        scrollController: _scrollController,
+        onSendMessage: _sendMessage,
+        onMicTap: _toggleListening,
+        onThemeSwitch: () => _themeSwitcher.toggle(),
+        wakeWordEnabled: _wakeWordEnabled,
+        onToggleWakeWord: _toggleWakeWord,
+        hasOverlayPermission: _hasOverlayPermission,
+        onOverlayPermission: _showOverlayPermissionDialog,
+        onOpenSettings: _openSettings,
+        onOpenCurrency: _openCurrency,
+        onOpenMoodDiary: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MoodDiaryScreen())),
+        onOpenSchedule: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduleScreen())),
+        onOpenTelegram: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TelegramBotScreen())),
+        onOpenAppCommands: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppCommandsScreen())),
+        assistantName: 'F.R.I.D.A.Y.',
+        userName: _userName,
+      );
+    }
+
     if (_themeSwitcher.isJarvis) {
       return JarvisHud(
         isListening: _isListening,
