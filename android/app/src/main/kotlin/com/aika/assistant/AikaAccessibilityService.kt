@@ -335,3 +335,216 @@ class AikaAccessibilityService : AccessibilityService() {
         }
     }
 }
+
+    // ════════════════════════════════════════════════════════════════
+    // МЕТОДЫ-АЛИАСЫ И ДОПОЛНИТЕЛЬНЫЕ (для совместимости с MainActivity)
+    // ════════════════════════════════════════════════════════════════
+
+    fun performBack() = pressBack()
+    fun toggleSplitScreen() = if (Build.VERSION.SDK_INT >= 21) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN) else false
+    fun powerDialog() = if (Build.VERSION.SDK_INT >= 21) performGlobalAction(GLOBAL_ACTION_POWER_DIALOG) else false
+
+    // Алиас clickByDescription → clickByContentDesc
+    fun clickByDescription(desc: String) = clickByContentDesc(desc)
+
+    // Клик по точному тексту
+    fun clickByExactText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = allNodes(root).firstOrNull { n ->
+            n.text?.toString()?.equals(text, ignoreCase = true) == true
+        } ?: return false
+        return clickNode(node)
+    }
+
+    // Длинный клик по тексту
+    fun longClickByText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = allNodes(root).firstOrNull { n ->
+            n.text?.toString()?.contains(text, ignoreCase = true) == true
+        } ?: return false
+        val bounds = android.graphics.Rect()
+        node.getBoundsInScreen(bounds)
+        return if (!bounds.isEmpty) longTapAt(bounds.centerX().toFloat(), bounds.centerY().toFloat()) else false
+    }
+
+    // Копировать выделенное
+    fun copySelectedText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val input = findFocusedInput(root) ?: return false
+        return input.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY)
+    }
+
+    // Вставить текст
+    fun pasteText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val input = findFocusedInput(root) ?: return false
+        return input.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_PASTE)
+    }
+
+    // Очистить поле
+    fun clearText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val input = findFocusedInput(root) ?: return false
+        val args = android.os.Bundle()
+        args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        return input.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+    fun clearField() = clearText()
+
+    // Прокрутка экрана
+    fun scrollScreen(direction: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val scrollable = allNodes(root).firstOrNull { it.isScrollable }
+        val action = when (direction.lowercase()) {
+            "down" -> android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            "up"   -> android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            else   -> android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        }
+        return scrollable?.performAction(action) ?: swipe(direction)
+    }
+    fun swipeDir(direction: String) = swipe(direction)
+
+    // Найти узлы по классу
+    fun findNodesByClass(className: String): List<String> {
+        val root = rootInActiveWindow ?: return emptyList()
+        return allNodes(root).filter { n ->
+            n.className?.toString()?.contains(className, ignoreCase = true) == true
+        }.mapNotNull { it.text?.toString() }
+    }
+
+    // Получить текст экрана
+    fun getAllScreenText() = getScreenText()
+
+    // Хэш экрана для обнаружения изменений
+    fun screenHash(): Int {
+        val root = rootInActiveWindow ?: return 0
+        return getScreenText().hashCode()
+    }
+
+    // Структура экрана как JSON-строка
+    fun getScreenStructure(): String {
+        val root = rootInActiveWindow ?: return "[]"
+        val items = allNodes(root).take(50).mapNotNull { n ->
+            val text = n.text?.toString()?.trim() ?: ""
+            val desc = n.contentDescription?.toString()?.trim() ?: ""
+            val cls = n.className?.toString()?.substringAfterLast('.') ?: ""
+            val b = android.graphics.Rect()
+            n.getBoundsInScreen(b)
+            if (text.isEmpty() && desc.isEmpty()) null
+            else "{\"t\":\"$text\",\"d\":\"$desc\",\"cls\":\"$cls\",\"x\":${b.centerX()},\"y\":${b.centerY()},\"click\":${n.isClickable}}"
+        }
+        return "[${items.joinToString(",")}]"
+    }
+
+    // Кликабельные элементы
+    fun getClickableElements(): List<String> {
+        val root = rootInActiveWindow ?: return emptyList()
+        return allNodes(root).filter { it.isClickable }.mapNotNull { n ->
+            val t = n.text?.toString()?.trim() ?: ""
+            val d = n.contentDescription?.toString()?.trim() ?: ""
+            if (t.isNotEmpty()) t else if (d.isNotEmpty()) d else null
+        }
+    }
+
+    // Сфокусированный элемент
+    fun getFocusedElement(): String {
+        val root = rootInActiveWindow ?: return ""
+        val focused = allNodes(root).firstOrNull { it.isFocused }
+        return focused?.text?.toString()?.trim() ?: focused?.contentDescription?.toString()?.trim() ?: ""
+    }
+
+    // Размер экрана
+    fun getScreenSize(): Map<String, Int> {
+        val m = applicationContext.resources.displayMetrics
+        return mapOf("width" to m.widthPixels, "height" to m.heightPixels)
+    }
+
+    // Установленные приложения
+    fun getInstalledApps(): List<String> {
+        return try {
+            val pm = applicationContext.packageManager
+            pm.getInstalledApplications(0).map { it.packageName }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    // Найти пакет по имени
+    fun findPackageByName(name: String): String? {
+        return try {
+            val pm = applicationContext.packageManager
+            pm.getInstalledApplications(0).firstOrNull { app ->
+                pm.getApplicationLabel(app).toString().contains(name, ignoreCase = true)
+            }?.packageName
+        } catch (e: Exception) { null }
+    }
+
+    // Запуск приложения
+    fun launchApp(packageName: String): Boolean {
+        return try {
+            val intent = applicationContext.packageManager.getLaunchIntentForPackage(packageName)
+            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (intent != null) { applicationContext.startActivity(intent); true } else false
+        } catch (e: Exception) { false }
+    }
+
+    // Настройки приложения
+    fun openAppSettings(packageName: String): Boolean {
+        return try {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = android.net.Uri.parse("package:$packageName")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            applicationContext.startActivity(intent)
+            true
+        } catch (e: Exception) { false }
+    }
+
+    // Удалить приложение
+    fun uninstallApp(packageName: String): Boolean {
+        return try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_DELETE)
+            intent.data = android.net.Uri.parse("package:$packageName")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            applicationContext.startActivity(intent)
+            true
+        } catch (e: Exception) { false }
+    }
+
+    // Снимок экрана в base64 (Android 9+)
+    fun captureScreenBase64(quality: Int = 60): String? {
+        if (Build.VERSION.SDK_INT < 28) return null
+        return try {
+            val bmp = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+            val stream = java.io.ByteArrayOutputStream()
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, stream)
+            android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
+        } catch (e: Exception) { null }
+    }
+
+    // Отправка сообщения через приложение (workflow)
+    fun startSendMessage(app: String, contact: String, message: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                val pkgMap = mapOf(
+                    "telegram" to "org.telegram.messenger",
+                    "whatsapp" to "com.whatsapp",
+                    "vk" to "com.vkontakte.android",
+                    "messages" to "com.android.mms"
+                )
+                val pkg = pkgMap[app.lowercase()] ?: return@post
+                launchApp(pkg)
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    clickByText(contact)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        val focused = findFocusedInput(rootInActiveWindow ?: return@postDelayed)
+                        focused?.let {
+                            val args = android.os.Bundle()
+                            args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, message)
+                            it.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                it.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_IME_ENTER)
+                            }, 500)
+                        }
+                    }, 1500)
+                }, 2000)
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
