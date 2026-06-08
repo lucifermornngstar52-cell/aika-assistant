@@ -325,7 +325,7 @@ class VoiceCommandExecutor {
   Future<String> _igDoubleTap() async {
     // Double tap center of screen to like
     await _acc.invokeMethod('tapAtPercent', {'x': 0.5, 'y': 0.5});
-    await Future.delayed(const Duration(milliseconds': 100));
+    await Future.delayed(const Duration(milliseconds: 100));
     await _acc.invokeMethod('tapAtPercent', {'x': 0.5, 'y': 0.5});
     return _reply('Лайк!');
   }
