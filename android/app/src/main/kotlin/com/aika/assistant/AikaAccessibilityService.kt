@@ -90,7 +90,7 @@ class AikaAccessibilityService : AccessibilityService() {
     fun pressEnter(): Boolean {
         val root = rootInActiveWindow ?: return false
         val input = findFocusedInput(root)
-        return input?.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER) ?: false
+        return input?.performAction(0x01000000 /*ACTION_IME_ENTER*/) ?: false
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -334,7 +334,6 @@ class AikaAccessibilityService : AccessibilityService() {
             else                -> result.notImplemented()
         }
     }
-}
 
     // ════════════════════════════════════════════════════════════════
     // МЕТОДЫ-АЛИАСЫ И ДОПОЛНИТЕЛЬНЫЕ (для совместимости с MainActivity)
@@ -394,13 +393,13 @@ class AikaAccessibilityService : AccessibilityService() {
     // Прокрутка экрана
     fun scrollScreen(direction: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val scrollable = allNodes(root).firstOrNull { it.isScrollable }
+        val scrollable = allNodes(root).firstOrNull { node -> node.isScrollable }
         val action = when (direction.lowercase()) {
             "down" -> android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             "up"   -> android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             else   -> android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
         }
-        return scrollable?.performAction(action) ?: swipe(direction)
+        return (scrollable?.performAction(action) ?: false) || (if (scrollable == null) swipe(direction) else false)
     }
     fun swipeDir(direction: String) = swipe(direction)
 
@@ -439,7 +438,7 @@ class AikaAccessibilityService : AccessibilityService() {
     // Кликабельные элементы
     fun getClickableElements(): List<String> {
         val root = rootInActiveWindow ?: return emptyList()
-        return allNodes(root).filter { it.isClickable }.mapNotNull { n ->
+        return allNodes(root).filter { node -> node.isClickable }.mapNotNull { n ->
             val t = n.text?.toString()?.trim() ?: ""
             val d = n.contentDescription?.toString()?.trim() ?: ""
             if (t.isNotEmpty()) t else if (d.isNotEmpty()) d else null
@@ -449,7 +448,7 @@ class AikaAccessibilityService : AccessibilityService() {
     // Сфокусированный элемент
     fun getFocusedElement(): String {
         val root = rootInActiveWindow ?: return ""
-        val focused = allNodes(root).firstOrNull { it.isFocused }
+        val focused = allNodes(root).firstOrNull { node -> node.isFocused }
         return focused?.text?.toString()?.trim() ?: focused?.contentDescription?.toString()?.trim() ?: ""
     }
 
@@ -535,12 +534,12 @@ class AikaAccessibilityService : AccessibilityService() {
                     clickByText(contact)
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         val focused = findFocusedInput(rootInActiveWindow ?: return@postDelayed)
-                        focused?.let {
-                            val args = android.os.Bundle()
+                        focused?.let { focusedNode ->
+                        val args = android.os.Bundle()
                             args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, message)
-                            it.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                            focusedNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                it.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_IME_ENTER)
+                                it.performAction(android.view.accessibility.0x01000000 /*ACTION_IME_ENTER*/)
                             }, 500)
                         }
                     }, 1500)
@@ -548,3 +547,5 @@ class AikaAccessibilityService : AccessibilityService() {
             } catch (e: Exception) { e.printStackTrace() }
         }
     }
+
+}
