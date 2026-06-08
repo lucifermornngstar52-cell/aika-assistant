@@ -664,7 +664,6 @@ class CustomVoiceCommand {
     action: actionType,
     target: param,
     app: appPackage,
-    rawText: rawText,
   );
 }
 
