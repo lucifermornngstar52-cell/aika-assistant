@@ -186,12 +186,34 @@ function detectGroups(m) {
 
 function loadModelFromPath(path) {
   stopSound();
+  // Полная очистка старой модели
   if (model) {
-    try { app.stage.removeChild(model); model.destroy(); } catch(e) {}
-    model = null; motionGroups = []; expressions = [];
+    try {
+      app.stage.removeChildren();
+      model.destroy({ children: true, texture: true, baseTexture: true });
+    } catch(e) { console.log('destroy err: ' + e); }
+    model = null;
+    motionGroups = [];
+    expressions = [];
   }
+  // Срочный fallback если PIXI недоступен
+  if (!app || !PIXI || !PIXI.live2d || !PIXI.live2d.Live2DModel) {
+    console.log('PIXI not ready, reloading page...');
+    notifyFlutter('modelError');
+    return Promise.reject('PIXI not ready');
+  }
+  var loadTimeout = setTimeout(function() {
+    console.log('Model load timeout: ' + path);
+    notifyFlutter('modelError');
+    // Если модель застряла — пробуем перезагрузить WebView
+    if (!model) {
+      try { window.location.reload(); } catch(e) {}
+    }
+  }, 8000);
   return PIXI.live2d.Live2DModel.from(path, { autoInteract: false, autoUpdate: true })
     .then(function(m) {
+      clearTimeout(loadTimeout);
+      if (!m) { notifyFlutter('modelError'); return; }
       model = m;
       app.stage.addChild(model);
       model.anchor.set(0.5, 0.5);
@@ -205,11 +227,14 @@ function loadModelFromPath(path) {
         window.setAikaState('greeting');
       });
       playMotion('idle');
-      // Сообщаем Flutter что модель загружена
       notifyFlutter('modelLoaded');
     })
     .catch(function(e) {
+      clearTimeout(loadTimeout);
+      console.log('Model load error: ' + e);
+      // Пробуем перезагрузить WebView при ошибке
       notifyFlutter('modelError');
+      try { window.location.reload(); } catch(err) {}
     });
 }
 
@@ -275,7 +300,28 @@ window.loadCustomModel = function(url) {
   if (app) return loadModelFromPath(url);
 };
 window.switchBuiltinModel = function(p) {
-  if (app) return loadModelFromPath(BASE + p);
+  console.log('switchBuiltinModel: ' + p);
+  if (app) {
+    return loadModelFromPath(BASE + p);
+  } else {
+    // PIXI ещё не готов — ждём и пробуем снова
+    console.log('app not ready, waiting...');
+    return new Promise(function(resolve) {
+      var attempts = 0;
+      var wait = setInterval(function() {
+        attempts++;
+        if (app) {
+          clearInterval(wait);
+          loadModelFromPath(BASE + p).then(resolve);
+        } else if (attempts > 20) {
+          clearInterval(wait);
+          console.log('Giving up after 20 attempts');
+          notifyFlutter('modelError');
+          resolve();
+        }
+      }, 250);
+    });
+  }
 };
 window.switchModel = window.switchBuiltinModel;
 
