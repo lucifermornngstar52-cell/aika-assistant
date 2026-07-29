@@ -295,11 +295,10 @@ class AikaOverlayService : Service() {
                         }
                         // Резерв: если через 10 сек модель не загрузилась — перезагружаем WebView
                         handler.postDelayed({
-                            webView?.evaluateJavascript("(typeof model !== 'undefined' && model) ? 'ok' : 'null'", null) { check ->
+                            webView?.evaluateJavascript("(typeof model !== 'undefined' && model) ? 'ok' : 'null'") { check ->
                                 if (check == "null" || check == "undefined") {
                                     Log.w("AikaOverlay", "Model stuck, reloading WebView...")
                                     webView?.reload()
-                                    // После перезагрузки принудительно загружаем нужную модель
                                     handler.postDelayed({
                                         webView?.evaluateJavascript("window.switchModel('$path')", null)
                                     }, 3000)
@@ -308,7 +307,7 @@ class AikaOverlayService : Service() {
                         }, 10000)
                     } else {
                         Log.e("AikaOverlay", "webView is null!")
-                        initWebView()
+                        setupWindow()
                     }
                 }
             }
