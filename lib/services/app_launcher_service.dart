@@ -3,28 +3,31 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ════════════════════════════════════════════════════════════════════════════
-/// AppLauncherService — единая точка запуска приложений.
-/// Использует нативный PackageManager через MethodChannel.
-/// Сначала ищет среди УСТАНОВЛЕННЫХ приложений, потом по хардкод-таблице.
+/// AppLauncherService v2 — полностью переработанная система запуска.
+/// 
+/// Стратегия:
+///   1. Сначала проверяем хардкод-таблицу (самая надёжная)
+///   2. Потом ищем среди установленных приложений (smart matching)
+///   3. Пробуем прямой запуск по package name (last resort)
 /// ════════════════════════════════════════════════════════════════════════════
 class AppLauncherService {
   static const _channel = MethodChannel('com.aika.assistant/launcher');
 
-  // Кеш списка установленных приложений (обновляется раз в 30 сек)
+  // Кеш списка установленных приложений
   static List<Map<String, String>> _appsCache = [];
   static DateTime? _cacheTime;
-  static const _cacheTimeout = Duration(seconds: 30);
+  static const _cacheTimeout = Duration(minutes: 5);
 
-  // Префиксы команд открытия
+  /// Префиксы команд открытия
   static const List<String> openPrefixes = [
     'открой', 'открыть', 'запусти', 'запустить', 'включи', 'включить',
     'покажи', 'показать', 'зайди в', 'зайди на', 'перейди в', 'перейди на',
     'зайди', 'перейди', 'открой приложение', 'запусти приложение',
+    'go to', 'open', 'launch', 'start',
   ];
 
   /// Получает список всех установленных запускаемых приложений.
   static Future<List<Map<String, String>>> getInstalledApps() async {
-    // Проверяем кеш
     if (_cacheTime != null &&
         DateTime.now().difference(_cacheTime!) < _cacheTimeout &&
         _appsCache.isNotEmpty) {
@@ -54,13 +57,71 @@ class AppLauncherService {
         'launchApp', {'package': packageName},
       );
       return result == true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Проверяет, установлено ли приложение.
+  static Future<bool> isInstalled(String packageName) async {
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'isInstalled', {'package': packageName},
+      );
+      return result == true;
     } catch (_) {
       return false;
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  ГЛАВНАЯ ТОЧКА ВХОДА
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// Главная точка входа. Принимает полный текст команды.
+  /// Возвращает строку-результат или null если не смогла запустить.
+  static Future<String?> tryLaunch(String phrase) async {
+    final normalized = _normalize(phrase);
+
+    // Проверяем есть ли намерение открыть приложение
+    if (!_hasOpenIntent(normalized)) return null;
+
+    // Извлекаем название приложения
+    final stripped = _stripOpenPrefix(normalized);
+    if (stripped.isEmpty) return null;
+
+    // Убираем слово "приложение" если есть
+    String clean = stripped
+        .replaceAll(RegExp(r'^приложение\s+'), '')
+        .replaceAll(RegExp(r'\s+приложение$'), '')
+        .replaceAll(RegExp(r'^app\s+'), '')
+        .replaceAll(RegExp(r'\s+app$'), '')
+        .trim();
+    if (clean.isEmpty) return null;
+
+    // ── ПУТЬ 1: Хардкод-таблица (самая надёжная) ──
+    final pkg = _hardcodedMatch(clean);
+    if (pkg != null) {
+      if (await launchPackage(pkg)) {
+        return 'Открываю 📱';
+      }
+    }
+
+    // ── ПУТЬ 2: Smart matching среди установленных ──
+    final smartResult = await smartLaunch(clean);
+    if (smartResult != null) return smartResult;
+
+    // ── ПУТЬ 3: Пробуем как package name напрямую ──
+    if (clean.contains('.')) {
+      if (await launchPackage(clean)) {
+        return 'Открываю 📱';
+      }
+    }
+
+    return null;
+  }
+
   /// Умный поиск и запуск приложения по названию.
-  /// Ищет среди ВСЕХ установленных приложений.
   static Future<String?> smartLaunch(String appName) async {
     final query = _normalize(appName).replaceAll(' ', '');
     if (query.isEmpty) return null;
@@ -119,38 +180,9 @@ class AppLauncherService {
     return null;
   }
 
-  /// Главная точка входа. Принимает полный текст команды.
-  static Future<String?> tryLaunch(String phrase) async {
-    final normalized = _normalize(phrase);
-
-    // Проверяем есть ли намерение открыть приложение
-    if (!_hasOpenIntent(normalized)) return null;
-
-    // Извлекаем название приложения
-    final stripped = _stripOpenPrefix(normalized);
-    if (stripped.isEmpty) return null;
-
-    // Убираем слово "приложение" если есть
-    final clean = stripped
-        .replaceAll(RegExp(r'^приложение\s+'), '')
-        .replaceAll(RegExp(r'\s+приложение$'), '')
-        .trim();
-    if (clean.isEmpty) return null;
-
-    // ГЛАВНЫЙ ПУТЬ: ищем среди установленных приложений
-    final smartResult = await smartLaunch(clean);
-    if (smartResult != null) return smartResult;
-
-    // FALLBACK: хардкод-таблица (на случай если getInstalledApps не работает)
-    final pkg = _hardcodedMatch(clean);
-    if (pkg != null) {
-      if (await launchPackage(pkg)) {
-        return 'Открываю 📱';
-      }
-    }
-
-    return null;
-  }
+  // ═══════════════════════════════════════════════════════════════════
+  //  INTENT DETECTION
+  // ═══════════════════════════════════════════════════════════════════
 
   /// Проверяет есть ли в фразе намерение открыть приложение.
   static bool _hasOpenIntent(String text) {
@@ -158,8 +190,6 @@ class AppLauncherService {
       if (text.startsWith(prefix)) return true;
       if (text.contains(' $prefix ')) return true;
     }
-    // Короткие фразы (<=4 слов) — возможно прямое название
-    if (text.split(' ').length <= 4) return true;
     return false;
   }
 
@@ -175,33 +205,26 @@ class AppLauncherService {
     return text;
   }
 
-  /// Хардкод-таблица для fallback.
+  // ═══════════════════════════════════════════════════════════════════
+  //  HARDCODED APP TABLE
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// Хардкод-таблица для надёжного запуска.
   static String? _hardcodedMatch(String clean) {
-    final q = clean.replaceAll(' ', '').toLowerCase();
+    final q = _normalize(clean).replaceAll(' ', '');
     const map = {
-      'ютюбмузыку': 'com.google.android.apps.youtube.music',
-      'ютюбмузыка': 'com.google.android.apps.youtube.music',
-      'youtubemusic': 'com.google.android.apps.youtube.music',
-      'яндексмузыку': 'ru.yandex.music',
-      'яндексмузыка': 'ru.yandex.music',
-      'спотифай': 'com.spotify.music',
-      'спотифи': 'com.spotify.music',
-      'spotify': 'com.spotify.music',
-      'ютуб': 'com.google.android.youtube',
-      'youtube': 'com.google.android.youtube',
-      'ютюб': 'com.google.android.youtube',
-      'тикток': 'com.zhiliaoapp.musically',
-      'тикtok': 'com.zhiliaoapp.musically',
-      'tiktok': 'com.zhiliaoapp.musically',
+      // ── Мессенджеры ──
       'телеграм': 'org.telegram.messenger',
       'телеграмм': 'org.telegram.messenger',
       'telegram': 'org.telegram.messenger',
       'тг': 'org.telegram.messenger',
+      'tg': 'org.telegram.messenger',
       'ватсап': 'com.whatsapp',
       'вацап': 'com.whatsapp',
       'вотсап': 'com.whatsapp',
       'воцап': 'com.whatsapp',
       'whatsapp': 'com.whatsapp',
+      'вапсап': 'com.whatsapp',
       'инстаграм': 'com.instagram.android',
       'инстаграмм': 'com.instagram.android',
       'инста': 'com.instagram.android',
@@ -209,60 +232,139 @@ class AppLauncherService {
       'вконтакте': 'com.vkontakte.android',
       'вк': 'com.vkontakte.android',
       'vkontakte': 'com.vkontakte.android',
-      'нетфликс': 'com.netflix.mediaclient',
-      'netflix': 'com.netflix.mediaclient',
-      'твич': 'tv.twitch.android.app',
-      'twitch': 'tv.twitch.android.app',
+      'vk': 'com.vkontakte.android',
       'дискорд': 'com.discord',
       'discord': 'com.discord',
+      'скайп': 'com.skype.raider',
+      'skype': 'com.skype.raider',
+      'снапчат': 'com.snapchat.android',
+      'snapchat': 'com.snapchat.android',
+      'вайбер': 'com.viber.voip',
+      'viber': 'com.viber.voip',
+      'сигнал': 'org.thoughtcrime.securesms',
+      'signal': 'org.thoughtcrime.securesms',
+      // ── Видео ──
+      'ютуб': 'com.google.android.youtube',
+      'youtube': 'com.google.android.youtube',
+      'ютюб': 'com.google.android.youtube',
+      'ютубмузыку': 'com.google.android.apps.youtube.music',
+      'ютубмузыка': 'com.google.android.apps.youtube.music',
+      'youtubemusic': 'com.google.android.apps.youtube.music',
+      'ютубмузыку': 'com.google.android.apps.youtube.music',
+      'ютубмузыка': 'com.google.android.apps.youtube.music',
+      'твич': 'tv.twitch.android.app',
+      'twitch': 'tv.twitch.android.app',
+      'нетфликс': 'com.netflix.mediaclient',
+      'netflix': 'com.netflix.mediaclient',
+      'кинотеатр': 'com.amazon.avod.thirdpartyclient',
+      'primevideo': 'com.amazon.avod.thirdpartyclient',
+      'iviru': 'ru.rt.video.app',
+      'киви': 'ru.rt.video.app',
+      // ── Соцсети ──
+      'тикток': 'com.zhiliaoapp.musically',
+      'тикtok': 'com.zhiliaoapp.musically',
+      'tiktok': 'com.zhiliaoapp.musically',
+      'реддит': 'com.reddit.frontpage',
+      'reddit': 'com.reddit.frontpage',
+      'pinterest': 'com.pinterest',
+      'пинтерест': 'com.pinterest',
+      'linkedin': 'com.linkedin.android',
+      'линкедин': 'com.linkedin.android',
+      // ── Музыка ──
+      'спотифай': 'com.spotify.music',
+      'спотифи': 'com.spotify.music',
+      'spotify': 'com.spotify.music',
+      'яндексмузыку': 'ru.yandex.music',
+      'яндексмузыка': 'ru.yandex.music',
+      'музыку': 'com.spotify.music',
+      'музыка': 'com.spotify.music',
+      'звук': 'com.zvuk',
+      'зук': 'com.zvuk',
+      // ── Браузеры ──
       'хром': 'com.android.chrome',
       'chrome': 'com.android.chrome',
       'браузер': 'com.android.chrome',
+      'яндексбраузер': 'com.yandex.browser',
+      'оперу': 'com.opera.browser',
+      'opera': 'com.opera.browser',
+      'firefox': 'org.mozilla.firefox',
+      'фаерфокс': 'org.mozilla.firefox',
+      // ── Почта ──
       'почта': 'com.google.android.gm',
       'gmail': 'com.google.android.gm',
+      'яндекспочту': 'ru.yandex.mail',
+      'яндекспочта': 'ru.yandex.mail',
+      // ── Системные ──
       'настройки': 'com.android.settings',
       'камера': 'com.android.camera2',
       'калькулятор': 'com.google.android.calculator',
       'часы': 'com.google.android.deskclock',
       'будильник': 'com.google.android.deskclock',
       'файлы': 'com.google.android.documentsui',
-      'музыку': 'com.spotify.music',
-      'музыка': 'com.spotify.music',
-      'карты': 'com.google.android.apps.maps',
-      'translate': 'com.google.android.apps.translate',
-      'переводчик': 'com.google.android.apps.translate',
-      'calendar': 'com.google.android.calendar',
+      'проводник': 'com.google.android.documentsui',
       'календарь': 'com.google.android.calendar',
+      'calendar': 'com.google.android.calendar',
       'телефон': 'com.google.android.dialer',
       'звонки': 'com.google.android.dialer',
       'сообщения': 'com.google.android.apps.messaging',
       'смс': 'com.google.android.apps.messaging',
-      'photos': 'com.google.android.apps.photos',
+      'контакты': 'com.android.contacts',
+      // ── Фото/Видео ──
       'фото': 'com.google.android.apps.photos',
       'галерея': 'com.google.android.apps.photos',
-      'playstore': 'com.android.vending',
+      'photos': 'com.google.android.apps.photos',
+      // ── Игры ──
+      'майнкрафт': 'com.mojang.minecraftpe',
+      'minecraft': 'com.mojang.minecraftpe',
+      'pubg': 'com.tencent.ig',
+      'пабг': 'com.tencent.ig',
+      'genshin': 'com.miHoYo.GenshinImpact',
+      'генсин': 'com.miHoYo.GenshinImpact',
+      'бравлстарс': 'com.supercell.brawlstars',
+      'brawlstars': 'com.supercell.brawlstars',
+      'бравл': 'com.supercell.brawlstars',
+      // ── Прочее ──
+      'playmarket': 'com.android.vending',
       'маркет': 'com.android.vending',
+      'playstore': 'com.android.vending',
       'shazam': 'com.shazam.android',
       'шазам': 'com.shazam.android',
       'zoom': 'us.zoom.videomeetings',
       'зум': 'us.zoom.videomeetings',
       'drive': 'com.google.android.apps.docs',
       'диск': 'com.google.android.apps.docs',
+      'гуглдиск': 'com.google.android.apps.docs',
+      'карты': 'com.google.android.apps.maps',
+      'maps': 'com.google.android.apps.maps',
+      'яндекскарты': 'ru.yandex.yandexmaps',
+      'translate': 'com.google.android.apps.translate',
+      'переводчик': 'com.google.android.apps.translate',
+      'яндекс': 'ru.yandex.searchapp',
+      'яндекстакси': 'ru.yandex.taxi',
+      'такси': 'ru.yandex.taxi',
+      'ozon': 'ru.ozon.app',
+      'озон': 'ru.ozon.app',
+      'wildberries': 'com.wildberries.ru',
+      'вилдберриз': 'com.wildberries.ru',
+      'алиэкспресс': 'com.alibaba.aliexpresshd',
+      'aliexpress': 'com.alibaba.aliexpresshd',
     };
+    
     // Точное совпадение
     if (map[q] != null) return map[q];
-    // Содержит
+    // Содержит (для фраз типа "открой ютуб музыку")
     for (final key in map.keys) {
-      if (q.contains(key) && key.length >= 3) return map[key];
+      if (q.contains(key) && key.length >= 3) return map[key]!;
     }
     return null;
   }
 
-  // ═══ Методы для commands_screen.dart (backward compat) ═══════════════════
-  
+  // ═══════════════════════════════════════════════════════════════════
+  //  CUSTOM COMMANDS (backward compat for UI)
+  // ═══════════════════════════════════════════════════════════════════
+
   static const _prefsKey = 'custom_app_commands';
   
-  /// Встроенные команды (для UI)
   static Map<String, String> get builtinCommands => _builtinMap;
   
   static const Map<String, String> _builtinMap = {
@@ -282,69 +384,46 @@ class AppLauncherService {
     'камера': 'com.android.camera2',
     'калькулятор': 'com.google.android.calculator',
     'часы': 'com.google.android.deskclock',
-    'файлы': 'com.google.android.documentsui',
-    'музыку': 'com.spotify.music',
   };
-  
-  /// Получить все команды (встроенные + кастомные)
-  static Future<Map<String, String>> getAllCommands() async {
+
+  static Future<Map<String, String>> getCustomCommands() async {
     try {
-      final prefs = await _loadPrefs();
-      final custom = <String, String>{};
+      final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
-      if (raw != null) {
-        final decoded = json.decode(raw);
-        if (decoded is Map) {
-          decoded.forEach((k, v) => custom[k.toString()] = v.toString());
-        }
-      }
-      return {..._builtinMap, ...custom};
+      if (raw == null) return {};
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return decoded.map((k, v) => MapEntry(k, v.toString()));
     } catch (_) {
-      return Map.from(_builtinMap);
+      return {};
     }
   }
-  
-  /// Добавить кастомную команду
-  static Future<void> addCommand(String phrase, String packageName) async {
+
+  static Future<void> saveCustomCommand(String phrase, String packageName) async {
     try {
-      final prefs = await _loadPrefs();
-      final custom = <String, String>{};
-      final raw = prefs.getString(_prefsKey);
-      if (raw != null) {
-        final decoded = json.decode(raw);
-        if (decoded is Map) {
-          decoded.forEach((k, v) => custom[k.toString()] = v.toString());
-        }
-      }
-      custom[phrase] = packageName;
-      await prefs.setString(_prefsKey, json.encode(custom));
+      final prefs = await SharedPreferences.getInstance();
+      final commands = await getCustomCommands();
+      commands[phrase] = packageName;
+      prefs.setString(_prefsKey, jsonEncode(commands));
     } catch (_) {}
-  }
-  
-  /// Удалить кастомную команду
-  static Future<void> removeCommand(String phrase) async {
-    try {
-      final prefs = await _loadPrefs();
-      final custom = <String, String>{};
-      final raw = prefs.getString(_prefsKey);
-      if (raw != null) {
-        final decoded = json.decode(raw);
-        if (decoded is Map) {
-          decoded.forEach((k, v) => custom[k.toString()] = v.toString());
-        }
-      }
-      custom.remove(phrase);
-      await prefs.setString(_prefsKey, json.encode(custom));
-    } catch (_) {}
-  }
-  
-  static Future<dynamic> _loadPrefs() async {
-    return await SharedPreferences.getInstance();
   }
 
-  /// Нормализация текста.
+  static Future<void> deleteCustomCommand(String phrase) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final commands = await getCustomCommands();
+      commands.remove(phrase);
+      prefs.setString(_prefsKey, jsonEncode(commands));
+    } catch (_) {}
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  UTILITIES
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// Нормализация: lowercase, убираем пунктуацию, ё→е.
   static String _normalize(String s) =>
       s.toLowerCase().trim()
+       .replaceAll('ё', 'е')
        .replaceAll(RegExp(r'[.,!?;:\-_]'), '')
        .replaceAll(RegExp(r'\s+'), ' ');
 
