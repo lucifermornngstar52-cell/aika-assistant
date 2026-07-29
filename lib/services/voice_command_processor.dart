@@ -8,6 +8,7 @@ import 'package:volume_controller/volume_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'weather_service.dart';
+import 'app_launcher_service.dart';
 
 /// ════════════════════════════════════════════════════════════════════════════
 /// VoiceCommandProcessor — Центральный процессор голосовых команд.
@@ -586,6 +587,11 @@ class VoiceCommandProcessor {
       return VoiceCmdResult.ok('📱 Открываю $clean');
     }
 
+    // Smart launch — ищем среди ВСЕХ установленных приложений
+    try {
+      final smartResult = await AppLauncherService.smartLaunch(clean);
+      if (smartResult != null) return VoiceCmdResult.ok(smartResult);
+    } catch (_) {}
     return null; // Приложение не найдено → пусть AI разберётся
   }
 
