@@ -827,8 +827,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _edgeTts.initialize();
     final savedVoice = prefs.getString('edge_voice');
     if (savedVoice != null) _edgeTts.setVoice(savedVoice);
-    // Читаем флаг use_edge_tts из настроек
-    _useEdgeTts = prefs.getBool('use_edge_tts') ?? true;
+    // ── Загружаем выбранный TTS движок ──
+    final ttsEngine = prefs.getString('tts_engine') ?? 'edge';
+    _edgeTts.setTtsEngine(ttsEngine);
+    // Инициализируем ElevenLabs если выбран
+    if (ttsEngine == 'elevenlabs') {
+      await ElevenLabsTtsService().initialize();
+      _useEdgeTts = true; // Маршрутизация через EdgeTtsService.speak()
+    } else if (ttsEngine == 'edge') {
+      _useEdgeTts = true;
+    } else {
+      // system — используем системный TTS напрямую
+      _useEdgeTts = false;
+    }
     await _tts.setPitch(prefs.getDouble('tts_pitch') ?? 1.0);
     await _tts.setVolume(prefs.getDouble('tts_volume') ?? 1.0);
     final voice = prefs.getString('tts_voice');
