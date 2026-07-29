@@ -378,6 +378,34 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(list)
                     }
+                    "getInstalledApps" -> {
+                        try {
+                            val apps = packageManager.getInstalledApplications(0)
+                            val list = mutableListOf<Map<String, String>>()
+                            for (app in apps) {
+                                val label = try {
+                                    packageManager.getApplicationLabel(app).toString()
+                                } catch (_: Exception) { "" }
+                                val pkg = app.packageName
+                                // Только запускаемые приложения (есть launcher activity)
+                                val hasLauncher = try {
+                                    packageManager.getLaunchIntentForPackage(pkg) != null
+                                } catch (_: Exception) { false }
+                                if (hasLauncher && label.isNotEmpty()) {
+                                    list.add(mapOf(
+                                        "label" to label,
+                                        "package" to pkg
+                                    ))
+                                }
+                            }
+                            // Сортируем по имени
+                            list.sortBy { it["label"]?.lowercase() ?: "" }
+                            result.success(list)
+                        } catch (e: Exception) {
+                            Log.e("Aika", "getInstalledApps failed: ${'$'}{e.message}")
+                            result.success(emptyList<Map<String, String>>())
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
