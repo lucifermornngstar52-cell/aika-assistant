@@ -60,7 +60,9 @@ class VoiceCommandProcessor {
     // ── 0. Приложения — ПРОВЕРЯЕМ ПЕРВЫМИ! ──────────────────────────────────
     // Важно: "открой whatsapp" не должно попасть в громкость/звонки
     if (t.contains('открой') || t.contains('запусти') || t.contains('покажи') ||
-        t.contains('зайди') || t.contains('перейди')) {
+        t.contains('зайди') || t.contains('перейди') || t.contains('включи') ||
+        t.contains('открыть') || t.contains('запустить') || t.contains('включить') ||
+        t.contains('показать')) {
       final appResult = await _handleOpenApp(t, text);
       if (appResult != null) return appResult;
     }
@@ -455,144 +457,13 @@ class VoiceCommandProcessor {
   }
 
   // ── Открытие приложений ───────────────────────────────────────────────────
-  Future<VoiceCmdResult?> _handleOpenApp(String t, String original) async {
-    // Извлекаем название после "открой/запусти/включи"
-    final openKeywords = ['открой', 'запусти', 'включи', 'open', 'launch', 'покажи', 'зайди в', 'перейди в'];
-    if (!openKeywords.any((k) => t.contains(k))) {
-      // Прямое название без ключевого слова — проверяем таблицу
-      final pkg = _knownApps[t.trim()];
-      if (pkg != null) {
-        await _launchPackage(pkg);
-        return VoiceCmdResult.ok('📱 Открываю...');
-      }
-      return null;
+    Future<VoiceCmdResult?> _handleOpenApp(String t, String original) async {
+    // Делегируем ВСЁ в AppLauncherService — единая точка истины
+    final result = await AppLauncherService.tryLaunch(original);
+    if (result != null) {
+      return VoiceCmdResult.ok(result);
     }
-
-    final appName = _extractAfterKeywords(t, openKeywords)?.trim() ?? '';
-    if (appName.isEmpty) return null;
-
-    // Убираем "приложение" из названия
-    var clean = appName.replaceAll(RegExp(r'^приложение\s+'), '').trim();
-    // Нормализуем: убираем лишние пробелы между слогами (STT часто ломает слова)
-    // "вот сап" → "вотсап", "споти фай" → "спотифай"
-    clean = clean.replaceAll(RegExp(r'\s+'), '');
-
-    // Специальные обработки
-    if (_has(clean, ['браузер', 'chrome', 'хром', 'интернет', 'browser'])) {
-      await _launchPackage('com.android.chrome');
-      return VoiceCmdResult.ok('🌐 Chrome открыт');
-    }
-    if (_has(clean, ['telegram', 'телеграм', 'тг'])) {
-      await _launchPackage('org.telegram.messenger');
-      return VoiceCmdResult.ok('✈️ Telegram открыт');
-    }
-    if (_has(clean, ['whatsapp', 'ватсап', 'вотсап', 'вацап', 'ватцап', 'уотсап', 'васап', 'вацап', 'whatsап', 'вотсапп'])) {
-      await _launchPackage('com.whatsapp');
-      return VoiceCmdResult.ok('💬 WhatsApp открыт');
-    }
-    if (_has(clean, ['youtube', 'ютуб', 'ютюб'])) {
-      await _launchPackage('com.google.android.youtube');
-      return VoiceCmdResult.ok('▶️ YouTube открыт');
-    }
-    if (_has(clean, ['instagram', 'инстаграм', 'инста'])) {
-      await _launchPackage('com.instagram.android');
-      return VoiceCmdResult.ok('📸 Instagram открыт');
-    }
-    if (_has(clean, ['tiktok', 'тикток', 'тик ток'])) {
-      await _launchPackage('com.zhiliaoapp.musically');
-      return VoiceCmdResult.ok('🎵 TikTok открыт');
-    }
-    if (_has(clean, ['spotify', 'спотифай', 'спотифи', 'спотифай', 'сподифай', 'спатифай', 'споти'])) {
-      await _launchPackage('com.spotify.music');
-      return VoiceCmdResult.ok('🎵 Spotify открыт');
-    }
-    if (_has(clean, ['netflix', 'нетфликс', 'нетфликc'])) {
-      await _launchPackage('com.netflix.mediaclient');
-      return VoiceCmdResult.ok('🎬 Netflix открыт');
-    }
-    if (_has(clean, ['vk', 'вк', 'вконтакте', 'vkontakte'])) {
-      await _launchPackage('com.vkontakte.android');
-      return VoiceCmdResult.ok('💙 ВКонтакте открыт');
-    }
-    if (_has(clean, ['discord', 'дискорд'])) {
-      await _launchPackage('com.discord');
-      return VoiceCmdResult.ok('🎮 Discord открыт');
-    }
-    if (_has(clean, ['maps', 'карты', 'гугл карты', 'навигатор'])) {
-      await _launchPackage('com.google.android.apps.maps');
-      return VoiceCmdResult.ok('🗺 Google Карты открыты');
-    }
-    if (_has(clean, ['gmail', 'почта', 'гмейл', 'email'])) {
-      await _launchPackage('com.google.android.gm');
-      return VoiceCmdResult.ok('📧 Gmail открыт');
-    }
-    if (_has(clean, ['translate', 'переводчик', 'гугл переводчик'])) {
-      await _launchPackage('com.google.android.apps.translate');
-      return VoiceCmdResult.ok('🌍 Переводчик открыт');
-    }
-    if (_has(clean, ['clock', 'часы', 'будильники', 'таймеры'])) {
-      await _launchPackage('com.google.android.deskclock');
-      return VoiceCmdResult.ok('⏰ Часы открыты');
-    }
-    if (_has(clean, ['calendar', 'календарь'])) {
-      await _launchPackage('com.google.android.calendar');
-      return VoiceCmdResult.ok('📅 Календарь открыт');
-    }
-    if (_has(clean, ['phone', 'телефон', 'звонки', 'набор'])) {
-      await _launchPackage('com.google.android.dialer');
-      return VoiceCmdResult.ok('📞 Телефон открыт');
-    }
-    if (_has(clean, ['messages', 'сообщения', 'смс', 'мессенджер'])) {
-      await _launchPackage('com.google.android.apps.messaging');
-      return VoiceCmdResult.ok('💬 Сообщения открыты');
-    }
-    if (_has(clean, ['files', 'файлы', 'файловый менеджер', 'проводник'])) {
-      await _launchPackage('com.google.android.documentsui');
-      return VoiceCmdResult.ok('📂 Файловый менеджер открыт');
-    }
-    if (_has(clean, ['twitch', 'твич'])) {
-      await _launchPackage('tv.twitch.android.app');
-      return VoiceCmdResult.ok('🎮 Twitch открыт');
-    }
-    if (_has(clean, ['shazam', 'шазам'])) {
-      await _launchPackage('com.shazam.android');
-      return VoiceCmdResult.ok('🎵 Shazam открыт');
-    }
-    if (_has(clean, ['zoom', 'зум'])) {
-      await _launchPackage('us.zoom.videomeetings');
-      return VoiceCmdResult.ok('📹 Zoom открыт');
-    }
-    if (_has(clean, ['drive', 'диск', 'гугл диск', 'google drive'])) {
-      await _launchPackage('com.google.android.apps.docs');
-      return VoiceCmdResult.ok('💾 Google Диск открыт');
-    }
-    if (_has(clean, ['photos', 'фото', 'галерея', 'google photos'])) {
-      await _launchPackage('com.google.android.apps.photos');
-      return VoiceCmdResult.ok('🖼 Фото открыты');
-    }
-    if (_has(clean, ['play store', 'плей стор', 'маркет', 'play market'])) {
-      await _launchPackage('com.android.vending');
-      return VoiceCmdResult.ok('🛍 Play Store открыт');
-    }
-    if (_has(clean, ['settings', 'настройки'])) {
-      await AndroidIntent(action: 'android.settings.SETTINGS',
-          flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
-      return VoiceCmdResult.ok('⚙️ Настройки открыты');
-    }
-
-    // Поиск в таблице известных приложений
-    final pkg = _knownApps[clean];
-    if (pkg != null) {
-      await _launchPackage(pkg);
-      return VoiceCmdResult.ok('📱 Открываю $clean');
-    }
-
-    // Smart launch — ищем среди ВСЕХ установленных приложений
-    try {
-      final smartResult = await AppLauncherService.smartLaunch(clean);
-      if (smartResult != null) return VoiceCmdResult.ok(smartResult);
-    } catch (_) {}
-    return null; // Приложение не найдено → пусть AI разберётся
+    return null;
   }
 
   // ── Поиск Google ──────────────────────────────────────────────────────────
