@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// ════════════════════════════════════════════════════════════════════════════
 /// AppLauncherService — единая точка запуска приложений.
@@ -257,10 +258,96 @@ class AppLauncherService {
     return null;
   }
 
+  // ═══ Методы для commands_screen.dart (backward compat) ═══════════════════
+  
+  static const _prefsKey = 'custom_app_commands';
+  
+  /// Встроенные команды (для UI)
+  static Map<String, String> get builtinCommands => _builtinMap;
+  
+  static const Map<String, String> _builtinMap = {
+    'ютуб музыку': 'com.google.android.apps.youtube.music',
+    'спотифай': 'com.spotify.music',
+    'ютуб': 'com.google.android.youtube',
+    'телеграм': 'org.telegram.messenger',
+    'ватсап': 'com.whatsapp',
+    'инстаграм': 'com.instagram.android',
+    'вк': 'com.vkontakte.android',
+    'ютуб': 'com.google.android.youtube',
+    'твич': 'tv.twitch.android.app',
+    'дискорд': 'com.discord',
+    'нетфликс': 'com.netflix.mediaclient',
+    'карты': 'com.google.android.apps.maps',
+    'браузер': 'com.android.chrome',
+    'почта': 'com.google.android.gm',
+    'настройки': 'com.android.settings',
+    'камера': 'com.android.camera2',
+    'калькулятор': 'com.google.android.calculator',
+    'часы': 'com.google.android.deskclock',
+    'файлы': 'com.google.android.documentsui',
+    'музыку': 'com.spotify.music',
+  };
+  
+  /// Получить все команды (встроенные + кастомные)
+  static Future<Map<String, String>> getAllCommands() async {
+    try {
+      final prefs = await _loadPrefs();
+      final custom = <String, String>{};
+      final raw = prefs.getString(_prefsKey);
+      if (raw != null) {
+        final decoded = json.decode(raw);
+        if (decoded is Map) {
+          decoded.forEach((k, v) => custom[k.toString()] = v.toString());
+        }
+      }
+      return {..._builtinMap, ...custom};
+    } catch (_) {
+      return Map.from(_builtinMap);
+    }
+  }
+  
+  /// Добавить кастомную команду
+  static Future<void> addCommand(String phrase, String packageName) async {
+    try {
+      final prefs = await _loadPrefs();
+      final custom = <String, String>{};
+      final raw = prefs.getString(_prefsKey);
+      if (raw != null) {
+        final decoded = json.decode(raw);
+        if (decoded is Map) {
+          decoded.forEach((k, v) => custom[k.toString()] = v.toString());
+        }
+      }
+      custom[phrase] = packageName;
+      await prefs.setString(_prefsKey, json.encode(custom));
+    } catch (_) {}
+  }
+  
+  /// Удалить кастомную команду
+  static Future<void> removeCommand(String phrase) async {
+    try {
+      final prefs = await _loadPrefs();
+      final custom = <String, String>{};
+      final raw = prefs.getString(_prefsKey);
+      if (raw != null) {
+        final decoded = json.decode(raw);
+        if (decoded is Map) {
+          decoded.forEach((k, v) => custom[k.toString()] = v.toString());
+        }
+      }
+      custom.remove(phrase);
+      await prefs.setString(_prefsKey, json.encode(custom));
+    } catch (_) {}
+  }
+  
+  static Future<dynamic> _loadPrefs() async {
+    return await SharedPreferences.getInstance();
+  }
+
   /// Нормализация текста.
   static String _normalize(String s) =>
       s.toLowerCase().trim()
-       .replaceAll(RegExp(r'[.,!?;:\'"\-_]'), '')
+       .replaceAll(RegExp(r'[.,!?;:\-_]'), '')
        .replaceAll(RegExp(r'\s+'), ' ');
 
   /// Расстояние Левенштейна.
