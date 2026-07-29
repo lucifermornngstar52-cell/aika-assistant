@@ -101,6 +101,69 @@ class AppLauncherService {
     return null;
   }
 
+  /// Получает список всех установленных приложений с названиями.
+  /// Использует нативный PackageManager через MethodChannel.
+  static Future<List<Map<String, String>>> getInstalledApps() async {
+    try {
+      final result = await _channel.invokeMethod<List>('getInstalledApps');
+      if (result == null) return [];
+      return result.map((e) {
+        final map = e as Map<dynamic, dynamic>;
+        return {
+          'label': map['label']?.toString() ?? '',
+          'package': map['package']?.toString() ?? '',
+        };
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Умный запуск: ищет приложение по названию среди ВСЕХ установленных.
+  /// Сначала пробует точное совпадение, потом содержит, потом fuzzy.
+  static Future<String?> smartLaunch(String appName) async {
+    final query = _normalize(appName).replaceAll(' ', '');
+    if (query.isEmpty) return null;
+
+    final apps = await getInstalledApps();
+    if (apps.isEmpty) return null;
+
+    // 1. Точное совпадение label (без учёта регистра)
+    for (final app in apps) {
+      if (_normalize(app['label']!).replaceAll(' ', '') == query) {
+        return await _launch(app['package']!);
+      }
+    }
+
+    // 2. Label содержит запрос ИЛИ запрос содержит label
+    for (final app in apps) {
+      final labelNorm = _normalize(app['label']!).replaceAll(' ', '');
+      if (labelNorm.contains(query) || query.contains(labelNorm)) {
+        // Неmatching системные пакеты типа "настройки", "телефон" если запрос другое
+        if (query.length >= 3) {
+          return await _launch(app['package']!);
+        }
+      }
+    }
+
+    // 3. Fuzzy: Левенштейн <= 2
+    for (final app in apps) {
+      final labelNorm = _normalize(app['label']!).replaceAll(' ', '');
+      if (labelNorm.length >= 3 && _levenshtein(query, labelNorm) <= 2) {
+        return await _launch(app['package']!);
+      }
+    }
+
+    // 4. По package name
+    for (final app in apps) {
+      if (_normalize(app['package']!).contains(query)) {
+        return await _launch(app['package']!);
+      }
+    }
+
+    return null;
+  }
+
   /// Главная точка входа.
   /// ФИКС: strip-ает префиксы ("открой", "запусти" и т.д.) перед матчингом.
   static Future<String?> tryLaunch(String phrase) async {
@@ -132,6 +195,10 @@ class AppLauncherService {
         return await _launch(entry.value);
       }
     }
+
+    // 3. Smart launch — ищем среди ВСЕХ установленных приложений
+    final smartResult = await smartLaunch(stripped);
+    if (smartResult != null) return smartResult;
 
     return null;
   }
