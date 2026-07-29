@@ -186,7 +186,7 @@ class ElevenLabsTtsService {
       final dir = await getTemporaryDirectory();
       final files = dir.listSync()
           .where((f) => f.path.contains('elevenlabs_tts_'))
-          .where((f) => DateTime.now().difference(f.stat().modified).inMinutes > 30);
+          .where((f) => DateTime.now().difference((f.statSync()).modified).inMinutes > 30);
       for (final f in files) {
         await f.delete();
       }
