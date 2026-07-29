@@ -58,11 +58,13 @@ class VoiceCommandProcessor {
     if (t.isEmpty) return null;
 
     // ── 0. Приложения — ПРОВЕРЯЕМ ПЕРВЫМИ! ──────────────────────────────────
-    // Важно: "открой whatsapp" не должно попасть в громкость/звонки
+    // Если есть явный триггер открытия — пробуем запустить приложение.
+    // Если не нашли — продолжаем к другим обработчикам.
     if (t.contains('открой') || t.contains('запусти') || t.contains('покажи') ||
         t.contains('зайди') || t.contains('перейди') || t.contains('включи') ||
         t.contains('открыть') || t.contains('запустить') || t.contains('включить') ||
-        t.contains('показать')) {
+        t.contains('показать') || t.contains('open') || t.contains('launch') ||
+        t.contains('start') || t.contains('go to')) {
       final appResult = await _handleOpenApp(t, text);
       if (appResult != null) return appResult;
     }
@@ -177,13 +179,12 @@ class VoiceCommandProcessor {
       }
     }
 
-    // ── 17. Приложения ────────────────────────────────────────────────────
+    // ── 17. Приложения (fallback — без триггера) ──────────────────────────
+    // Если ничего не сработало, пробуем как название приложения
     final appResult = await _handleOpenApp(t, text);
     if (appResult != null) return appResult;
 
     // ── 18. Поиск в Google ────────────────────────────────────────────────
-    final searchResult = await _handleSearch(t, text);
-    if (searchResult != null) return searchResult;
 
     // ── 19. YouTube ───────────────────────────────────────────────────────
     final ytResult = await _handleYouTube(t, text);
