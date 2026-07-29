@@ -289,15 +289,32 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "launchApp" -> {
                         val pkg = call.argument<String>("package") ?: ""
+                        Log.d("Aika", "launchApp: $pkg")
                         if (pkg.isEmpty()) { result.success(false); return@setMethodCallHandler }
                         try {
                             val intent = packageManager.getLaunchIntentForPackage(pkg)
                             if (intent != null) {
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                                 startActivity(intent)
+                                Log.d("Aika", "launchApp SUCCESS: $pkg")
                                 result.success(true)
                             } else {
-                                result.success(false)
+                                Log.w("Aika", "launchApp: no launch intent for $pkg")
+                                // Пробуем через package name напрямую
+                                try {
+                                    val launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                                        addCategory(Intent.CATEGORY_LAUNCHER)
+                                        setPackage(pkg)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    startActivity(launchIntent)
+                                    Log.d("Aika", "launchApp SUCCESS (alt): $pkg")
+                                    result.success(true)
+                                } catch (e2: Exception) {
+                                    Log.e("Aika", "launchApp alt failed: ${e2.message}")
+                                    result.success(false)
+                                }
                             }
                         } catch (e: Exception) {
                             Log.e("Aika", "launchApp failed: ${e.message}")
