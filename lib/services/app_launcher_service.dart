@@ -190,7 +190,7 @@ class AppLauncherService {
       'youtube': 'com.google.android.youtube',
       'ютюб': 'com.google.android.youtube',
       'тикток': 'com.zhiliaoapp.musically',
-      'тикTok'.toLowerCase(): 'com.zhiliaoapp.musically',
+      'тикtok': 'com.zhiliaoapp.musically',
       'tiktok': 'com.zhiliaoapp.musically',
       'телеграм': 'org.telegram.messenger',
       'телеграмм': 'org.telegram.messenger',
