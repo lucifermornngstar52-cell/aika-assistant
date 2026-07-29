@@ -273,7 +273,6 @@ class AppLauncherService {
     'ватсап': 'com.whatsapp',
     'инстаграм': 'com.instagram.android',
     'вк': 'com.vkontakte.android',
-    'ютуб': 'com.google.android.youtube',
     'твич': 'tv.twitch.android.app',
     'дискорд': 'com.discord',
     'нетфликс': 'com.netflix.mediaclient',
