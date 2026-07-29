@@ -291,35 +291,76 @@ class MainActivity : FlutterActivity() {
                         val pkg = call.argument<String>("package") ?: ""
                         Log.d("Aika", "launchApp: $pkg")
                         if (pkg.isEmpty()) { result.success(false); return@setMethodCallHandler }
+                        
+                        // ── Попытка 1: getLaunchIntentForPackage ──
                         try {
                             val intent = packageManager.getLaunchIntentForPackage(pkg)
                             if (intent != null) {
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                                 startActivity(intent)
-                                Log.d("Aika", "launchApp SUCCESS: $pkg")
+                                Log.d("Aika", "launchApp SUCCESS (method 1): $pkg")
                                 result.success(true)
+                                return@setMethodCallHandler
                             } else {
-                                Log.w("Aika", "launchApp: no launch intent for $pkg")
-                                // Пробуем через package name напрямую
-                                try {
-                                    val launchIntent = Intent(Intent.ACTION_MAIN).apply {
-                                        addCategory(Intent.CATEGORY_LAUNCHER)
-                                        setPackage(pkg)
+                                Log.w("Aika", "launchApp: method 1 returned null for $pkg")
+                            }
+                        } catch (e: Exception) {
+                            Log.w("Aika", "launchApp method 1 failed: ${'$'}{e.message}")
+                        }
+                        
+                        // ── Попытка 2: ACTION_MAIN + CATEGORY_LAUNCHER ──
+                        try {
+                            val launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                                setPackage(pkg)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(launchIntent)
+                            Log.d("Aika", "launchApp SUCCESS (method 2): $pkg")
+                            result.success(true)
+                            return@setMethodCallHandler
+                        } catch (e: Exception) {
+                            Log.w("Aika", "launchApp method 2 failed: ${'$'}{e.message}")
+                        }
+                        
+                        // ── Попытка 3: Найти activity через PackageManager.resolveActivity ──
+                        try {
+                            val resolveIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            val resolveInfoList = packageManager.queryIntentActivities(resolveIntent, 0)
+                            for (info in resolveInfoList) {
+                                if (info.activityInfo.packageName == pkg) {
+                                    val launchIntent2 = Intent(Intent.ACTION_MAIN).apply {
+                                        setClassName(info.activityInfo.packageName, info.activityInfo.name)
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
-                                    startActivity(launchIntent)
-                                    Log.d("Aika", "launchApp SUCCESS (alt): $pkg")
+                                    startActivity(launchIntent2)
+                                    Log.d("Aika", "launchApp SUCCESS (method 3): $pkg")
                                     result.success(true)
-                                } catch (e2: Exception) {
-                                    Log.e("Aika", "launchApp alt failed: ${e2.message}")
-                                    result.success(false)
+                                    return@setMethodCallHandler
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.e("Aika", "launchApp failed: ${e.message}")
-                            result.success(false)
+                            Log.w("Aika", "launchApp method 3 failed: ${'$'}{e.message}")
                         }
+                        
+                        // ── Попытка 4: Проверяем, может пакет просто не имеет launcher activity ──
+                        try {
+                            val pkgInfo = packageManager.getPackageInfo(pkg, 0)
+                            // Пакет установлен, но нет launcher activity
+                            // Пробуем открыть страницу приложения в настройках
+                            Log.w("Aika", "launchApp: package installed but no launcher activity: $pkg")
+                            result.success(false)
+                            return@setMethodCallHandler
+                        } catch (_: Exception) {
+                            // Пакет не установлен
+                            Log.w("Aika", "launchApp: package not installed: $pkg")
+                        }
+                        
+                        result.success(false)
                     }
                     "isInstalled" -> {
                         val pkg = call.argument<String>("package") ?: ""
