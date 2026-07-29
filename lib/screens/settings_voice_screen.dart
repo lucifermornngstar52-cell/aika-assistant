@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/edge_tts_service.dart';
+import '../services/elevenlabs_tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 
@@ -16,6 +17,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   List<Map<String, String>> _voices = [];
   String? _selectedVoice;
   bool _loading = true;
+  String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
+  String? _elevenLabsVoice;
 
   @override
   void initState() {
@@ -25,6 +28,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
+    _elevenLabsVoice = prefs.getString('elevenlabs_voice');
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -50,6 +55,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('tts_engine', _ttsEngine);
+    if (_elevenLabsVoice != null) await prefs.setString('elevenlabs_voice', _elevenLabsVoice!);
     await prefs.setDouble('tts_rate', _rate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
@@ -97,13 +104,47 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           : ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          _label('ДВИЖОК TTS'),
+          _card(Column(children: [
+            _engineTile('EdgeTTS (бесплатно)', 'edge', '⚡', 'Microsoft Neural, мгновенный стриминг'),
+            _engineTile('ElevenLabs (премиум)', 'elevenlabs', '🎭', 'Лучшее качество, естественные голоса'),
+            _engineTile('Системный TTS', 'system', '📱', 'Встроенный Android TTS, офлайн'),
+          ])),
+          const SizedBox(height: 20),
+
+          if (_ttsEngine == 'elevenlabs') ...[
+            _label('ГОЛОСА ELEVENLABS'),
+            ...ElevenLabsTtsService.voices.map((v) => GestureDetector(
+              onTap: () => setState(() => _elevenLabsVoice = v['id']),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _elevenLabsVoice == v['id']
+                      ? AikaTheme.neonBlue.withOpacity(0.15)
+                      : const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _elevenLabsVoice == v['id'] ? AikaTheme.neonBlue : Colors.transparent,
+                  ),
+                ),
+                child: Row(children: [
+                  Expanded(child: Text(v['label']!, style: const TextStyle(color: Colors.white, fontSize: 13))),
+                  if (_elevenLabsVoice == v['id'])
+                    Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
+                ]),
+              ),
+            )),
+            const SizedBox(height: 20),
+          ],
+
           _label('ПАРАМЕТРЫ ГОЛОСА'),
           _card(Column(children: [
             _slider('Скорость речи', _rate, 0.25, 1.5, (v) => setState(() => _rate = v)),
             _slider('Высота голоса', _pitch, 0.5, 2.0, (v) => setState(() => _pitch = v)),
             _slider('Громкость', _volume, 0.0, 1.0, (v) => setState(() => _volume = v)),
           ])),
-          if (_voices.isNotEmpty) ...[
+          if (_voices.isNotEmpty && _ttsEngine != 'elevenlabs') ...[
             const SizedBox(height: 20),
             _label('ГОЛОС'),
             ..._voices.map((v) {
@@ -138,6 +179,34 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
       ),
     );
   }
+
+  Widget _engineTile(String title, String engine, String emoji, String subtitle) =>
+      GestureDetector(
+        onTap: () => setState(() => _ttsEngine = engine),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: _ttsEngine == engine
+                ? AikaTheme.neonBlue.withOpacity(0.15)
+                : const Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _ttsEngine == engine ? AikaTheme.neonBlue : Colors.transparent,
+            ),
+          ),
+          child: Row(children: [
+            Text(emoji, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ])),
+            if (_ttsEngine == engine)
+              Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
+          ]),
+        ),
+      );
 
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 8, left: 4),
