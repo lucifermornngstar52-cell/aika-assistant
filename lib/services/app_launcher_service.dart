@@ -1,4 +1,47 @@
 import 'package:flutter/services.dart';
+
+  // ── Custom voice commands CRUD ────────────────────────────────────────
+  static final Map<String, String> _customCommands = {};
+  static bool _commandsLoaded = false;
+
+  static Future<void> _loadCustomCommands() async {
+    if (_commandsLoaded) return;
+    _commandsLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('custom_app_commands');
+      if (raw != null) {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        _customCommands.clear();
+        decoded.forEach((k, v) => _customCommands[k] = v.toString());
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> _saveCustomCommands() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('custom_app_commands', jsonEncode(_customCommands));
+    } catch (_) {}
+  }
+
+  static Future<Map<String, String>> getAllCommands() async {
+    await _loadCustomCommands();
+    return Map.from(_customCommands);
+  }
+
+  static Future<void> addCommand(String phrase, String packageName) async {
+    await _loadCustomCommands();
+    _customCommands[phrase] = packageName;
+    await _saveCustomCommands();
+  }
+
+  static Future<void> removeCommand(String phrase) async {
+    await _loadCustomCommands();
+    _customCommands.remove(phrase);
+    await _saveCustomCommands();
+  }
+
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
