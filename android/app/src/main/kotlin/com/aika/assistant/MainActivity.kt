@@ -369,16 +369,6 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "getInstalledApps" -> {
-                        val apps = packageManager.getInstalledApplications(0)
-                        val list = apps.map { app ->
-                            mapOf(
-                                "package" to app.packageName,
-                                "name" to packageManager.getApplicationLabel(app).toString()
-                            )
-                        }
-                        result.success(list)
-                    }
-                    "getInstalledApps" -> {
                         try {
                             val apps = packageManager.getInstalledApplications(0)
                             val list = mutableListOf<Map<String, String>>()
