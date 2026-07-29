@@ -602,9 +602,6 @@ class MainActivity : FlutterActivity() {
                         result.success(svc.findPackageByName(name))
                     }
 
-                    "getInstalledApps" -> {
-                        result.success(svc.getInstalledApps())
-                    }
 
                     "clickByText" -> {
                         val text = call.argument<String>("text") ?: ""
