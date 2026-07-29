@@ -522,7 +522,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
 [ACTION:lock_screen] [ACTION:take_screenshot] [ACTION:power_menu] [ACTION:close_app]
 
 📞 ЗВОНКИ:
-[ACTION:open_dialer] [ACTION:open_messages]
+[ACTION:open_messages]
 
 ⏰ ВРЕМЯ:
 [ACTION:open_clock] [ACTION:open_calendar]
