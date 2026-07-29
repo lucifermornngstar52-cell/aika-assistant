@@ -98,7 +98,7 @@ class CustomShortcutsService {
         // If action looks like an app package name — launch it
         if (action.contains('.') && !action.contains(' ') && action.length > 5) {
           final result = await AppLauncherService.launchPackage(action);
-          return result;
+          return result ? 'Открываю $action 📱' : 'Не удалось открыть 😔';
         }
         return 'Выполняю: $action';
       }
