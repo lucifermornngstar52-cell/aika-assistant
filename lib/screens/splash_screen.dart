@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/license_service.dart';
-import 'license_screen.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
@@ -33,30 +31,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _navigate() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('user_name');
-    final savedEmail = await LicenseService.getSavedEmail();
     if (!mounted) return;
-
-    // Проверяем лицензию если email уже есть
-    if (savedEmail != null) {
-      final status = await LicenseService.checkLicenseByEmail(savedEmail);
-      if (!mounted) return;
-      if (!status.valid) {
-        Navigator.of(context).pushReplacement(PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const LicenseScreen(),
-          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-          transitionDuration: const Duration(milliseconds: 600),
-        ));
-        return;
-      }
-    } else if (savedEmail == null) {
-      // Первый запуск — идём на экран лицензии
-      Navigator.of(context).pushReplacement(PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const LicenseScreen(),
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 600),
-      ));
-      return;
-    }
 
     Widget nextScreen;
     if (name == null) {
@@ -90,7 +65,6 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Glow orb — без PNG
             Container(
               width: 120,
               height: 120,
