@@ -196,7 +196,7 @@ class AppLauncherService {
     for (int i = 1; i <= s1.length; i++) {
       for (int j = 1; j <= s2.length; j++) {
         final cost = s1[i - 1] == s2[j - 1] ? 0 : 1;
-        matrix[i][j] = (matrix[i - 1][j] + 1).min(matrix[i][j - 1] + 1).min(matrix[i - 1][j - 1] + cost);
+        matrix[i][j] = [matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost].reduce((a, b) => a < b ? a : b);
       }
     }
     return matrix[s1.length][s2.length];
