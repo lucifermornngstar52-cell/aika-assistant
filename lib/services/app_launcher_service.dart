@@ -268,7 +268,6 @@ class AppLauncherService {
   static const Map<String, String> _builtinMap = {
     'ютуб музыку': 'com.google.android.apps.youtube.music',
     'спотифай': 'com.spotify.music',
-    'ютуб': 'com.google.android.youtube',
     'телеграм': 'org.telegram.messenger',
     'ватсап': 'com.whatsapp',
     'инстаграм': 'com.instagram.android',
