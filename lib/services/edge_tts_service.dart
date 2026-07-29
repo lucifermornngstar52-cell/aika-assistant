@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'elevenlabs_tts_service.dart';
 
 /// Edge TTS — Microsoft Neural Voices (стриминг через WebSocket)
 /// Исправлено: _edgeEnabled не сбрасывается, автоматический реконнект.
@@ -25,6 +26,9 @@ class EdgeTtsService extends ChangeNotifier {
   bool _isSpeaking = false;
   // ФИКС: не отключаем EdgeTTS навсегда — при ошибке делаем реконнект и пробуем снова
   bool _edgeFailed = false;
+  String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
+  String get ttsEngine => _ttsEngine;
+  void setTtsEngine(String engine) { _ttsEngine = engine; notifyListeners(); }
   String _voice = _defaultVoice;
   double _rate = 0.0;
   double _pitch = 0.0;
@@ -75,6 +79,7 @@ class EdgeTtsService extends ChangeNotifier {
       _pitch = prefs.getDouble('edge_tts_pitch') ?? 0.0;
       final voice = prefs.getString('edge_voice');
       if (voice != null && voice.isNotEmpty) _voice = voice;
+      _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
     } catch (_) {}
   }
 
@@ -123,6 +128,18 @@ class EdgeTtsService extends ChangeNotifier {
     await stop();
     _isSpeaking = true;
     notifyListeners();
+
+    // ── Переключение TTS движка ─────────────────────────────────────
+    if (_ttsEngine == 'elevenlabs') {
+      try {
+        await ElevenLabsTtsService().speak(text);
+        _failCount = 0;
+        return;
+      } catch (e) {
+        debugPrint('[ElevenLabs] ошибка, fallback на EdgeTTS: $e');
+        // Падаем на EdgeTTS если ElevenLabs не сработал
+      }
+    }
 
     // ФИКС: пробуем EdgeTTS если ошибок было меньше MAX
     final canUseEdge = _failCount < _maxFails;
