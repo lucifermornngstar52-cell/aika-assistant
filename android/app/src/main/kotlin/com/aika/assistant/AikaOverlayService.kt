@@ -286,8 +286,30 @@ class AikaOverlayService : Service() {
             }
             ACTION_SWITCH_MODEL -> {
                 val path = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
+                Log.d("AikaOverlay", "switchModel to: $path")
                 handler.post {
-                    webView?.evaluateJavascript("window.switchModel('$path')", null)
+                    if (webView != null) {
+                        // Сначала пробуем обычное переключение
+                        webView?.evaluateJavascript("window.switchModel('$path')") { result ->
+                            Log.d("AikaOverlay", "switchModel result: $result")
+                        }
+                        // Резерв: если через 10 сек модель не загрузилась — перезагружаем WebView
+                        handler.postDelayed({
+                            webView?.evaluateJavascript("(typeof model !== 'undefined' && model) ? 'ok' : 'null'", null) { check ->
+                                if (check == "null" || check == "undefined") {
+                                    Log.w("AikaOverlay", "Model stuck, reloading WebView...")
+                                    webView?.reload()
+                                    // После перезагрузки принудительно загружаем нужную модель
+                                    handler.postDelayed({
+                                        webView?.evaluateJavascript("window.switchModel('$path')", null)
+                                    }, 3000)
+                                }
+                            }
+                        }, 10000)
+                    } else {
+                        Log.e("AikaOverlay", "webView is null!")
+                        initWebView()
+                    }
                 }
             }
             ACTION_SET_MODE -> {
