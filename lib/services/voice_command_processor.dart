@@ -359,7 +359,7 @@ class VoiceCommandProcessor {
     if (_has(t, ['включи', 'вкл']) && !_has(t, ['spotify', 'спотифай', 'спотифи',
         'whatsapp', 'ватсап', 'вотсап', 'вацап', 'телеграм', 'telegram',
         'ютуб', 'youtube', 'инстаграм', 'инста', 'тик', 'музык'])) {
-      await VolumeController().setVolume(_vol = 1.0);
+      VolumeController().setVolume(_vol = 1.0);
       return VoiceCmdResult.ok('🔊 Громкость на максимум!');
     }
     if (_has(t, ['громче', 'увеличь громкость', 'volume up', 'прибавь', 'добавь громкости'])) {
