@@ -362,7 +362,6 @@ class VoiceCommandProcessor {
       await VolumeController().setVolume(_vol = 1.0);
       return VoiceCmdResult.ok('🔊 Громкость на максимум!');
     }
-    }
     if (_has(t, ['громче', 'увеличь громкость', 'volume up', 'прибавь', 'добавь громкости'])) {
       VolumeController().setVolume((_vol + 0.15).clamp(0.0, 1.0));
       return VoiceCmdResult.ok('🔊 Громкость увеличена');
