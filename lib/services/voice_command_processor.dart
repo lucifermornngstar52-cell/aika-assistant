@@ -355,10 +355,13 @@ class VoiceCommandProcessor {
         VolumeController().setVolume(0.0);
         return VoiceCmdResult.ok('🔇 Звук выключен');
       }
-      if (_has(t, ['включи', 'вкл'])) {
-        VolumeController().setVolume(0.5);
-        return VoiceCmdResult.ok('🔊 Звук включён');
-      }
+          // Не трогаем громкость если это команда запуска приложения
+    if (_has(t, ['включи', 'вкл']) && !_has(t, ['spotify', 'спотифай', 'спотифи',
+        'whatsapp', 'ватсап', 'вотсап', 'вацап', 'телеграм', 'telegram',
+        'ютуб', 'youtube', 'инстаграм', 'инста', 'тик', 'музык'])) {
+      await VolumeController().setVolume(_vol = 1.0);
+      return VoiceCmdResult.ok('🔊 Громкость на максимум!');
+    }
     }
     if (_has(t, ['громче', 'увеличь громкость', 'volume up', 'прибавь', 'добавь громкости'])) {
       VolumeController().setVolume((_vol + 0.15).clamp(0.0, 1.0));
