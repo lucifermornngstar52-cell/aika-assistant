@@ -67,6 +67,7 @@ import '../services/aika_self_learning_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
 import '../services/edge_tts_service.dart';
+import '../services/elevenlabs_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
