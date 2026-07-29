@@ -171,9 +171,35 @@ class AppLauncherService {
     if (key.isEmpty) return false;
     final paddedText = ' $text ';
     final paddedKey  = ' $key ';
-    if (!paddedText.contains(paddedKey)) return false;
-    if (key.length <= 2 && text != key) return false;
-    return true;
+    if (paddedText.contains(paddedKey)) {
+      if (key.length <= 2 && text != key) return false;
+      return true;
+    }
+    // Fuzzy: убираем все пробелы и проверяем подстроку
+    // "вот сап" → "вотсап" matches key "ватсап"? Нет, но "вотсап" matches "вотсап"
+    final noSpaceText = text.replaceAll(' ', '');
+    final noSpaceKey  = key.replaceAll(' ', '');
+    if (noSpaceKey.length >= 4 && noSpaceText.contains(noSpaceKey)) return true;
+    // Levenshtein-lite: если текст очень похож на ключ (1 опечатка)
+    if (noSpaceKey.length >= 5 && _levenshtein(noSpaceText, noSpaceKey) <= 2) return true;
+    return false;
+  }
+
+  /// Простое расстояние Левенштейна для fuzzy matching
+  static int _levenshtein(String s1, String s2) {
+    if (s1 == s2) return 0;
+    if (s1.isEmpty) return s2.length;
+    if (s2.isEmpty) return s1.length;
+    final matrix = List.generate(s1.length + 1, (i) => List.generate(s2.length + 1, (j) => 0));
+    for (int i = 0; i <= s1.length; i++) matrix[i][0] = i;
+    for (int j = 0; j <= s2.length; j++) matrix[0][j] = j;
+    for (int i = 1; i <= s1.length; i++) {
+      for (int j = 1; j <= s2.length; j++) {
+        final cost = s1[i - 1] == s2[j - 1] ? 0 : 1;
+        matrix[i][j] = (matrix[i - 1][j] + 1).min(matrix[i][j - 1] + 1).min(matrix[i - 1][j - 1] + cost);
+      }
+    }
+    return matrix[s1.length][s2.length];
   }
 
   static Future<String> launchPackage(String packageName) => _launch(packageName);
