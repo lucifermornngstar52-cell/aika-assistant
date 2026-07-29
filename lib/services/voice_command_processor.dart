@@ -56,6 +56,14 @@ class VoiceCommandProcessor {
     final t = text.toLowerCase().trim();
     if (t.isEmpty) return null;
 
+    // ── 0. Приложения — ПРОВЕРЯЕМ ПЕРВЫМИ! ──────────────────────────────────
+    // Важно: "открой whatsapp" не должно попасть в громкость/звонки
+    if (t.contains('открой') || t.contains('запусти') || t.contains('покажи') ||
+        t.contains('зайди') || t.contains('перейди')) {
+      final appResult = await _handleOpenApp(t, text);
+      if (appResult != null) return appResult;
+    }
+
     // ── 1. Фонарик ─────────────────────────────────────────────────────────
     final flashResult = _handleFlashlight(t);
     if (flashResult != null) return flashResult;
@@ -460,7 +468,10 @@ class VoiceCommandProcessor {
     if (appName.isEmpty) return null;
 
     // Убираем "приложение" из названия
-    final clean = appName.replaceAll(RegExp(r'^приложение\s+'), '').trim();
+    var clean = appName.replaceAll(RegExp(r'^приложение\s+'), '').trim();
+    // Нормализуем: убираем лишние пробелы между слогами (STT часто ломает слова)
+    // "вот сап" → "вотсап", "споти фай" → "спотифай"
+    clean = clean.replaceAll(RegExp(r'\s+'), '');
 
     // Специальные обработки
     if (_has(clean, ['браузер', 'chrome', 'хром', 'интернет', 'browser'])) {
@@ -471,7 +482,7 @@ class VoiceCommandProcessor {
       await _launchPackage('org.telegram.messenger');
       return VoiceCmdResult.ok('✈️ Telegram открыт');
     }
-    if (_has(clean, ['whatsapp', 'ватсап', 'вотсап', 'вацап'])) {
+    if (_has(clean, ['whatsapp', 'ватсап', 'вотсап', 'вацап', 'ватцап', 'уотсап', 'васап', 'вацап', 'whatsап', 'вотсапп'])) {
       await _launchPackage('com.whatsapp');
       return VoiceCmdResult.ok('💬 WhatsApp открыт');
     }
@@ -487,7 +498,7 @@ class VoiceCommandProcessor {
       await _launchPackage('com.zhiliaoapp.musically');
       return VoiceCmdResult.ok('🎵 TikTok открыт');
     }
-    if (_has(clean, ['spotify', 'спотифай', 'спотифи'])) {
+    if (_has(clean, ['spotify', 'спотифай', 'спотифи', 'спотифай', 'сподифай', 'спатифай', 'споти'])) {
       await _launchPackage('com.spotify.music');
       return VoiceCmdResult.ok('🎵 Spotify открыт');
     }
