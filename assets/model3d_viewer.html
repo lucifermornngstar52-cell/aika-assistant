@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:transparent !important; overflow:hidden; }
+  canvas { display:block; width:100%; height:100%; background:transparent; }
+  #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#fff; font-size:14px; font-family:sans-serif; text-shadow:0 0 4px #000; }
+</style>
+</head>
+<body>
+<div id="loading">Loading 3D...</div>
+<canvas id="canvas"></canvas>
+<script src="three.min.js"></script>
+<script src="GLTFLoader.js"></script>
+<script>
+(function() {
+  const canvas = document.getElementById('canvas');
+  const loadingEl = document.getElementById('loading');
+
+  let scene, camera, renderer, mixer, model, clock;
+  let currentAnim = 'idle';
+  let animations = [];
+  let autoRotate = false;
+
+  function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(30, 1, 0.1, 1000);
+    camera.position.set(0, 1.2, 3.5);
+    camera.lookAt(0, 1.0, 0);
+
+    renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(2, 5, 3);
+    scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dir2.position.set(-2, 3, -3);
+    scene.add(dir2);
+
+    clock = new THREE.Clock();
+
+    function resize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    animate();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    if (mixer) mixer.update(dt);
+    if (autoRotate && model) model.rotation.y += dt * 0.5;
+    renderer.render(scene, camera);
+  }
+
+  function loadModel(url) {
+    loadingEl.style.display = 'block';
+    const loader = new THREE.GLTFLoader();
+    loader.load(url, function(gltf) {
+      model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = 2.0 / maxDim;
+      model.scale.setScalar(scale);
+      model.position.x = -center.x * scale;
+      model.position.y = -center.y * scale + 1.0;
+      model.position.z = -center.z * scale;
+      scene.add(model);
+
+      animations = gltf.animations || [];
+      if (animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        console.log('Animations:', animations.map(a => a.name));
+        playAnim(currentAnim);
+      }
+
+      loadingEl.style.display = 'none';
+      try { window.flutter_inappwebview.callHandler('onModelLoaded', { success: true, animCount: animations.length }); } catch(e) {}
+    }, function(progress) {
+      if (progress.total) loadingEl.textContent = 'Loading ' + Math.round(progress.loaded / progress.total * 100) + '%';
+    }, function(error) {
+      loadingEl.textContent = 'Load error';
+      console.error('GLB error:', error);
+      try { window.flutter_inappwebview.callHandler('onModelError', { error: String(error) }); } catch(e) {}
+    });
+  }
+
+  function playAnim(name) {
+    currentAnim = name;
+    if (!mixer || animations.length === 0) return;
+    let clip = animations.find(a => a.name === name);
+    if (!clip) clip = animations.find(a => a.name.toLowerCase() === name.toLowerCase());
+    if (!clip) clip = animations.find(a => a.name.toLowerCase().includes(name.toLowerCase()));
+    if (clip) {
+      mixer.stopAllAction();
+      mixer.clipAction(clip).reset().setLoop(THREE.LoopRepeat, Infinity).play();
+      console.log('Playing:', clip.name);
+    }
+  }
+
+  function setState(state) {
+    const map = {
+      'idle': 'idle', 'listening': 'idle', 'thinking': 'sneak_pose',
+      'talking': 'idle', 'greeting': 'agree', 'dance': 'SambaDance',
+      'happy': 'agree', 'sad': 'sad_pose', 'angry': 'headShake',
+      'walk': 'walk', 'run': 'run', 'agree': 'agree', 'headShake': 'headShake',
+    };
+    playAnim(map[state] || 'idle');
+  }
+
+  function setAutoRotate(val) { autoRotate = val; }
+
+  window.model3D = { loadModel, playAnim, setState, setAutoRotate,
+    getAnimations: () => animations.map(a => a.name) };
+
+  window.addEventListener('flutterInAppWebViewPlatformReady', function() {
+    try { window.flutter_inappwebview.callHandler('onReady', {}); } catch(e) {}
+  });
+
+  init();
+})();
+</script>
+</body>
+</html>
