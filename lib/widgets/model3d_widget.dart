@@ -1,17 +1,18 @@
-import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 3D-виджет аватара через InAppWebView + Three.js.
 /// Загружает GLB модели с анимациями.
-/// Использует base64 для передачи GLB — обходит ограничения fetch() на file://
+/// Копирует GLB во временный файл и грузит через file:// URL.
 class Model3DWidget extends StatefulWidget {
   final double width;
   final double height;
   final String state; // idle, talking, dance, thinking, etc.
-  final String? modelAsset; // e.g. 'models/tsumire.glb'
+  final String? modelAsset;
 
   const Model3DWidget({
     Key? key,
@@ -30,7 +31,6 @@ class _Model3DWidgetState extends State<Model3DWidget> {
   String _lastState = '';
   bool _ready = false;
 
-  // Встроенные 3D модели
   static const _builtin3DPaths = {
     'tsumire': 'models/tsumire.glb',
     'aika_model': 'models/aika_model.glb',
@@ -73,26 +73,37 @@ class _Model3DWidgetState extends State<Model3DWidget> {
         source: "window.model3D && window.model3D.setState('$state')");
   }
 
-  /// Загружает GLB как asset bytes и передаёт в JS через base64 data URL.
-  /// Это обходит ограничение fetch() на file:// протоколе в Android WebView.
-  Future<void> _loadModelViaBase64(InAppWebViewController ctrl) async {
+  /// Копирует GLB asset во временный файл и грузит через file:// URL.
+  /// Это обходит ограничения fetch() на android_asset:// scheme.
+  Future<void> _loadModelFromFile(InAppWebViewController ctrl) async {
     final assetPath = widget.modelAsset ??
         _builtin3DPaths[_modelId] ??
         _builtin3DPaths['tsumire']!;
 
     try {
+      // Copy asset to temp file
       final byteData = await rootBundle.load('assets/$assetPath');
       final bytes = byteData.buffer.asUint8List();
-      final b64 = base64Encode(bytes);
-      final dataUrl = 'data:model/gltf-binary;base64,$b64';
-      debugPrint('[Model3DWidget] Loaded ${bytes.length} bytes, sending as data URL');
+
+      // Get temp directory
+      final tempDir = await getTemporaryDirectory();
+      final tempPath = '${tempDir.path}/aika_model.glb';
+      final file = File(tempPath);
+      await file.writeAsBytes(bytes);
+      debugPrint('[Model3DWidget] Copied ${bytes.length} bytes to $tempPath');
+
+      // Load via file:// URL - this works with fetch() on real filesystem
+      final fileUrl = 'file://$tempPath';
       await ctrl.evaluateJavascript(
-          source: "window.model3D && window.model3D.loadModel('$dataUrl');");
+          source: "window.model3D && window.model3D.loadModel('$fileUrl');");
     } catch (e) {
-      debugPrint('[Model3DWidget] Asset load error: $e');
-      // Fallback: try direct path
+      debugPrint('[Model3DWidget] Error: $e');
+      // Fallback: try direct asset path
+      final assetPath2 = widget.modelAsset ??
+          _builtin3DPaths[_modelId] ??
+          _builtin3DPaths['tsumire']!;
       await ctrl.evaluateJavascript(
-          source: "window.model3D && window.model3D.loadModel('$assetPath');");
+          source: "window.model3D && window.model3D.loadModel('$assetPath2');");
     }
   }
 
@@ -131,7 +142,7 @@ class _Model3DWidgetState extends State<Model3DWidget> {
             handlerName: 'onReady',
             callback: (args) {
               Future.delayed(const Duration(milliseconds: 500), () {
-                if (mounted) _loadModelViaBase64(ctrl);
+                if (mounted) _loadModelFromFile(ctrl);
               });
             },
           );
