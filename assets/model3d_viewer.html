@@ -27,6 +27,7 @@
 <canvas id="canvas"></canvas>
 <script src="three/three.min.js"></script>
 <script src="three/GLTFLoader.js"></script>
+<script src="three/meshopt_decoder.js"></script>
 <script>
 (function() {
   var canvas = document.getElementById('canvas');
@@ -73,12 +74,23 @@
   }
 
   function loadModel(url) {
-    dbg('loadModel: ' + url);
+    dbg('loadModel: ' + url.substring(0, 60) + '...');
     loadingEl.style.display = 'block'; loadingEl.style.color = '#fff'; loadingEl.textContent = 'Loading 3D...';
+
+    // Remove old model
+    if (model) { scene.remove(model); model = null; mixer = null; animations = []; }
+
     var loader = new THREE.GLTFLoader();
+
+    // Setup MeshoptDecoder if available
+    if (typeof MeshoptDecoder !== 'undefined') {
+      loader.setMeshoptDecoder(MeshoptDecoder);
+      dbg('MeshoptDecoder set');
+    }
+
     loader.load(url,
       function(gltf) {
-        dbg('Loaded! ' + gltf.scene.children.length + ' objects');
+        dbg('Loaded! objects:' + gltf.scene.children.length);
         model = gltf.scene;
         var box = new THREE.Box3().setFromObject(model);
         var size = box.getSize(new THREE.Vector3());
@@ -92,6 +104,9 @@
         if (animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
           playAnim(currentAnim);
+          dbg('Anims: ' + animations.map(function(a){return a.name;}).join(', '));
+        } else {
+          dbg('No animations');
         }
         loadingEl.style.display = 'none';
         try { window.flutter_inappwebview.callHandler('onModelLoaded', {success:true, animCount:animations.length}); } catch(e) {}
@@ -99,7 +114,7 @@
       function(p) { if(p.total>0) loadingEl.textContent = 'Loading '+ Math.round(p.loaded/p.total*100)+'%'; },
       function(err) {
         var e = err && err.message ? err.message : String(err);
-        dbg('ERR: '+e.substring(0,120));
+        dbg('ERR: '+e.substring(0, 150));
         loadingEl.textContent = 'Load error'; loadingEl.style.color = '#f44';
         try { window.flutter_inappwebview.callHandler('onModelError', {error:e}); } catch(e2) {}
       }
@@ -109,9 +124,9 @@
   function playAnim(name) {
     currentAnim = name;
     if (!mixer || !animations.length) return;
-    var clip = animations.find(function(a){return a.name===name;}) ||
-               animations.find(function(a){return a.name.toLowerCase()===name.toLowerCase();}) ||
-               animations.find(function(a){return a.name.toLowerCase().indexOf(name.toLowerCase())!==-1;}) ||
+    var clip = animations.filter(function(a){return a.name===name;})[0] ||
+               animations.filter(function(a){return a.name.toLowerCase()===name.toLowerCase();})[0] ||
+               animations.filter(function(a){return a.name.toLowerCase().indexOf(name.toLowerCase())!==-1;})[0] ||
                animations[0];
     if (clip) { mixer.stopAllAction(); mixer.clipAction(clip).reset().setLoop(THREE.LoopRepeat,Infinity).play(); dbg('Anim: '+clip.name); }
   }
@@ -121,7 +136,11 @@
     playAnim(m[s]||'idle');
   }
 
-  window.model3D = { loadModel:loadModel, playAnim:playAnim, setState:setState, setAutoRotate:function(v){autoRotate=!!v;}, getAnimations:function(){return animations.map(function(a){return a.name;});} };
+  window.model3D = {
+    loadModel:loadModel, playAnim:playAnim, setState:setState,
+    setAutoRotate:function(v){autoRotate=!!v;},
+    getAnimations:function(){return animations.map(function(a){return a.name;});}
+  };
 
   window.addEventListener('flutterInAppWebViewPlatformReady', function() {
     dbg('Flutter ready');
