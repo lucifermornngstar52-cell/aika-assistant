@@ -96,6 +96,39 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     }
   }
 
+  Future<void> _pickCustomModel() async {
+    setState(() => _loading = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Выбери .model3.json файл',
+      );
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        if (path.endsWith('model3.json') || path.endsWith('model.json')) {
+          setState(() { _customModelPath = path; _selectedId = 'custom'; });
+          await _save();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Модель загружена: \${path.split('/').last}'),
+              backgroundColor: Colors.green.withOpacity(0.8),
+              behavior: SnackBarBehavior.floating,
+            ));
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Нужен файл .model3.json'),
+              backgroundColor: Colors.red,
+            ));
+          }
+        }
+      }
+    } catch (e) { debugPrint('FilePicker error: \$e'); }
+    setState(() => _loading = false);
+  }
+
   Future<void> _pickCustom3D() async {
     setState(() => _loading = true);
     try {
