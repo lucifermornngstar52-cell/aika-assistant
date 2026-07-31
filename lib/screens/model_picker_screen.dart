@@ -111,7 +111,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
           await _save();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Модель загружена: \${path.split('/').last}'),
+              content: Text("Модель загружена: ${path.split("/").last}"),
               backgroundColor: Colors.green.withOpacity(0.8),
               behavior: SnackBarBehavior.floating,
             ));
@@ -125,7 +125,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
           }
         }
       }
-    } catch (e) { debugPrint('FilePicker error: \$e'); }
+    } catch (e) { debugPrint("FilePicker error: $e"); }
     setState(() => _loading = false);
   }
 
@@ -143,7 +143,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
         await _save();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('3D модель загружена: ${path.split('/').last}'),
+            content: Text("3D модель загружена: ${path.split("/").last}"),
             backgroundColor: Colors.cyan.withOpacity(0.8),
             behavior: SnackBarBehavior.floating,
           ));
