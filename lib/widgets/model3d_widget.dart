@@ -74,7 +74,7 @@ class _Model3DWidgetState extends State<Model3DWidget> {
         ?? _builtin3DPaths[_modelId]
         ?? _builtin3DPaths['tsumire']!;
     // For Flutter assets, use flutter.js asset URL
-    return "window.model3D && window.model3D.loadModel('assets/$assetPath');";
+    return "window.model3D && window.model3D.loadModel('$assetPath');";
   }
 
   @override

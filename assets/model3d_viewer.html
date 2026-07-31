@@ -13,8 +13,8 @@
 <body>
 <div id="loading">Loading 3D...</div>
 <canvas id="canvas"></canvas>
-<script src="three.min.js"></script>
-<script src="GLTFLoader.js"></script>
+<script src="three/three.min.js"></script>
+<script src="three/GLTFLoader.js"></script>
 <script>
 (function() {
   const canvas = document.getElementById('canvas');
@@ -33,7 +33,7 @@
 
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.outputEncoding = THREE.sRGBEncoding;
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dir = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -130,7 +130,23 @@
     try { window.flutter_inappwebview.callHandler('onReady', {}); } catch(e) {}
   });
 
-  init();
+  // Wait for THREE to be available before init
+  function safeInit() {
+    if (typeof THREE === 'undefined') {
+      console.error('THREE is not loaded! Check three/three.min.js path.');
+      loadingEl.textContent = 'Error: THREE library not found';
+      try { window.flutter_inappwebview.callHandler('onModelError', { error: 'THREE not loaded' }); } catch(e) {}
+      return;
+    }
+    try {
+      init();
+    } catch(e) {
+      console.error('Init error:', e);
+      loadingEl.textContent = 'Error: ' + e.message;
+      try { window.flutter_inappwebview.callHandler('onModelError', { error: String(e) }); } catch(e2) {}
+    }
+  }
+  safeInit();
 })();
 </script>
 </body>
