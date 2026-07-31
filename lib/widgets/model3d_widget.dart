@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 3D-виджет аватара через InAppWebView + Three.js.
 /// Загружает GLB модели с анимациями.
+/// Использует base64 для передачи GLB — обходит ограничения fetch() на file://
 class Model3DWidget extends StatefulWidget {
   final double width;
   final double height;
@@ -66,15 +69,31 @@ class _Model3DWidgetState extends State<Model3DWidget> {
 
   void _sendState(String state) {
     _lastState = state;
-    _ctrl?.evaluateJavascript(source: "window.model3D && window.model3D.setState('$state')");
+    _ctrl?.evaluateJavascript(
+        source: "window.model3D && window.model3D.setState('$state')");
   }
 
-  String _buildInitJS() {
-    final assetPath = widget.modelAsset
-        ?? _builtin3DPaths[_modelId]
-        ?? _builtin3DPaths['tsumire']!;
-    // For Flutter assets, use flutter.js asset URL
-    return "window.model3D && window.model3D.loadModel('$assetPath');";
+  /// Загружает GLB как asset bytes и передаёт в JS через base64 data URL.
+  /// Это обходит ограничение fetch() на file:// протоколе в Android WebView.
+  Future<void> _loadModelViaBase64(InAppWebViewController ctrl) async {
+    final assetPath = widget.modelAsset ??
+        _builtin3DPaths[_modelId] ??
+        _builtin3DPaths['tsumire']!;
+
+    try {
+      final byteData = await rootBundle.load('assets/$assetPath');
+      final bytes = byteData.buffer.asUint8List();
+      final b64 = base64Encode(bytes);
+      final dataUrl = 'data:model/gltf-binary;base64,$b64';
+      debugPrint('[Model3DWidget] Loaded ${bytes.length} bytes, sending as data URL');
+      await ctrl.evaluateJavascript(
+          source: "window.model3D && window.model3D.loadModel('$dataUrl');");
+    } catch (e) {
+      debugPrint('[Model3DWidget] Asset load error: $e');
+      // Fallback: try direct path
+      await ctrl.evaluateJavascript(
+          source: "window.model3D && window.model3D.loadModel('$assetPath');");
+    }
   }
 
   @override
@@ -112,7 +131,7 @@ class _Model3DWidgetState extends State<Model3DWidget> {
             handlerName: 'onReady',
             callback: (args) {
               Future.delayed(const Duration(milliseconds: 500), () {
-                if (mounted) ctrl.evaluateJavascript(source: _buildInitJS());
+                if (mounted) _loadModelViaBase64(ctrl);
               });
             },
           );
