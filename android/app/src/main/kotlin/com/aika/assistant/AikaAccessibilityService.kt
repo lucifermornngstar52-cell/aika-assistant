@@ -39,7 +39,19 @@ class AikaAccessibilityService : AccessibilityService() {
     }
 
     // ─── Lifecycle ───────────────────────────────────────────────────
-    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        // ── JARVIS HUD: launch overlay service when accessibility connects ──
+        try {
+            val i = Intent(this, JarvisHudService::class.java).setAction(JarvisHudService.ACTION_SHOW)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(i)
+            } else {
+                startService(i)
+            }
+        } catch (_: Throwable) {}
+    }
     override fun onUnbind(intent: android.content.Intent?): Boolean { instance = null; return super.onUnbind(intent) }
     override fun onDestroy() { instance = null; super.onDestroy() }
     override fun onInterrupt() {}
@@ -62,12 +74,16 @@ class AikaAccessibilityService : AccessibilityService() {
     // ════════════════════════════════════════════════════════════════
 
     fun tapAt(x: Float, y: Float): Boolean {
+        // ── JARVIS HUD targeting animation ──
+        try { JarvisHudService.showTarget(x, y) } catch (_: Throwable) {}
         val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
         val stroke = GestureDescription.StrokeDescription(path, 0L, 50L)
         return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
     fun longTapAt(x: Float, y: Float, durationMs: Long = 800L): Boolean {
+        // ── JARVIS HUD targeting animation ──
+        try { JarvisHudService.showTarget(x, y) } catch (_: Throwable) {}
         val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
         val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(350L))
         return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
