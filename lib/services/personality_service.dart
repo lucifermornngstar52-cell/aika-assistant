@@ -18,15 +18,15 @@ enum AikaPersonality {
 class PersonalityService {
   static const _key = 'aika_personality';
 
-  static AikaPersonality _current = AikaPersonality.kawaii;
+  static AikaPersonality _current = AikaPersonality.jarvis;
   static AikaPersonality get current => _current;
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final name = prefs.getString(_key) ?? 'kawaii';
+    final name = prefs.getString(_key) ?? 'jarvis';
     _current = AikaPersonality.values.firstWhere(
       (p) => p.name == name,
-      orElse: () => AikaPersonality.kawaii,
+      orElse: () => AikaPersonality.jarvis,
     );
   }
 
