@@ -25,7 +25,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -236,7 +235,6 @@ class JarvisHudService : Service() {
         private var bgAlpha: Float = 0.85f
 
         // Аниматоры
-        private val choreographer = Choreographer.getInstance()
         private var lastFrameNanos: Long = 0
         private var isRunning = true
 
@@ -320,31 +318,33 @@ class JarvisHudService : Service() {
             }.start()
         }
 
-        // Главный цикл анимации — явный object чтобы `this` был FrameCallback
-        private val frameCallback: Choreographer.FrameCallback = object : Choreographer.FrameCallback() {
-            override fun doFrame(frameTimeNanos: Long) {
+        // Главный цикл анимации — Handler.postDelayed (~60fps)
+        private val frameHandler = Handler(Looper.getMainLooper())
+        private var lastFrameMs: Long = 0L
+        private val tickRunnable = object : Runnable {
+            override fun run() {
                 if (!isRunning) return
-                if (lastFrameNanos > 0L) {
-                    val dt = (frameTimeNanos - lastFrameNanos) / 1_000_000_000f
-                    sweepAngle = (sweepAngle + 90f * dt) % 360f       // 90°/сек
-                    ringRotation = (ringRotation + 45f * dt) % 360f   // 45°/сек
-                    if (pulseAlpha > 0f) pulseAlpha = (pulseAlpha - dt * 2f).coerceAtLeast(0f)
-                }
-                lastFrameNanos = frameTimeNanos
+                val now = System.currentTimeMillis()
+                val dt = if (lastFrameMs > 0) (now - lastFrameMs) / 1000f else 0.016f
+                lastFrameMs = now
+                sweepAngle = (sweepAngle + 90f * dt) % 360f       // 90°/сек
+                ringRotation = (ringRotation + 45f * dt) % 360f   // 45°/сек
+                if (pulseAlpha > 0f) pulseAlpha = (pulseAlpha - dt * 2f).coerceAtLeast(0f)
                 invalidate()
-                choreographer.postFrameCallback(this)
+                frameHandler.postDelayed(this, 16)  // ~60fps
             }
         }
 
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
             isRunning = true
-            choreographer.postFrameCallback(frameCallback)
+            lastFrameMs = 0L
+            frameHandler.post(tickRunnable)
         }
 
         override fun onDetachedFromWindow() {
             isRunning = false
-            choreographer.removeFrameCallback(frameCallback)
+            frameHandler.removeCallbacks(tickRunnable)
             super.onDetachedFromWindow()
         }
 
