@@ -320,18 +320,20 @@ class JarvisHudService : Service() {
             }.start()
         }
 
-        // Главный цикл анимации
-        private val frameCallback = Choreographer.FrameCallback { frameTimeNanos ->
-            if (!isRunning) return@FrameCallback
-            if (lastFrameNanos > 0) {
-                val dt = (frameTimeNanos - lastFrameNanos) / 1_000_000_000f
-                sweepAngle = (sweepAngle + 90f * dt) % 360f       // 90°/сек
-                ringRotation = (ringRotation + 45f * dt) % 360f   // 45°/сек
-                if (pulseAlpha > 0) pulseAlpha = (pulseAlpha - dt * 2f).coerceAtLeast(0f)
+        // Главный цикл анимации — явный object чтобы `this` был FrameCallback
+        private val frameCallback: Choreographer.FrameCallback = object : Choreographer.FrameCallback() {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (!isRunning) return
+                if (lastFrameNanos > 0L) {
+                    val dt = (frameTimeNanos - lastFrameNanos) / 1_000_000_000f
+                    sweepAngle = (sweepAngle + 90f * dt) % 360f       // 90°/сек
+                    ringRotation = (ringRotation + 45f * dt) % 360f   // 45°/сек
+                    if (pulseAlpha > 0f) pulseAlpha = (pulseAlpha - dt * 2f).coerceAtLeast(0f)
+                }
+                lastFrameNanos = frameTimeNanos
+                invalidate()
+                choreographer.postFrameCallback(this)
             }
-            lastFrameNanos = frameTimeNanos
-            invalidate()
-            choreographer.postFrameCallback(this)
         }
 
         override fun onAttachedToWindow() {
