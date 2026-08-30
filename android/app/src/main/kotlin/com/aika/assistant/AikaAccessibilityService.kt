@@ -42,15 +42,7 @@ class AikaAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        // ── JARVIS HUD: launch overlay service when accessibility connects ──
-        try {
-            val i = Intent(this, JarvisHudService::class.java).setAction(JarvisHudService.ACTION_SHOW)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                startForegroundService(i)
-            } else {
-                startService(i)
-            }
-        } catch (_: Throwable) {}
+        // Ничего не запускаем автоматически после выдачи разрешения
     }
     override fun onUnbind(intent: android.content.Intent?): Boolean { instance = null; return super.onUnbind(intent) }
     override fun onDestroy() { instance = null; super.onDestroy() }
