@@ -138,11 +138,14 @@ class WakeWordService {
   }
 
   void setMusicPlaying(bool playing) {
-    final was = _musicPlaying;
     _musicPlaying = playing;
-    // Музыка НЕ глушит микрофон — слушаем поверх музыки
-    // (раньше глушли, теперь нет — пользователь просит не мешать)
-    debugPrint('[WakeWord] 🎵 music: $playing (listening continues)');
+    if (playing) {
+      debugPrint('[WakeWord] 🎵 music started — muting mic');
+      _pauseForExternal();
+    } else {
+      debugPrint('[WakeWord] 🎵 music stopped — resuming mic');
+      _resumeAfterExternal();
+    }
   }
 
   // ── Обновление триггеров ──────────────────────────────────────────
@@ -203,7 +206,7 @@ class WakeWordService {
     debugPrint('[WakeWord] 🔄 цикл (непрерывный)');
     while (_active && _loopRunning) {
       // Пауза только для звонков/записи ГС/диалога
-      if (_paused || _dialogOpen || _inCall || _recordingGS) {
+      if (_paused || _dialogOpen || _inCall || _recordingGS || _musicPlaying) {
         await Future.delayed(const Duration(milliseconds: 80));
         continue;
       }
@@ -288,7 +291,7 @@ class WakeWordService {
     }
   }
 
-  bool get isListening => _active && !_paused && !_dialogOpen && !_inCall && !_recordingGS;
+  bool get isListening => _active && !_paused && !_dialogOpen && !_inCall && !_recordingGS && !_musicPlaying;
   bool get isMusicPlaying => _musicPlaying;
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }
