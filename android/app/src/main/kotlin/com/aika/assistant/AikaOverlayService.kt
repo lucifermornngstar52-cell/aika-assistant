@@ -295,6 +295,15 @@ class AikaOverlayService : Service() {
                         changed = true
                     }
                     if (changed) try { wm?.updateViewLayout(wv, p) } catch (_: Exception) {}
+                    // Сохраняем в prefs
+                    try {
+                        val prefs = getSharedPreferences("flutter.overlay_prefs", Context.MODE_PRIVATE)
+                        prefs.edit()
+                            .putFloat("overlay_size", sizeDp)
+                            .putFloat("overlay_opacity", opacity)
+                            .putString("overlay_side", side)
+                            .apply()
+                    } catch (_: Exception) {}
                 }
             }
             ACTION_SWITCH_MODEL -> {
