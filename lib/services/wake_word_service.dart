@@ -32,11 +32,18 @@ class WakeWordService {
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
+  Completer<bool>? _currentCompleter; // для onError из initialize()
 
   // ── Инициализация ─────────────────────────────────────────────────
   Future<void> initialize() async {
     _sttReady = await _stt.initialize(
-      onError: (e) => debugPrint('[WakeWord] STT init error: $e'),
+      onError: (e) {
+        debugPrint('[WakeWord] STT error: $e');
+        // Завершаем текущущий completer чтобы цикл перезапустился
+        if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+          _currentCompleter!.complete(false);
+        }
+      },
       onStatus: (s) => debugPrint('[WakeWord] STT status: $s'),
     );
     await updateTriggers();
@@ -215,6 +222,7 @@ class WakeWordService {
   /// stt.stop() только при срабатывании.
   Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
+    _currentCompleter = completer;
     bool triggered = false;
 
     _stt.listen(
@@ -239,10 +247,6 @@ class WakeWordService {
         }
         // finalResult без совпадения — НЕ завершаем, сессия продолжается
       },
-      onError: (error) {
-        debugPrint('[WakeWord] STT error: $error');
-        if (!completer.isCompleted) completer.complete(false);
-      },
       listenFor: const Duration(seconds: 300),
       pauseFor: const Duration(seconds: 300),
       localeId: 'ru_RU',
@@ -255,6 +259,7 @@ class WakeWordService {
       return await completer.future
           .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
+      _currentCompleter = null;
       if (triggered && _stt.isListening) {
         try { await _stt.stop(); } catch (_) {}
       }
