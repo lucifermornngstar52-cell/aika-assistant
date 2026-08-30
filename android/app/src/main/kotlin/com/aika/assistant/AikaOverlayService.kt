@@ -80,7 +80,7 @@ class AikaOverlayService : Service() {
     private fun getHtmlPath(): String =
         if (currentMode == "3d") "file:///android_asset/flutter_assets/assets/3d_viewer.html"
         else "file:///android_asset/flutter_assets/assets/live2d_viewer.html"
-    private var sizeDp       = 200f
+    private var sizeDp       = 120f
     private var opacity      = 1f
     private var side         = "left"
 
@@ -98,6 +98,19 @@ class AikaOverlayService : Service() {
         isRunning = true
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
+        // Загружаем сохранённый размер из prefs
+        try {
+            val prefs = getSharedPreferences("flutter.overlay_prefs", Context.MODE_PRIVATE)
+            val savedSize = prefs.getFloat("overlay_size", 120f)
+            sizeDp = savedSize
+            val savedOpacity = prefs.getFloat("overlay_opacity", 1f)
+            opacity = savedOpacity
+            val savedSide = prefs.getString("overlay_side", "left") ?: "left"
+            side = savedSide
+            Log.d(TAG, "Loaded prefs: size=$sizeDp opacity=$opacity side=$side")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load prefs: ${e.message}")
+        }
         handler.post { setupWindow() }
     }
 
