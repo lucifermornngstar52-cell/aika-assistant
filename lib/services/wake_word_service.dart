@@ -1,20 +1,23 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
-/// WakeWordService — МИНИМАЛЬНАЯ ЗАДЕРЖКА
+/// WakeWordService — НЕПРЕРЫВНОЕ прослушивание без зазоров.
 /// Оптимизации:
-/// - listenFor: 5s (было 10s) → быстрее рестарт цикла
-/// - pauseFor: 1.5s (было 3s) → мгновенное обнаружение паузы
-/// - partialResults: true → срабатывает на полуслове
-/// - loop delay: 80ms (было 400ms) → почти нет паузы между сессиями
-/// - немедленное срабатывание при первом partial match
+/// - listenFor: 300с (5 минут) — одна длинная сессия, без рестартов
+/// - pauseFor: 1.5с — мгновенное обнаружение паузы
+/// - partialResults: true — срабатывает на полуслове
+/// - Нет stt.stop() между сессиями — нулевая задержка
+/// - PhoneState: глушится при звонках и записи ГС
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
   WakeWordService._();
+
+  static const _phoneChannel = EventChannel('com.aika.assistant/phone_state');
 
   SpeechToText? _stt;
 
@@ -23,6 +26,8 @@ class WakeWordService {
   bool _musicPlaying = false;
   bool _dialogOpen   = false;
   bool _loopRunning  = false;
+  bool _inCall       = false;       // активный звонок (входящий/исходящий)
+  bool _recordingGS  = false;       // запись голосового сообщения
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
@@ -30,11 +35,62 @@ class WakeWordService {
   // ── Инициализация ─────────────────────────────────────────────────
   Future<void> initWithSharedStt(SpeechToText stt) async {
     _stt = stt;
-    await updateTriggers(); // подгружаем триггеры сразу
+    await updateTriggers();
+    _listenPhoneState();
     debugPrint('[WakeWord] ✅ инициализирован, триггеры: $_triggers');
   }
 
-  Future<void> initialize() async {} // совместимость
+  Future<void> initialize() async {}
+
+  // ── Отслеживание телефонных состояний ────────────────────────────
+  void _listenPhoneState() {
+    _phoneChannel.receiveBroadcastStream().listen(
+      (event) {
+        if (event is Map) {
+          final state = event['state'] as String? ?? '';
+          debugPrint('[WakeWord] 📞 phone state: $state');
+          switch (state) {
+            case 'call_started':
+              _inCall = true;
+              _pauseForExternal();
+              break;
+            case 'call_ended':
+              _inCall = false;
+              _resumeAfterExternal();
+              break;
+            case 'recording_started':
+              _recordingGS = true;
+              _pauseForExternal();
+              break;
+            case 'recording_ended':
+              _recordingGS = false;
+              _resumeAfterExternal();
+              break;
+          }
+        }
+      },
+      onError: (e) => debugPrint('[WakeWord] phone state error: $e'),
+    );
+  }
+
+  void _pauseForExternal() {
+    if (_active && !_paused) {
+      _paused = true;
+      final stt = _stt;
+      if (stt != null && stt.isListening) {
+        try { stt.stop(); } catch (_) {}
+      }
+      debugPrint('[WakeWord] ⏸ пауза (внешнее вмешательство)');
+    }
+  }
+
+  void _resumeAfterExternal() {
+    if (!_inCall && !_recordingGS && _active) {
+      _paused = false;
+      if (!_loopRunning) _startLoop();
+      debugPrint('[WakeWord] ▶ возобновление после внешнего вмешательства');
+    }
+  }
 
   // ── Запуск ────────────────────────────────────────────────────────
   Future<void> startListening(Function() onWakeWordDetected) async {
@@ -84,13 +140,9 @@ class WakeWordService {
   void setMusicPlaying(bool playing) {
     final was = _musicPlaying;
     _musicPlaying = playing;
-    if (playing && !was) {
-      _paused = true;
-      _stt?.stop().catchError((_) {});
-    } else if (!playing && was) {
-      _paused = false;
-      if (_active && !_loopRunning) _startLoop();
-    }
+    // Музыка НЕ глушит микрофон — слушаем поверх музыки
+    // (раньше глушли, теперь нет — пользователь просит не мешать)
+    debugPrint('[WakeWord] 🎵 music: $playing (listening continues)');
   }
 
   // ── Обновление триггеров ──────────────────────────────────────────
@@ -140,7 +192,7 @@ class WakeWordService {
     debugPrint('[WakeWord] триггеры: $_triggers');
   }
 
-  // ── ОСНОВНОЙ ЦИКЛ (минимальная задержка) ─────────────────────────
+  // ── ОСНОВНОЙ ЦИКЛ — непрерывный, без зазоров ─────────────────────
   void _startLoop() {
     if (_loopRunning) return;
     _loopRunning = true;
@@ -148,10 +200,10 @@ class WakeWordService {
   }
 
   Future<void> _runLoop() async {
-    debugPrint('[WakeWord] 🔄 цикл (низколатентный)');
+    debugPrint('[WakeWord] 🔄 цикл (непрерывный)');
     while (_active && _loopRunning) {
-      if (_paused || _dialogOpen || _musicPlaying) {
-        // Минимальная задержка ожидания — 80мс вместо 400мс
+      // Пауза только для звонков/записи ГС/диалога
+      if (_paused || _dialogOpen || _inCall || _recordingGS) {
         await Future.delayed(const Duration(milliseconds: 80));
         continue;
       }
@@ -163,13 +215,13 @@ class WakeWordService {
       }
 
       if (stt.isListening) {
-        await Future.delayed(const Duration(milliseconds: 150));
+        await Future.delayed(const Duration(milliseconds: 50));
         continue;
       }
 
       try {
         final detected = await _listenOnce(stt);
-        if (detected && _active && !_paused && !_dialogOpen) {
+        if (detected && _active && !_paused && !_dialogOpen && !_inCall && !_recordingGS) {
           debugPrint('[WakeWord] ✅ СРАБОТАЛО!');
           _loopRunning = false;
           _onWakeWord?.call();
@@ -177,15 +229,16 @@ class WakeWordService {
         }
       } catch (e) {
         debugPrint('[WakeWord] ошибка: $e');
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 100));
       }
     }
     _loopRunning = false;
   }
 
-  /// Один раунд — УЛЬТРА БЫСТРЫЙ:
-  /// listenFor 5с (было 10с), pauseFor 1.5с (было 3с)
-  /// Срабатывает на ПЕРВОМ partial result совпадении
+  /// Один раунд — НЕПРЕРЫВНЫЙ:
+  /// listenFor 300с — длинная сессия без рестарта
+  /// pauseFor 1.5с — быстрое обнаружение паузы
+  /// НЕТ stt.stop() между раундами — нулевая задержка
   Future<bool> _listenOnce(SpeechToText stt) async {
     final completer = Completer<bool>();
     bool triggered = false;
@@ -197,7 +250,7 @@ class WakeWordService {
           debugPrint('[WakeWord] 👂 "$text"');
         }
 
-        if (_paused || _dialogOpen || _musicPlaying) return;
+        if (_paused || _dialogOpen || _inCall || _recordingGS) return;
 
         // МГНОВЕННОЕ срабатывание — даже на partial result
         for (final t in _triggers) {
@@ -210,31 +263,32 @@ class WakeWordService {
           }
         }
 
-        // Финальный результат без совпадения
+        // Финальный результат без совпадения — НЕ останавливаем,
+        // просто ждём следующий результат в той же сессии
         if (result.finalResult && !completer.isCompleted) {
           completer.complete(false);
         }
       },
-      // ⬇ КЛЮЧЕВЫЕ ПАРАМЕТРЫ ЗАДЕРЖКИ ⬇
-      listenFor: const Duration(seconds: 5),    // было 10s
-      pauseFor: const Duration(milliseconds: 1500), // было 3s
+      listenFor: const Duration(seconds: 300),
+      pauseFor: const Duration(milliseconds: 1500),
       localeId: 'ru_RU',
       cancelOnError: false,
-      partialResults: true,    // срабатываем до окончания слова
+      partialResults: true,
       onSoundLevelChange: null,
     );
 
     try {
       return await completer.future
-          .timeout(const Duration(seconds: 7), onTimeout: () => false);
+          .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
+      // НЕ останавливаем STT между раундами — сразу перезапускаем
       if (!triggered && stt.isListening) {
         try { await stt.stop(); } catch (_) {}
       }
     }
   }
 
-  bool get isListening => _active && !_paused && !_dialogOpen && !_musicPlaying;
+  bool get isListening => _active && !_paused && !_dialogOpen && !_inCall && !_recordingGS;
   bool get isMusicPlaying => _musicPlaying;
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }
