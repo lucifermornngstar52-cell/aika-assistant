@@ -202,8 +202,10 @@ class WakeWordService {
         continue;
       }
 
+      // Если STT ещё слушает в текущей сессии — просто ждём.
+      // Не вызываем _listenOnce повторно — это создаёт зазор.
       if (stt.isListening) {
-        await Future.delayed(const Duration(milliseconds: 50));
+        await Future.delayed(const Duration(milliseconds: 30));
         continue;
       }
 
@@ -223,10 +225,17 @@ class WakeWordService {
     _loopRunning = false;
   }
 
-  /// Один раунд — НЕПРЕРЫВНЫЙ:
-  /// listenFor 300с — длинная сессия без рестарта
-  /// pauseFor 1.5с — быстрое обнаружение паузы
-  /// НЕТ stt.stop() между раундами — нулевая задержка
+  /// Одна непрерывная сессия прослушивания — БЕЗ перезапусков.
+  ///
+  /// Раньше после каждого finalResult (человек сказал что-то, но не wake word)
+  /// completer завершался, finally вызывал stt.stop(), и цикл перезапускал
+  /// _listenOnce — этот зазор "stop → restart" был тем самым "глохнет".
+  ///
+  /// Теперь:
+  /// - pauseFor = 300с = listenFor — сессия НЕ обрывается на тишине
+  /// - finalResult без совпадения: НЕ завершаем completer, сессия продолжается
+  /// - stt.stop() вызывается ТОЛЬКО при срабатывании wake word
+  /// - onError: завершаем completer для мгновенного перезапуска
   Future<bool> _listenOnce(SpeechToText stt) async {
     final completer = Completer<bool>();
     bool triggered = false;
@@ -251,21 +260,16 @@ class WakeWordService {
           }
         }
 
-        // Финальный результат без совпадения — НЕ останавливаем,
-        // просто ждём следующий результат в той же сессии
-        if (result.finalResult && !completer.isCompleted) {
-          completer.complete(false);
-        }
+        // Финальный результат без совпадения — НЕ завершаем completer!
+        // STT продолжает слушать в той же сессии, следующий onResult
+        // придёт автоматически. Никаких stop/restart, нулевой зазор.
       },
       onError: (error) {
-        // КРИТИЧНО: при ошибке (микрофон занят другим приложением и т.д.)
-        // завершаем completer, чтобы цикл сразу перезапустил прослушивание.
-        // Без этого цикл зависал на 310 секунд.
         debugPrint('[WakeWord] STT error: $error');
         if (!completer.isCompleted) completer.complete(false);
       },
       listenFor: const Duration(seconds: 300),
-      pauseFor: const Duration(milliseconds: 1500),
+      pauseFor: const Duration(seconds: 300), // = listenFor — сессия не обрывается на тишине
       localeId: 'ru_RU',
       cancelOnError: false,
       partialResults: true,
@@ -276,8 +280,8 @@ class WakeWordService {
       return await completer.future
           .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
-      // НЕ останавливаем STT между раундами — сразу перезапускаем
-      if (!triggered && stt.isListening) {
+      // stt.stop() ТОЛЬКО при срабатывании wake word — иначе сессия живёт дальше
+      if (triggered && stt.isListening) {
         try { await stt.stop(); } catch (_) {}
       }
     }
