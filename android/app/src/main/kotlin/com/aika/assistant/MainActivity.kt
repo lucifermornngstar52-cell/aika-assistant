@@ -14,6 +14,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import android.util.Log
+import android.telephony.TelephonyManager
+import android.telephony.PhoneStateListener
 
 class MainActivity : FlutterActivity() {
 
@@ -43,6 +45,9 @@ class MainActivity : FlutterActivity() {
 
     // EventChannel sink для уведомлений
     private var notificationEventSink: EventChannel.EventSink? = null
+    // EventChannel sink для телефонных состояний
+    private var phoneStateSink: EventChannel.EventSink? = null
+    private var telephonyManager: TelephonyManager? = null
 
     // BroadcastReceiver — получает события от AikaAccessibilityService
     private val screenEventReceiver = object : BroadcastReceiver() {
@@ -892,6 +897,33 @@ class MainActivity : FlutterActivity() {
             startForegroundService(intent)
         } else {
             startService(intent)
+        }
+    }
+
+    // ── Phone State Listener ────────────────────────────────────────────
+    private fun setupPhoneStateListener() {
+        try {
+            telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            telephonyManager?.listen(object : PhoneStateListener() {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    when (state) {
+                        TelephonyManager.CALL_STATE_IDLE -> {
+                            Log.d("AikaPhone", "CALL_STATE_IDLE")
+                            phoneStateSink?.success(mapOf("state" to "call_ended"))
+                        }
+                        TelephonyManager.CALL_STATE_RINGING -> {
+                            Log.d("AikaPhone", "CALL_STATE_RINGING")
+                            phoneStateSink?.success(mapOf("state" to "call_started"))
+                        }
+                        TelephonyManager.CALL_STATE_OFFHOOK -> {
+                            Log.d("AikaPhone", "CALL_STATE_OFFHOOK")
+                            phoneStateSink?.success(mapOf("state" to "call_started"))
+                        }
+                    }
+                }
+            }, PhoneStateListener.LISTEN_CALL_STATE)
+        } catch (e: Exception) {
+            Log.e("AikaPhone", "Failed to setup phone state listener: ${e.message}")
         }
     }
 }
