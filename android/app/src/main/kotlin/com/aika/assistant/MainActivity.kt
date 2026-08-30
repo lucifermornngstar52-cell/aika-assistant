@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
         private const val CALENDAR_CHANNEL                = "com.aika.assistant/calendar"
         private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
         private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
+        private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
     }
 
     // Новые нативные обработчики (openclaw-inspired)
