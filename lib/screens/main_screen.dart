@@ -2274,12 +2274,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         _showSnack(_chatMode ? '💬 Режим общения — просто разговариваем!' : '⚡ Режим команд — выполняю задачи!');
                       },
                     ),
-                    const SizedBox(width: 6),
-                    // Профиль/меню
-                    _TopIconBtn(
-                      icon: Icons.person_outline,
-                      onTap: _openSettings,
-                    ),
                   ],
                 ),
               ),
@@ -2296,15 +2290,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _SideBtn(icon: Icons.info_outline,         onTap: () => _showAbout()),
-                  _SideBtn(icon: Icons.mic_outlined,          onTap: _toggleListening, active: _isListening),
-                  _SideBtn(icon: Icons.nightlight_round,      onTap: () => _themeSwitcher.toggle()),
-                  _SideBtn(icon: Icons.face_outlined,         onTap: _showOverlayPermissionDialog),
                   _SideBtn(icon: Icons.view_in_ar,             onTap: _openModelPicker),
                   _SideBtn(icon: Icons.settings_outlined,     onTap: _openSettings),
-                  _SideBtn(icon: Icons.delete_outline,        onTap: () {
-                    _memoryService.clearHistory();
-                    setState(() => _messages.clear());
-                  }),
                   _SideBtn(icon: Icons.tune,                  onTap: _openCurrency),
                 ],
               ),
