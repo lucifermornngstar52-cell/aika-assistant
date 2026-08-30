@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Сервис управления 3D оверлеем.
+/// Сервис управления оверлеем.
 /// Отправляет команды в AikaOverlayService через MethodChannel.
 class OverlayService {
   static final OverlayService _i = OverlayService._();
@@ -9,13 +9,12 @@ class OverlayService {
   OverlayService._();
 
   static const _overlayChannel = MethodChannel('com.aika.assistant/overlay');
-  // _modelChannel merged into _overlayChannel (live2d_overlay not registered)
 
-  // Настройки размера
-  double _sizeDp   = 170.0;
+  // Настройки размера — дефолт 120 (мега-мини)
+  double _sizeDp   = 120.0;
   double _opacity  = 1.0;
   bool   _mirror   = false;
-  String _side     = 'left'; // left / right
+  String _side     = 'left';
   bool   _musicPlaying = false;
 
   double get sizeDp   => _sizeDp;
@@ -26,7 +25,7 @@ class OverlayService {
   // ─── Инициализация ──────────────────────────────────────────────────
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _sizeDp  = prefs.getDouble('overlay_size')    ?? 170.0;
+    _sizeDp  = prefs.getDouble('overlay_size')    ?? 120.0;
     _opacity = prefs.getDouble('overlay_opacity') ?? 1.0;
     _mirror  = prefs.getBool('overlay_mirror')    ?? false;
     _side    = prefs.getString('overlay_side')    ?? 'left';
@@ -67,7 +66,6 @@ class OverlayService {
     try { await _overlayChannel.invokeMethod('updateOverlay', {'state': state}); } catch (_) {}
   }
 
-  // Sync wrapper для вызова без await (публичный)
   Future<void> asyncState(String s) => setState(s);
 
   Future<void> setIdle()      => setState('idle');
@@ -98,23 +96,17 @@ class OverlayService {
     }
   }
 
-  /// Проиграть звук в WebView Live2D
   Future<void> playSound(String soundPath) async {
-    try {
-      await _overlayChannel.invokeMethod('playSound', {'path': soundPath});
-    } catch (_) {}
+    try { await _overlayChannel.invokeMethod('playSound', {'path': soundPath}); } catch (_) {}
   }
 
-  /// Остановить звук
   Future<void> stopSound() async {
-    try {
-      await _overlayChannel.invokeMethod('stopSound');
-    } catch (_) {}
+    try { await _overlayChannel.invokeMethod('stopSound'); } catch (_) {}
   }
 
   // ─── Конфиг: размер / прозрачность / сторона ────────────────────────
   Future<void> setSize(double dp) async {
-    _sizeDp = dp.clamp(80.0, 350.0);
+    _sizeDp = dp.clamp(60.0, 350.0);
     await _savePrefs();
     await _sendConfig();
   }
@@ -137,34 +129,21 @@ class OverlayService {
     await _sendConfig();
   }
 
-  /// Включить/выключить перетаскивание оверлея
   Future<void> setDragEnabled(bool enabled) async {
-    try {
-      await _overlayChannel.invokeMethod('setDragEnabled', {'enabled': enabled});
-    } catch (_) {}
+    try { await _overlayChannel.invokeMethod('setDragEnabled', {'enabled': enabled}); } catch (_) {}
   }
 
-  /// Переключить модель в оверлее
   Future<void> switchModel(String assetPath) async {
-    try {
-      await _overlayChannel.invokeMethod('switchModel', {'path': assetPath});
-    } catch (_) {
-      // fallback через modelChannel
-      try {
-        await _overlayChannel.invokeMethod('switchModel', assetPath);
-      } catch (_) {}
-    }
+    try { await _overlayChannel.invokeMethod('switchModel', {'path': assetPath}); } catch (_) {}
   }
 
   Future<void> _sendConfig() async {
     try {
-      // Обновляем WindowManager размер через overlay channel
       await _overlayChannel.invokeMethod('configOverlay', {
         'size': _sizeDp,
         'side': _side,
         'opacity': _opacity,
       });
-      // Обновляем Flutter-сторону (зеркало, прозрачность)
       await _overlayChannel.invokeMethod('setConfig', {
         'size':    _sizeDp,
         'opacity': _opacity,
@@ -172,5 +151,4 @@ class OverlayService {
       });
     } catch (_) {}
   }
-
 }
