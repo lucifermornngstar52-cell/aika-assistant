@@ -504,7 +504,20 @@ class MainActivity : FlutterActivity() {
                 }
             })
 
-        // ── 7. Notifications permission channel ──────────────────────────────────
+        // ── 7. Phone State EventChannel (calls + recording) ─────────────
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, PHONE_STATE_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    phoneStateSink = events
+                    setupPhoneStateListener()
+                }
+                override fun onCancel(arguments: Any?) {
+                    phoneStateSink = null
+                    telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE)
+                }
+            })
+
+        // ── 8. Notifications permission channel ──────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
