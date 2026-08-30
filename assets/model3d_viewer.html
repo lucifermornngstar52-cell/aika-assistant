@@ -6,7 +6,7 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:100%; height:100%; background:transparent !important; overflow:hidden; }
-  canvas { display:block; width:100%; height:100%; background:transparent; }
+  canvas { display:block; width:100%; height:100%; background:transparent; touch-action:none; }
   #loading {
     position:absolute; top:50%; left:50%;
     transform:translate(-50%,-50%);
@@ -48,11 +48,17 @@
   var animations = [];
   var autoRotate = false;
 
+  // Touch rotation state
+  var isDragging = false;
+  var lastTouchX = 0, lastTouchY = 0;
+  var targetRotY = 0, targetRotX = 0;
+  var currentRotY = 0, currentRotX = 0;
+
   function init() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(30, 1, 0.1, 1000);
-    camera.position.set(0, 1.2, 3.5);
-    camera.lookAt(0, 1.0, 0);
+    camera.position.set(0, 1.0, 3.5);
+    camera.lookAt(0, 0.8, 0);
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.outputEncoding = THREE.sRGBEncoding;
@@ -60,8 +66,37 @@
     var d1 = new THREE.DirectionalLight(0xffffff, 1.0); d1.position.set(2, 5, 3); scene.add(d1);
     var d2 = new THREE.DirectionalLight(0xffffff, 0.3); d2.position.set(-2, 3, -3); scene.add(d2);
     clock = new THREE.Clock();
+
     function resize() { var w=window.innerWidth,h=window.innerHeight; renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix(); }
     resize(); window.addEventListener('resize', resize);
+
+    // Touch rotation
+    canvas.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
+        autoRotate = false;
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', function(e) {
+      if (isDragging && e.touches.length === 1 && model) {
+        var dx = e.touches[0].clientX - lastTouchX;
+        var dy = e.touches[0].clientY - lastTouchY;
+        targetRotY += dx * 0.01;
+        targetRotX += dy * 0.01;
+        // Clamp vertical rotation
+        targetRotX = Math.max(-0.5, Math.min(0.5, targetRotX));
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', function(e) {
+      isDragging = false;
+    }, { passive: true });
+
     dbg('Renderer ready'); animate();
   }
 
@@ -69,7 +104,16 @@
     requestAnimationFrame(animate);
     var dt = clock.getDelta();
     if (mixer) mixer.update(dt);
-    if (autoRotate && model) model.rotation.y += dt * 0.5;
+    if (model) {
+      if (autoRotate) {
+        targetRotY += dt * 0.5;
+      }
+      // Smooth interpolation toward target rotation
+      currentRotY += (targetRotY - currentRotY) * 0.15;
+      currentRotX += (targetRotX - currentRotX) * 0.15;
+      model.rotation.y = currentRotY;
+      model.rotation.x = currentRotX;
+    }
     renderer.render(scene, camera);
   }
 
@@ -92,13 +136,22 @@
       function(gltf) {
         dbg('Loaded! objects:' + gltf.scene.children.length);
         model = gltf.scene;
+
+        // Center model at origin
         var box = new THREE.Box3().setFromObject(model);
         var size = box.getSize(new THREE.Vector3());
         var center = box.getCenter(new THREE.Vector3());
         var maxDim = Math.max(size.x, size.y, size.z);
         var sc = 2.0 / maxDim;
+
+        // Scale and center at (0, 0.8, 0) — slight upward shift for camera framing
         model.scale.setScalar(sc);
-        model.position.set(-center.x*sc, -center.y*sc+1.0, -center.z*sc);
+        model.position.set(-center.x * sc, -center.y * sc + 0.8, -center.z * sc);
+
+        // Reset rotation
+        targetRotY = 0; targetRotX = 0;
+        currentRotY = 0; currentRotX = 0;
+
         scene.add(model);
         animations = gltf.animations || [];
         if (animations.length > 0) {
@@ -138,8 +191,23 @@
 
   window.model3D = {
     loadModel:loadModel, playAnim:playAnim, setState:setState,
-    setAutoRotate:function(v){autoRotate=!!v;},
-    getAnimations:function(){return animations.map(function(a){return a.name;});}
+    setAutoRotate:function(v){
+      autoRotate = !!v;
+      if (v) { targetRotY = currentRotY; } // resume from current position
+    },
+    getAnimations:function(){return animations.map(function(a){return a.name;});},
+    // Manual rotation control from Flutter
+    rotateBy:function(dx, dy){
+      if (model) {
+        targetRotY += dx * 0.01;
+        targetRotX += dy * 0.01;
+        targetRotX = Math.max(-0.5, Math.min(0.5, targetRotX));
+        autoRotate = false;
+      }
+    },
+    resetRotation:function(){
+      targetRotY = 0; targetRotX = 0;
+    }
   };
 
   window.addEventListener('flutterInAppWebViewPlatformReady', function() {
