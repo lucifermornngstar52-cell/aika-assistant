@@ -48,23 +48,22 @@ class WakeWordService {
       (event) {
         if (event is Map) {
           final state = event['state'] as String? ?? '';
-          debugPrint('[WakeWord] 📞 phone state: $state');
+          debugPrint('[WakeWord] phone state: $state');
           switch (state) {
             case 'call_started':
               _inCall = true;
-              _pauseForExternal();
+              // НЕ глушим STT — OS сама отдаёт микрофон звонку.
+              // Когда звонок закончится, STT снова получит звук автоматически.
               break;
             case 'call_ended':
               _inCall = false;
-              _resumeAfterExternal();
               break;
             case 'recording_started':
               _recordingGS = true;
-              _pauseForExternal();
+              // НЕ глушим STT — OS сама отдаёт микрофон записи ГС.
               break;
             case 'recording_ended':
               _recordingGS = false;
-              _resumeAfterExternal();
               break;
           }
         }
@@ -73,24 +72,12 @@ class WakeWordService {
     );
   }
 
-  void _pauseForExternal() {
-    if (_active && !_paused) {
-      _paused = true;
-      final stt = _stt;
-      if (stt != null && stt.isListening) {
-        try { stt.stop(); } catch (_) {}
-      }
-      debugPrint('[WakeWord] ⏸ пауза (внешнее вмешательство)');
-    }
-  }
-
-  void _resumeAfterExternal() {
-    if (!_inCall && !_recordingGS && _active) {
-      _paused = false;
-      if (!_loopRunning) _startLoop();
-      debugPrint('[WakeWord] ▶ возобновление после внешнего вмешательства');
-    }
-  }
+  // _pauseForExternal / _resumeAfterExternal удалены.
+  // Раньше при звонке/записи ГС/музыке мы вызывали stt.stop() и _paused=true,
+  // но _listenOnce зависал на completer.future.timeout(310с) — цикл не мог
+  // продолжаться до таймаута. Теперь STT не останавливается: OS сама
+  // переключает микрофон на звонок/запись, а когда они освобождают —
+  // STT продолжает слушать в той же сессии без перезапуска.
 
   // ── Запуск ────────────────────────────────────────────────────────
   Future<void> startListening(Function() onWakeWordDetected) async {
@@ -139,13 +126,9 @@ class WakeWordService {
 
   void setMusicPlaying(bool playing) {
     _musicPlaying = playing;
-    if (playing) {
-      debugPrint('[WakeWord] 🎵 music started — muting mic');
-      _pauseForExternal();
-    } else {
-      debugPrint('[WakeWord] 🎵 music stopped — resuming mic');
-      _resumeAfterExternal();
-    }
+    // НЕ глушим микрофон при музыке — музыка использует динамик, не микрофон.
+    // STT продолжает слушать поверх музыки без перерыва.
+    debugPrint('[WakeWord] music ${playing ? "started" : "stopped"} — mic stays ON');
   }
 
   // ── Обновление триггеров ──────────────────────────────────────────
@@ -205,8 +188,10 @@ class WakeWordService {
   Future<void> _runLoop() async {
     debugPrint('[WakeWord] 🔄 цикл (непрерывный)');
     while (_active && _loopRunning) {
-      // Пауза только для звонков/записи ГС/диалога
-      if (_paused || _dialogOpen || _inCall || _recordingGS || _musicPlaying) {
+      // Пауза ТОЛЬКО для активного диалога с Айкой — когда пользователь говорит.
+      // Звонки, запись ГС и музыка НЕ останавливают прослушивание:
+      // OS сама переключает микрофон, STT продолжает работать в той же сессии.
+      if (_paused || _dialogOpen) {
         await Future.delayed(const Duration(milliseconds: 80));
         continue;
       }
@@ -224,7 +209,7 @@ class WakeWordService {
 
       try {
         final detected = await _listenOnce(stt);
-        if (detected && _active && !_paused && !_dialogOpen && !_inCall && !_recordingGS) {
+        if (detected && _active && !_paused && !_dialogOpen) {
           debugPrint('[WakeWord] ✅ СРАБОТАЛО!');
           _loopRunning = false;
           _onWakeWord?.call();
@@ -250,10 +235,10 @@ class WakeWordService {
       onResult: (result) {
         final text = result.recognizedWords.toLowerCase();
         if (text.isNotEmpty) {
-          debugPrint('[WakeWord] 👂 "$text"');
+          debugPrint('[WakeWord] heard "$text"');
         }
 
-        if (_paused || _dialogOpen || _inCall || _recordingGS) return;
+        if (_paused || _dialogOpen) return;
 
         // МГНОВЕННОЕ срабатывание — даже на partial result
         for (final t in _triggers) {
@@ -271,6 +256,13 @@ class WakeWordService {
         if (result.finalResult && !completer.isCompleted) {
           completer.complete(false);
         }
+      },
+      onError: (error) {
+        // КРИТИЧНО: при ошибке (микрофон занят другим приложением и т.д.)
+        // завершаем completer, чтобы цикл сразу перезапустил прослушивание.
+        // Без этого цикл зависал на 310 секунд.
+        debugPrint('[WakeWord] STT error: $error');
+        if (!completer.isCompleted) completer.complete(false);
       },
       listenFor: const Duration(seconds: 300),
       pauseFor: const Duration(milliseconds: 1500),
@@ -291,7 +283,7 @@ class WakeWordService {
     }
   }
 
-  bool get isListening => _active && !_paused && !_dialogOpen && !_inCall && !_recordingGS && !_musicPlaying;
+  bool get isListening => _active && !_paused && !_dialogOpen;
   bool get isMusicPlaying => _musicPlaying;
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }

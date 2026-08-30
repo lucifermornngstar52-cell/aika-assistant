@@ -969,14 +969,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           if (mounted) setState(() => _isDancing = true);
           OverlayService().asyncState('dance');
         }
-        // Медиа играет — полностью выключаем микрофон (не реагируем на музыку/видео)
+        // Музыка играет — wake word НЕ глушим (музыка не использует микрофон)
         _wakeWordService.setMusicPlaying(true);
       } else {
         if (_isDancing) {
           if (mounted) setState(() => _isDancing = false);
           OverlayService().asyncState('idle');
         }
-        // Медиа остановилась — включаем микрофон обратно
         _wakeWordService.setMusicPlaying(false);
       }
     });
