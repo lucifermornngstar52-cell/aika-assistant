@@ -5,13 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
-/// WakeWordService — НЕПРЕРЫВНОЕ прослушивание без зазоров.
-/// Оптимизации:
-/// - listenFor: 300с (5 минут) — одна длинная сессия, без рестартов
-/// - pauseFor: 1.5с — мгновенное обнаружение паузы
-/// - partialResults: true — срабатывает на полуслове
-/// - Нет stt.stop() между сессиями — нулевая задержка
-/// - PhoneState: глушится при звонках и записи ГС
+/// WakeWordService — ПОЛНОСТЬЮ НЕЗАВИСИМЫЙ вейкворд на собственном STT.
+///
+/// Архитектура:
+/// - Свой собственный SpeechToText (не делит с SpeechService)
+/// - Работает постоянно, никогда не останавливается (кроме срабатывания)
+/// - При срабатывании: останавливает свой STT → сигнал в приложение
+/// - После того как чат-STT отработал: rearm() перезапускает прослушивание
+/// - Во время речи Айки (TTS): suppress() игнорирует триггеры, но STT не стопит
+/// - Звонки / запись ГС / музыка: НЕ останавливают прослушивание
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -19,123 +21,115 @@ class WakeWordService {
 
   static const _phoneChannel = EventChannel('com.aika.assistant/phone_state');
 
-  SpeechToText? _stt;
+  // СОБСТВЕННЫЙ STT — независимый от SpeechService
+  final SpeechToText _stt = SpeechToText();
+  bool _sttReady = false;
 
-  bool _active       = false;
-  bool _paused       = false;
-  bool _musicPlaying = false;
-  bool _dialogOpen   = false;
+  bool _active       = false;   // сервис запущен
   bool _loopRunning  = false;
-  bool _inCall       = false;       // активный звонок (входящий/исходящий)
-  bool _recordingGS  = false;       // запись голосового сообщения
+  bool _suppressed   = false;   // временное подавление триггеров (TTS echo)
+  Timer? _suppressTimer;
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
 
   // ── Инициализация ─────────────────────────────────────────────────
-  Future<void> initWithSharedStt(SpeechToText stt) async {
-    _stt = stt;
+  Future<void> initialize() async {
+    _sttReady = await _stt.initialize(
+      onError: (e) => debugPrint('[WakeWord] STT init error: $e'),
+      onStatus: (s) => debugPrint('[WakeWord] STT status: $s'),
+    );
     await updateTriggers();
     _listenPhoneState();
-    debugPrint('[WakeWord] ✅ инициализирован, триггеры: $_triggers');
+    debugPrint('[WakeWord] init, STT ready: $_sttReady, triggers: $_triggers');
   }
 
-  Future<void> initialize() async {}
+  /// Бывший initWithSharedStt — больше не нужен, STT собственный.
+  /// Оставлен для обратной совместимости, ничего не делает.
+  Future<void> initWithSharedStt(SpeechToText stt) async {
+    debugPrint('[WakeWord] initWithSharedStt deprecated — using own STT');
+    await initialize();
+  }
 
-  // ── Отслеживание телефонных состояний ────────────────────────────
+  // ── Phone state — только лог, не глушим ──────────────────────────
   void _listenPhoneState() {
     _phoneChannel.receiveBroadcastStream().listen(
       (event) {
         if (event is Map) {
           final state = event['state'] as String? ?? '';
           debugPrint('[WakeWord] phone state: $state');
-          switch (state) {
-            case 'call_started':
-              _inCall = true;
-              // НЕ глушим STT — OS сама отдаёт микрофон звонку.
-              // Когда звонок закончится, STT снова получит звук автоматически.
-              break;
-            case 'call_ended':
-              _inCall = false;
-              break;
-            case 'recording_started':
-              _recordingGS = true;
-              // НЕ глушим STT — OS сама отдаёт микрофон записи ГС.
-              break;
-            case 'recording_ended':
-              _recordingGS = false;
-              break;
-          }
         }
       },
       onError: (e) => debugPrint('[WakeWord] phone state error: $e'),
     );
   }
 
-  // _pauseForExternal / _resumeAfterExternal удалены.
-  // Раньше при звонке/записи ГС/музыке мы вызывали stt.stop() и _paused=true,
-  // но _listenOnce зависал на completer.future.timeout(310с) — цикл не мог
-  // продолжаться до таймаута. Теперь STT не останавливается: OS сама
-  // переключает микрофон на звонок/запись, а когда они освобождают —
-  // STT продолжает слушать в той же сессии без перезапуска.
-
-  // ── Запуск ────────────────────────────────────────────────────────
+  // ── Запуск / Остановка ────────────────────────────────────────────
   Future<void> startListening(Function() onWakeWordDetected) async {
     if (_active) return;
-    if (_stt == null) {
-      debugPrint('[WakeWord] ❌ STT не передан');
-      return;
-    }
     _onWakeWord = onWakeWordDetected;
-    _active    = true;
-    _paused    = false;
-    _dialogOpen = false;
-    debugPrint('[WakeWord] ▶ запущен');
+    _active = true;
+    debugPrint('[WakeWord] started');
     _startLoop();
   }
 
   Future<void> stop() async {
-    _active      = false;
-    _paused      = false;
+    _active = false;
     _loopRunning = false;
-    debugPrint('[WakeWord] ■ остановлен');
-  }
-
-  // ── Пауза / Возобновление ─────────────────────────────────────────
-  Future<void> pause() async {
-    if (_paused) return;
-    _paused = true;
-    debugPrint('[WakeWord] ⏸ пауза');
-    final stt = _stt;
-    if (stt != null && stt.isListening) {
-      try { await stt.stop(); } catch (_) {}
+    _suppressTimer?.cancel();
+    _suppressed = false;
+    if (_stt.isListening) {
+      try { await _stt.stop(); } catch (_) {}
     }
+    debugPrint('[WakeWord] stopped');
   }
 
-  Future<void> resume() async {
+  /// Перезапуск прослушивания после того как чат-STT отработал.
+  /// Вызывается из main_screen после получения результата.
+  Future<void> rearm() async {
     if (!_active) return;
-    _paused = false;
-    debugPrint('[WakeWord] ▶ возобновление');
+    debugPrint('[WakeWord] rearm');
     if (!_loopRunning) _startLoop();
   }
 
+  /// Остановка прослушивания — вызывается при срабатывании wake word
+  /// или при ручном вводе через микрофон.
+  Future<void> disarm() async {
+    _loopRunning = false;
+    if (_stt.isListening) {
+      try { await _stt.stop(); } catch (_) {}
+    }
+    debugPrint('[WakeWord] disarmed');
+  }
+
+  /// Временное подавление триггеров (на время речи Айки).
+  /// STT продолжает слушать, но wake word не срабатывает.
+  void suppress([int seconds = 3]) {
+    _suppressed = true;
+    _suppressTimer?.cancel();
+    _suppressTimer = Timer(Duration(seconds: seconds), () {
+      _suppressed = false;
+      debugPrint('[WakeWord] suppress ended');
+    });
+    debugPrint('[WakeWord] suppress for ${seconds}s');
+  }
+
+  // ── Обратная совместимость — no-op методы ─────────────────────────
+  // Раньше pause/resume/setDialogOpen управляли общим STT.
+  // Теперь wake word независимый — эти методы не делают ничего.
+  Future<void> pause() async {}
+  Future<void> resume() async { await rearm(); }
   void setDialogOpen(bool open) {
-    _dialogOpen = open;
-    if (!open && _active && !_paused && !_loopRunning) _startLoop();
+    if (!open) rearm();
   }
-
   void setMusicPlaying(bool playing) {
-    _musicPlaying = playing;
-    // НЕ глушим микрофон при музыке — музыка использует динамик, не микрофон.
-    // STT продолжает слушать поверх музыки без перерыва.
-    debugPrint('[WakeWord] music ${playing ? "started" : "stopped"} — mic stays ON');
+    // Музыка не глушит wake word
   }
 
-  // ── Обновление триггеров ──────────────────────────────────────────
+  // ── Триггеры ──────────────────────────────────────────────────────
   Future<void> updateTriggers([List<String>? triggers]) async {
     if (triggers != null && triggers.isNotEmpty) {
       _triggers = triggers;
-      debugPrint('[WakeWord] триггеры обновлены: $_triggers');
       return;
     }
 
@@ -145,7 +139,6 @@ class WakeWordService {
 
     final Set<String> result = {'айка', 'aika', assistantName};
 
-    // Транслит имени
     if (assistantName.isNotEmpty) {
       result.add(assistantName);
       final translit = assistantName
@@ -163,10 +156,8 @@ class WakeWordService {
       if (translit != assistantName) result.add(translit);
     }
 
-    // Wake-words персонажа (JARVIS, FRIDAY и др.)
     result.addAll(PersonalityService.characterWakeWords);
 
-    // Кастомные слова
     if (customRaw.isNotEmpty) {
       for (final w in customRaw.split(',')) {
         final clean = w.trim().toLowerCase();
@@ -175,7 +166,7 @@ class WakeWordService {
     }
 
     _triggers = result.toList();
-    debugPrint('[WakeWord] триггеры: $_triggers');
+    debugPrint('[WakeWord] triggers: $_triggers');
   }
 
   // ── ОСНОВНОЙ ЦИКЛ — непрерывный, без зазоров ─────────────────────
@@ -186,70 +177,57 @@ class WakeWordService {
   }
 
   Future<void> _runLoop() async {
-    debugPrint('[WakeWord] 🔄 цикл (непрерывный)');
+    debugPrint('[WakeWord] loop started');
     while (_active && _loopRunning) {
-      // Пауза ТОЛЬКО для активного диалога с Айкой — когда пользователь говорит.
-      // Звонки, запись ГС и музыка НЕ останавливают прослушивание:
-      // OS сама переключает микрофон, STT продолжает работать в той же сессии.
-      if (_paused || _dialogOpen) {
-        await Future.delayed(const Duration(milliseconds: 80));
-        continue;
-      }
-
-      final stt = _stt;
-      if (stt == null || !stt.isAvailable) {
+      if (!_sttReady) {
         await Future.delayed(const Duration(milliseconds: 500));
         continue;
       }
 
-      // Если STT ещё слушает в текущей сессии — просто ждём.
-      // Не вызываем _listenOnce повторно — это создаёт зазор.
-      if (stt.isListening) {
+      if (_stt.isListening) {
         await Future.delayed(const Duration(milliseconds: 30));
         continue;
       }
 
       try {
-        final detected = await _listenOnce(stt);
-        if (detected && _active && !_paused && !_dialogOpen) {
-          debugPrint('[WakeWord] ✅ СРАБОТАЛО!');
+        final detected = await _listenOnce();
+        if (detected && _active && _loopRunning) {
+          debugPrint('[WakeWord] TRIGGERED!');
           _loopRunning = false;
+          // Останавливаем свой STT — освобождаем микрофон для чат-STT
+          if (_stt.isListening) {
+            try { await _stt.stop(); } catch (_) {}
+          }
           _onWakeWord?.call();
           return;
         }
       } catch (e) {
-        debugPrint('[WakeWord] ошибка: $e');
+        debugPrint('[WakeWord] loop error: $e');
         await Future.delayed(const Duration(milliseconds: 100));
       }
     }
     _loopRunning = false;
   }
 
-  /// Одна непрерывная сессия прослушивания — БЕЗ перезапусков.
-  ///
-  /// Раньше после каждого finalResult (человек сказал что-то, но не wake word)
-  /// completer завершался, finally вызывал stt.stop(), и цикл перезапускал
-  /// _listenOnce — этот зазор "stop → restart" был тем самым "глохнет".
-  ///
-  /// Теперь:
-  /// - pauseFor = 300с = listenFor — сессия НЕ обрывается на тишине
-  /// - finalResult без совпадения: НЕ завершаем completer, сессия продолжается
-  /// - stt.stop() вызывается ТОЛЬКО при срабатывании wake word
-  /// - onError: завершаем completer для мгновенного перезапуска
-  Future<bool> _listenOnce(SpeechToText stt) async {
+  /// Одна непрерывная сессия — БЕЗ перезапусков.
+  /// listenFor = pauseFor = 300с — сессия не обрывается.
+  /// finalResult без совпадения: НЕ завершаем completer, сессия продолжается.
+  /// stt.stop() только при срабатывании.
+  Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
     bool triggered = false;
 
-    stt.listen(
+    _stt.listen(
       onResult: (result) {
         final text = result.recognizedWords.toLowerCase();
         if (text.isNotEmpty) {
           debugPrint('[WakeWord] heard "$text"');
         }
 
-        if (_paused || _dialogOpen) return;
+        // Подавление триггеров (TTS echo) — STT продолжает работать
+        if (_suppressed) return;
+        if (!_active || !_loopRunning) return;
 
-        // МГНОВЕННОЕ срабатывание — даже на partial result
         for (final t in _triggers) {
           if (t.isNotEmpty && text.contains(t)) {
             if (!triggered) {
@@ -259,17 +237,14 @@ class WakeWordService {
             return;
           }
         }
-
-        // Финальный результат без совпадения — НЕ завершаем completer!
-        // STT продолжает слушать в той же сессии, следующий onResult
-        // придёт автоматически. Никаких stop/restart, нулевой зазор.
+        // finalResult без совпадения — НЕ завершаем, сессия продолжается
       },
       onError: (error) {
         debugPrint('[WakeWord] STT error: $error');
         if (!completer.isCompleted) completer.complete(false);
       },
       listenFor: const Duration(seconds: 300),
-      pauseFor: const Duration(seconds: 300), // = listenFor — сессия не обрывается на тишине
+      pauseFor: const Duration(seconds: 300),
       localeId: 'ru_RU',
       cancelOnError: false,
       partialResults: true,
@@ -280,14 +255,13 @@ class WakeWordService {
       return await completer.future
           .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
-      // stt.stop() ТОЛЬКО при срабатывании wake word — иначе сессия живёт дальше
-      if (triggered && stt.isListening) {
-        try { await stt.stop(); } catch (_) {}
+      if (triggered && _stt.isListening) {
+        try { await _stt.stop(); } catch (_) {}
       }
     }
   }
 
-  bool get isListening => _active && !_paused && !_dialogOpen;
-  bool get isMusicPlaying => _musicPlaying;
+  bool get isListening => _active && _loopRunning;
+  bool get isMusicPlaying => false;
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }

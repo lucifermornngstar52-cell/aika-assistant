@@ -302,9 +302,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _initServices() async {
     await _speechService.initialize();
-    // КРИТИЧНО: WakeWordService использует тот же STT что и SpeechService
-    // Два отдельных SpeechToText() конфликтуют за микрофон!
-    await _wakeWordService.initWithSharedStt(_speechService.sharedStt);
+    // WakeWordService имеет СОБСТВЕННЫЙ STT — независимый от SpeechService.
+    // Wake word работает постоянно, чат-STT подключается только после срабатывания.
+    await _wakeWordService.initialize();
     // Инициализируем мощный процессор голосовых команд
     _voiceProcessor.init();
     await _applyTtsSettings();
@@ -715,9 +715,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _onWakeWordDetected() async {
     _resetIdleTimer();
-    // Приостанавливаем wake word — пользователь будет говорить
-    _wakeWordService.setDialogOpen(true);
-    await _wakeWordService.pause();
+    // Wake word уже остановил свой STT при срабатывании (disarm).
+    // Чат-STT подключается на своём экземпляре — без конфликтов.
     await OverlayService().show(state: 'listening');
     await _speak('Да?');
     setState(() => _isListening = true);
@@ -761,9 +760,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         OverlayService().asyncState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
         OverlayService().asyncState('idle');
-        // Диалог закрыт — wake word возобновляется
-        _wakeWordService.setDialogOpen(false);
-        if (_wakeWordEnabled) await _wakeWordService.resume();
+        // Чат-STT отработал — перезапускаем wake word
+        if (_wakeWordEnabled) await _wakeWordService.rearm();
       },
 
     );
@@ -1062,10 +1060,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _ttsCompleter?.complete();
     _ttsCompleter = null;
 
-    // Пауза wake word на время речи ассистента
-    final wasEnabled = _wakeWordEnabled;
-    if (wasEnabled) await _wakeWordService.pause();
-    _wakeWordService.setDialogOpen(false); // речь ассистента — не диалог пользователя
+    // Wake word НЕ останавливаем — suppress подавляет триггеры (TTS echo)
+    _wakeWordService.suppress((clean.length ~/ 8) + 3);
 
     // ── Пробуем EdgeTTS (Microsoft Neural Voice) ──
     if (_useEdgeTts) {
@@ -1073,10 +1069,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // speak() блокируется до конца воспроизведения — не нужен busy-loop
         await _edgeTts.speak(clean);
         OverlayService().asyncState('idle');
-        if (wasEnabled && !_isListening) {
-          await Future.delayed(const Duration(milliseconds: 200));
-          await _wakeWordService.resume();
-        }
+        // Wake word не останавливался — suppress уже активен
         return;
       } catch (e) {
         debugPrint('[_speak] EdgeTTS failed: \$e — fallback system TTS');
@@ -1109,11 +1102,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       OverlayService().asyncState('idle');
     }
 
-    // Возобновляем wake word после речи
-    if (wasEnabled && _wakeWordEnabled && !_isListening) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      await _wakeWordService.resume();
-    }
+    // Wake word не останавливался — ничего не делаем
   }
 
   void _showSnack(String msg) {
@@ -2060,21 +2049,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       await _speechService.stopListening();
       setState(() => _isListening = false);
       OverlayService().asyncState('idle');
-      if (_wakeWordEnabled) {
-        _wakeWordService.setDialogOpen(false);
-        await _wakeWordService.resume();
-      }
+      if (_wakeWordEnabled) await _wakeWordService.rearm();
     } else {
-      await _wakeWordService.pause();
-      _wakeWordService.setDialogOpen(true);
+      await _wakeWordService.disarm();
       setState(() { _isListening = true; _isDancing = false; });
       OverlayService().asyncState('listening');
       await _speechService.startListening(
         (text) {
           setState(() => _isListening = false);
           OverlayService().asyncState('idle');
-          _wakeWordService.setDialogOpen(false);
-          if (_wakeWordEnabled) _wakeWordService.resume();
+          if (_wakeWordEnabled) _wakeWordService.rearm();
           if (text.isNotEmpty) _sendMessage(text);
         },
       );
