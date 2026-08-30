@@ -32,6 +32,7 @@ class EdgeTtsService extends ChangeNotifier {
   String _voice = _defaultVoice;
   double _rate = 0.0;
   double _pitch = 0.0;
+  double _volume = 1.0;
 
   WebSocket? _ws;
   bool _wsReady = false;
@@ -71,12 +72,14 @@ class EdgeTtsService extends ChangeNotifier {
   void setVoice(String voiceId) { _voice = voiceId; notifyListeners(); }
   void setRate(double rate) => _rate = rate;
   void setPitch(double pitch) => _pitch = pitch;
+  void setVolume(double volume) => _volume = volume.clamp(0.0, 1.0);
 
   Future<void> _loadEdgeSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _rate = prefs.getDouble('edge_tts_rate') ?? 0.0;
       _pitch = prefs.getDouble('edge_tts_pitch') ?? 0.0;
+      _volume = prefs.getDouble('edge_tts_volume') ?? 1.0;
       final voice = prefs.getString('edge_voice');
       if (voice != null && voice.isNotEmpty) _voice = voice;
       _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
@@ -172,6 +175,7 @@ class EdgeTtsService extends ChangeNotifier {
   }
 
   Future<void> _speakSystem(String text) async {
+    try { await _systemTts.setVolume(_volume); } catch (_) {}
     final done = Completer<void>();
     _systemTts.setCompletionHandler(() {
       _isSpeaking = false; notifyListeners();
@@ -194,6 +198,33 @@ class EdgeTtsService extends ChangeNotifier {
     }
   }
 
+  /// Мгновенное прослушивание с временными rate/pitch/volume/voice —
+  /// не трогает сохранённые настройки, используется кнопкой «Проверить голос».
+  Future<void> previewSpeak(String text, {double? rate, double? pitch, double? volume, String? voice}) async {
+    final oldRate = _rate, oldPitch = _pitch, oldVolume = _volume, oldVoice = _voice;
+    if (rate != null) _rate = rate;
+    if (pitch != null) _pitch = pitch;
+    if (volume != null) _volume = volume.clamp(0.0, 1.0);
+    if (voice != null && voice.isNotEmpty) _voice = voice;
+    try {
+      await stop();
+      _isSpeaking = true; notifyListeners();
+      if (_failCount < _maxFails) {
+        try {
+          await _speakEdgeStreaming(text);
+        } catch (e) {
+          debugPrint('[EdgeTTS] preview ошибка, fallback system: $e');
+          await _speakSystem(text);
+        }
+      } else {
+        await _speakSystem(text);
+      }
+    } finally {
+      _rate = oldRate; _pitch = oldPitch; _volume = oldVolume; _voice = oldVoice;
+      _isSpeaking = false; notifyListeners();
+    }
+  }
+
   Future<void> stop() async {
     try { await _player.stop(); } catch (_) {}
     try { await _systemTts.stop(); } catch (_) {}
@@ -207,10 +238,12 @@ class EdgeTtsService extends ChangeNotifier {
       await _connectWs();
     }
 
+    try { await _player.setVolume(_volume); } catch (_) {}
+
     final reqId = _genUuid();
     final ts = _timestamp();
-    final rateStr = _rate >= 0 ? '+${_rate.toInt()}%' : '${_rate.toInt()}%';
-    final pitchStr = _pitch >= 0 ? '+${_pitch.toInt()}Hz' : '${_pitch.toInt()}Hz';
+    final rateStr = _rate >= 0 ? '+${_rate.round()}%' : '${_rate.round()}%';
+    final pitchStr = _pitch >= 0 ? '+${_pitch.round()}Hz' : '${_pitch.round()}Hz';
 
     final ssml =
         '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'

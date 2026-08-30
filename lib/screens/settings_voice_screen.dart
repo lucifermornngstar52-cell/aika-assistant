@@ -53,6 +53,42 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     });
   }
 
+  /// UI-слайдер 0.25..1.5 (норма=0.5) → проценты EdgeTTS SSML (-50%..+150%, норма=0%)
+  double _toEdgeRate(double r) => (((r - 0.5) / 0.5) * 100).clamp(-50.0, 150.0);
+  /// UI-слайдер 0.5..2.0 (норма=1.0) → сдвиг в Hz для EdgeTTS SSML (-50..+50Hz)
+  double _toEdgePitch(double p) => ((p - 1.0) * 50).clamp(-50.0, 50.0);
+
+  bool _previewing = false;
+
+  Future<void> _preview() async {
+    if (_previewing) return;
+    setState(() => _previewing = true);
+    const sample = 'Привет! Вот так будет звучать мой голос.';
+    try {
+      if (_ttsEngine == 'system') {
+        await _tts.setSpeechRate(_rate);
+        await _tts.setPitch(_pitch);
+        await _tts.setVolume(_volume);
+        if (_selectedVoice != null) {
+          await _tts.setVoice({'name': _selectedVoice!, 'locale': 'ru-RU'});
+        }
+        await _tts.speak(sample);
+      } else if (_ttsEngine == 'elevenlabs') {
+        await ElevenLabsTtsService().speak(sample);
+      } else {
+        await EdgeTtsService().previewSpeak(
+          sample,
+          rate: _toEdgeRate(_rate),
+          pitch: _toEdgePitch(_pitch),
+          volume: _volume,
+        );
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _previewing = false);
+    }
+  }
+
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('tts_engine', _ttsEngine);
@@ -60,6 +96,17 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     await prefs.setDouble('tts_rate', _rate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
+
+    // ФИКС: раньше EdgeTTS (основной движок) читал edge_tts_rate/edge_tts_pitch,
+    // которые здесь никогда не записывались — ползунки не влияли на голос.
+    final edgeRate = _toEdgeRate(_rate);
+    final edgePitch = _toEdgePitch(_pitch);
+    await prefs.setDouble('edge_tts_rate', edgeRate);
+    await prefs.setDouble('edge_tts_pitch', edgePitch);
+    await prefs.setDouble('edge_tts_volume', _volume);
+    EdgeTtsService().setRate(edgeRate);
+    EdgeTtsService().setPitch(edgePitch);
+    EdgeTtsService().setVolume(_volume);
     if (_selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
       // Also sync EdgeTTS voice if it matches our neural voice list
@@ -144,6 +191,23 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
             _slider('Высота голоса', _pitch, 0.5, 2.0, (v) => setState(() => _pitch = v)),
             _slider('Громкость', _volume, 0.0, 1.0, (v) => setState(() => _volume = v)),
           ])),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: _preview,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AikaTheme.neonBlue.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.4)),
+              ),
+              child: _previewing
+                  ? SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AikaTheme.neonBlue))
+                  : Text('🔊  Проверить голос', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ),
           if (_voices.isNotEmpty && _ttsEngine != 'elevenlabs') ...[
             const SizedBox(height: 20),
             _label('ГОЛОС'),
