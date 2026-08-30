@@ -53,14 +53,7 @@ class ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _cleanText(message.content),
-                    style: const TextStyle(
-                      color: AikaTheme.textPrimary,
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
+                  _buildRichText(_cleanText(message.content)),
                   const SizedBox(height: 4),
                   Text(
                     _formatTime(message.timestamp),
@@ -82,6 +75,54 @@ class ChatBubble extends StatelessWidget {
         .animate()
         .fadeIn(duration: 300.ms)
         .slideY(begin: 0.2, end: 0, duration: 300.ms);
+  }
+
+  /// Парсит **bold**, *italic*, ~~strike~~ и рендерит как RichText
+  Widget _buildRichText(String text) {
+    final spans = <InlineSpan>[];
+    final regex = RegExp(r'(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~)');
+    int lastEnd = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(text: text.substring(lastEnd, match.start)));
+      }
+      if (match.group(2) != null) {
+        // **bold**
+        spans.add(TextSpan(
+          text: match.group(2),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ));
+      } else if (match.group(3) != null) {
+        // *italic*
+        spans.add(TextSpan(
+          text: match.group(3),
+          style: const TextStyle(fontStyle: FontStyle.italic),
+        ));
+      } else if (match.group(4) != null) {
+        // ~~strike~~
+        spans.add(TextSpan(
+          text: match.group(4),
+          style: const TextStyle(decoration: TextDecoration.lineThrough),
+        ));
+      }
+      lastEnd = match.end;
+    }
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastEnd)));
+    }
+    if (spans.isEmpty) spans.add(TextSpan(text: text));
+
+    return RichText(
+      text: TextSpan(
+        children: spans,
+        style: const TextStyle(
+          color: AikaTheme.textPrimary,
+          fontSize: 14,
+          height: 1.5,
+        ),
+      ),
+    );
   }
 
   Widget _buildAikaIcon() => Container(
