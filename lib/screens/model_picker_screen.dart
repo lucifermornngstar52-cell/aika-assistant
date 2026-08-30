@@ -40,9 +40,9 @@ final _builtin3D = [
   Builtin3DModel(id: 'tsumire', name: 'Tsumire', assetPath: 'models/tsumire.glb', emoji: '🎀', animCount: 9),
   Builtin3DModel(id: 'aika_model', name: 'Aika', assetPath: 'models/aika_model.glb', emoji: '🤖', animCount: 9),
   Builtin3DModel(id: 'michelle', name: 'Michelle', assetPath: 'models/michelle.glb', emoji: '💃', animCount: 2),
-  Builtin3DModel(id: 'anime_girl', name: 'Anime Girl', assetPath: 'models/anime_girl.glb', emoji: '👧', animCount: 0),
-  Builtin3DModel(id: 'robot', name: 'Robot', assetPath: 'models/robot.glb', emoji: '🦾', animCount: 0),
-  Builtin3DModel(id: 'soldier', name: 'Soldier', assetPath: 'models/soldier.glb', emoji: '🪖', animCount: 0),
+  Builtin3DModel(id: 'anime_girl', name: 'Anime Girl', assetPath: 'models/anime_girl.glb', emoji: '👧', animCount: 9),
+  Builtin3DModel(id: 'robot', name: 'Robot', assetPath: 'models/robot.glb', emoji: '🦾', animCount: 14),
+  Builtin3DModel(id: 'soldier', name: 'Soldier', assetPath: 'models/soldier.glb', emoji: '🪖', animCount: 4),
 ];
 
 class ModelPickerScreen extends StatefulWidget {
