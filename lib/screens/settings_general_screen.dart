@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
+import '../services/theme_switcher_service.dart';
+import '../services/overlay_service.dart';
 
 class SettingsGeneralScreen extends StatefulWidget {
   const SettingsGeneralScreen({Key? key}) : super(key: key);
@@ -14,6 +16,9 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
   final _wakeWordCtrl = TextEditingController();
   double _avatarSize = 160;
   bool _loading = true;
+  final _themeSwitcher = ThemeSwitcherService();
+  final _overlaySvc = OverlayService();
+  bool _hasOverlayPermission = false;
 
   @override
   void initState() {
@@ -23,11 +28,14 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    await _themeSwitcher.load();
+    final hasPerm = await _overlaySvc.hasPermission();
     setState(() {
       _nameCtrl.text = prefs.getString('assistant_name') ?? 'Aivora';
       _userNameCtrl.text = prefs.getString('user_name') ?? '';
       _avatarSize = prefs.getDouble('avatar_size') ?? 160;
       _wakeWordCtrl.text = prefs.getString('custom_wake_word') ?? '';
+      _hasOverlayPermission = hasPerm;
       _loading = false;
     });
   }
@@ -126,6 +134,60 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
                 inactiveColor: Colors.white12,
                 onChanged: (v) => setState(() => _avatarSize = v),
               ),
+            ],
+          )),
+          const SizedBox(height: 16),
+          _label('ТЕМА ИНТЕРФЕЙСА'),
+          _card(Row(
+            children: [
+              Icon(_themeSwitcher.isJarvis ? Icons.nightlight_round : Icons.wb_sunny_outlined,
+                  color: AikaTheme.neonBlue),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_themeSwitcher.isJarvis ? 'J.A.R.V.I.S HUD' : 'Айка (обычная)',
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                  const Text('Переключить визуальный стиль интерфейса',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                ],
+              )),
+              Switch(
+                value: _themeSwitcher.isJarvis,
+                activeColor: AikaTheme.neonBlue,
+                onChanged: (v) async {
+                  await _themeSwitcher.toggle();
+                  setState(() {});
+                },
+              ),
+            ],
+          )),
+          const SizedBox(height: 16),
+          _label('РАЗРЕШЕНИЕ НА ОВЕРЛЕЙ'),
+          _card(Row(
+            children: [
+              Icon(_hasOverlayPermission ? Icons.check_circle : Icons.error_outline,
+                  color: _hasOverlayPermission ? Colors.greenAccent : Colors.orangeAccent),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_hasOverlayPermission ? 'Разрешение выдано' : 'Разрешение не выдано',
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                  const Text('Нужно, чтобы персонаж показывался поверх других приложений',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                ],
+              )),
+              if (!_hasOverlayPermission)
+                TextButton(
+                  onPressed: () async {
+                    await _overlaySvc.requestPermission();
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    final has = await _overlaySvc.hasPermission();
+                    if (mounted) setState(() => _hasOverlayPermission = has);
+                  },
+                  child: Text('Выдать', style: TextStyle(color: AikaTheme.neonBlue)),
+                ),
             ],
           )),
         ],
