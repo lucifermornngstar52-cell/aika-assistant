@@ -5,14 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
-/// WakeWordService — ПРОСТОЙ бесконечный вейкворд.
+/// WakeWordService — независимый вейкворд на собственном STT.
 ///
-/// Принцип:
-/// - while цикл: если STT не слушает → запускаем. Если слушает — ждём.
-/// - Срабатывание: _listening=false, стоп STT, колбэк в приложение.
-/// - rearm(): перезапуск цикла.
-/// - НЕТ completer'ов, таймаутов, session count, re-init, watchdog'ов.
-/// - Просто бесконечно работающий вейкворд.
+/// База: commit 0e8356b (первый отдельный STT).
+/// Изменения от оригинала:
+/// 1. Убран onError из listen() — невалидный параметр
+/// 2. onStatus в initialize() завершает completer при "done"/"notListening"
+/// 3. Кулдаун 500мс между сессиями — без быстрого вкл/выкл
+/// Больше НИКАКИХ изменений — никаких watchdog, re-init, session count.
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -24,18 +24,32 @@ class WakeWordService {
   bool _sttReady = false;
 
   bool _active = false;
-  bool _listening = false;
+  bool _loopRunning = false;
   bool _suppressed = false;
   Timer? _suppressTimer;
+
+  Completer<bool>? _currentCompleter;
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
 
-  // ── Инициализация ─────────────────────────────────────────────────
   Future<void> initialize() async {
     _sttReady = await _stt.initialize(
-      onError: (e) => debugPrint('[WakeWord] STT error: $e'),
-      onStatus: (s) => debugPrint('[WakeWord] STT status: $s'),
+      onError: (e) {
+        debugPrint('[WakeWord] STT error: $e');
+        if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+          _currentCompleter!.complete(false);
+        }
+      },
+      onStatus: (s) {
+        debugPrint('[WakeWord] STT status: $s');
+        // "done" или "notListening" = сессия закончилась
+        if ((s == 'done' || s == 'notListening') &&
+            _currentCompleter != null &&
+            !_currentCompleter!.isCompleted) {
+          _currentCompleter!.complete(false);
+        }
+      },
     );
     await updateTriggers();
     _listenPhoneState();
@@ -58,7 +72,6 @@ class WakeWordService {
     );
   }
 
-  // ── Запуск / Остановка ────────────────────────────────────────────
   Future<void> startListening(Function() onWakeWordDetected) async {
     if (_active) return;
     _onWakeWord = onWakeWordDetected;
@@ -69,7 +82,7 @@ class WakeWordService {
 
   Future<void> stop() async {
     _active = false;
-    _listening = false;
+    _loopRunning = false;
     _suppressTimer?.cancel();
     _suppressed = false;
     if (_stt.isListening) {
@@ -78,20 +91,14 @@ class WakeWordService {
     debugPrint('[WakeWord] stopped');
   }
 
-  /// Перезапуск после того как чат-STT отработал.
   Future<void> rearm() async {
     if (!_active) return;
-    if (_stt.isListening) {
-      try { await _stt.stop(); } catch (_) {}
-    }
-    _listening = false;
     debugPrint('[WakeWord] rearm');
-    _startLoop();
+    if (!_loopRunning) _startLoop();
   }
 
-  /// Остановка перед записью команды (ручной микрофон или вейкворд).
   Future<void> disarm() async {
-    _listening = false;
+    _loopRunning = false;
     if (_stt.isListening) {
       try { await _stt.stop(); } catch (_) {}
     }
@@ -108,13 +115,11 @@ class WakeWordService {
     debugPrint('[WakeWord] suppress for ${seconds}s');
   }
 
-  // ── Обратная совместимость ────────────────────────────────────────
   Future<void> pause() async {}
   Future<void> resume() async { await rearm(); }
   void setDialogOpen(bool open) { if (!open) rearm(); }
   void setMusicPlaying(bool playing) {}
 
-  // ── Триггеры ──────────────────────────────────────────────────────
   Future<void> updateTriggers([List<String>? triggers]) async {
     if (triggers != null && triggers.isNotEmpty) {
       _triggers = triggers;
@@ -157,77 +162,98 @@ class WakeWordService {
     debugPrint('[WakeWord] triggers: $_triggers');
   }
 
-  // ── ОСНОВНОЙ ЦИКЛ — простой while ────────────────────────────────
+  // ── ОСНОВНОЙ ЦИКЛ ────────────────────────────────────────────────
   void _startLoop() {
-    if (_listening) return;
-    _listening = true;
+    if (_loopRunning) return;
+    _loopRunning = true;
     _runLoop();
   }
 
   Future<void> _runLoop() async {
     debugPrint('[WakeWord] loop started');
-
-    while (_active && _listening) {
-      // STT не готов — ждём
+    while (_active && _loopRunning) {
       if (!_sttReady) {
         await Future.delayed(const Duration(milliseconds: 500));
         continue;
       }
 
-      // STT уже слушает — просто ждём
       if (_stt.isListening) {
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 30));
         continue;
       }
 
-      // STT не слушает — запускаем
       try {
-        debugPrint('[WakeWord] starting STT...');
-        await _stt.listen(
-          onResult: (result) {
-            final text = result.recognizedWords.toLowerCase();
-            if (text.isEmpty) return;
-            if (!_active || !_listening || _suppressed) return;
-
-            debugPrint('[WakeWord] heard "$text"');
-
-            for (final t in _triggers) {
-              if (t.isNotEmpty && text.contains(t)) {
-                debugPrint('[WakeWord] TRIGGERED!');
-                _listening = false;
-                if (_stt.isListening) {
-                  try { _stt.stop(); } catch (_) {}
-                }
-                _onWakeWord?.call();
-                return;
-              }
-            }
-          },
-          listenFor: const Duration(seconds: 300),
-          pauseFor: const Duration(seconds: 300),
-          localeId: 'ru_RU',
-          cancelOnError: false,
-          partialResults: true,
-        );
-        // Даём STT время на запуск
-        await Future.delayed(const Duration(milliseconds: 300));
+        final detected = await _listenOnce();
+        if (detected && _active && _loopRunning) {
+          debugPrint('[WakeWord] TRIGGERED!');
+          _loopRunning = false;
+          if (_stt.isListening) {
+            try { await _stt.stop(); } catch (_) {}
+          }
+          _onWakeWord?.call();
+          return;
+        }
+        // Сессия закончилась без срабатывания — кулдаун 500мс
+        await Future.delayed(const Duration(milliseconds: 500));
       } catch (e) {
-        debugPrint('[WakeWord] listen error: $e');
+        debugPrint('[WakeWord] loop error: $e');
         await Future.delayed(const Duration(milliseconds: 500));
       }
     }
-
-    _listening = false;
+    _loopRunning = false;
     debugPrint('[WakeWord] loop ended');
+  }
 
-    // Авто-рестарт если сервис ещё активен (защита от вылетов)
-    if (_active) {
-      await Future.delayed(const Duration(seconds: 1));
-      if (_active && !_listening) _startLoop();
+  /// Одна сессия STT. Completer завершается при:
+  /// 1. Срабатывании wake word → true
+  /// 2. onStatus "done"/"notListening" → false (мгновенно, не ждём 310с)
+  /// 3. onError → false (мгновенно)
+  /// 4. Таймаут 310с → false (страховка)
+  Future<bool> _listenOnce() async {
+    final completer = Completer<bool>();
+    _currentCompleter = completer;
+    bool triggered = false;
+
+    _stt.listen(
+      onResult: (result) {
+        final text = result.recognizedWords.toLowerCase();
+        if (text.isNotEmpty) {
+          debugPrint('[WakeWord] heard "$text"');
+        }
+
+        if (_suppressed) return;
+        if (!_active || !_loopRunning) return;
+
+        for (final t in _triggers) {
+          if (t.isNotEmpty && text.contains(t)) {
+            if (!triggered) {
+              triggered = true;
+              if (!completer.isCompleted) completer.complete(true);
+            }
+            return;
+          }
+        }
+      },
+      listenFor: const Duration(seconds: 300),
+      pauseFor: const Duration(seconds: 300),
+      localeId: 'ru_RU',
+      cancelOnError: false,
+      partialResults: true,
+      onSoundLevelChange: null,
+    );
+
+    try {
+      return await completer.future
+          .timeout(const Duration(seconds: 310), onTimeout: () => false);
+    } finally {
+      _currentCompleter = null;
+      if (triggered && _stt.isListening) {
+        try { await _stt.stop(); } catch (_) {}
+      }
     }
   }
 
-  bool get isListening => _active && _listening;
+  bool get isListening => _active && _loopRunning;
   bool get isMusicPlaying => false;
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }
