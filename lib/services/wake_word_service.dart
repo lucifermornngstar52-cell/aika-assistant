@@ -5,14 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
-/// WakeWordService — независимый вейкворд на собственном STT.
+/// WakeWordService — бесконечный вейкворд на собственном STT.
 ///
-/// Принцип:
-/// - STT слушает непрерывно (между Android-сессиями 500мс)
-/// - После 4 минут суммарного слушания — 30с перерыв
-/// - После перерыва — снова 4 минуты
-/// - onStatus "done" завершает сессию мгновенно → быстрый рестарт
-/// - 2с проверка: если listen() не запустился — мгновенный retry (без 310с зависания)
+/// Никаких таймаутов, перерывов, циклов.
+/// Просто: слушает → Android закончил сессию → 500мс → слушает снова.
+/// Отдаёт микрофон ТОЛЬКО при срабатывании wake word.
+/// rearm() — снова слушает.
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -32,8 +30,6 @@ class WakeWordService {
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
-
-  DateTime _periodStart = DateTime.now();
 
   Future<void> initialize() async {
     _sttReady = await _stt.initialize(
@@ -163,11 +159,10 @@ class WakeWordService {
     debugPrint('[WakeWord] triggers: $_triggers');
   }
 
-  // ── ОСНОВНОЙ ЦИКЛ ────────────────────────────────────────────────
+  // ── БЕСКОНЕЧНЫЙ ЦИКЛ ─────────────────────────────────────────────
   void _startLoop() {
     if (_loopRunning) return;
     _loopRunning = true;
-    _periodStart = DateTime.now();
     _runLoop();
   }
 
@@ -195,21 +190,8 @@ class WakeWordService {
           _onWakeWord?.call();
           return;
         }
-
-        // Сессия закончилась. Проверяем сколько уже слушали.
-        final elapsed = DateTime.now().difference(_periodStart).inSeconds;
-        debugPrint('[WakeWord] session ended, total listened: ${elapsed}s');
-
-        if (elapsed >= 240) {
-          // 4 минуты отслушали — перерыв 30 секунд
-          debugPrint('[WakeWord] 4 min done — 30s break');
-          await Future.delayed(const Duration(seconds: 30));
-          _periodStart = DateTime.now();
-          debugPrint('[WakeWord] break over, resuming');
-        } else {
-          // Ещё не дослушали 4 минуты — быстрый рестарт (500мс)
-          await Future.delayed(const Duration(milliseconds: 500));
-        }
+        // Сессия закончилась — сразу новую, 500мс
+        await Future.delayed(const Duration(milliseconds: 500));
       } catch (e) {
         debugPrint('[WakeWord] loop error: $e');
         await Future.delayed(const Duration(milliseconds: 500));
@@ -219,12 +201,11 @@ class WakeWordService {
     debugPrint('[WakeWord] loop ended');
   }
 
-  /// Одна сессия STT.
-  /// Completer завершается при:
+  /// Одна сессия. Completer завершается при:
   /// 1. Wake word → true
-  /// 2. onStatus "done"/"notListening" → false (мгновенно)
-  /// 3. 2с проверка: listen() не запустился → false (без зависания)
-  /// 4. Таймаут 30с → false (страховка)
+  /// 2. onStatus "done"/"notListening" → false (Android закончил сессию)
+  /// 3. onError → false
+  /// 4. 2с проверка: listen() не стартанул → false (страховка от зависания)
   Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
     _currentCompleter = completer;
@@ -258,17 +239,17 @@ class WakeWordService {
       onSoundLevelChange: null,
     );
 
-    // Проверка через 2 секунды: если listen() не запустился — сразу завершаем
+    // Страховка: если listen() не запустился через 2с — завершаем, цикл пойдёт заново
     Future.delayed(const Duration(seconds: 2), () {
       if (!_stt.isListening && !completer.isCompleted && !triggered) {
-        debugPrint('[WakeWord] listen did not start — instant retry');
+        debugPrint('[WakeWord] listen did not start — retry');
         completer.complete(false);
       }
     });
 
     try {
       return await completer.future
-          .timeout(const Duration(seconds: 30), onTimeout: () => false);
+          .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
       _currentCompleter = null;
       if (triggered && _stt.isListening) {
