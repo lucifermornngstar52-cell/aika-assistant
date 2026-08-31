@@ -6,13 +6,6 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
 /// WakeWordService — независимый вейкворд на собственном STT.
-///
-/// База: commit 0e8356b (первый отдельный STT).
-/// Изменения от оригинала:
-/// 1. Убран onError из listen() — невалидный параметр
-/// 2. onStatus в initialize() завершает completer при "done"/"notListening"
-/// 3. Кулдаун 500мс между сессиями — без быстрого вкл/выкл
-/// Больше НИКАКИХ изменений — никаких watchdog, re-init, session count.
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -29,6 +22,7 @@ class WakeWordService {
   Timer? _suppressTimer;
 
   Completer<bool>? _currentCompleter;
+  int _failCount = 0; // подряд неудачных запусков listen()
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
@@ -43,7 +37,6 @@ class WakeWordService {
       },
       onStatus: (s) {
         debugPrint('[WakeWord] STT status: $s');
-        // "done" или "notListening" = сессия закончилась
         if ((s == 'done' || s == 'notListening') &&
             _currentCompleter != null &&
             !_currentCompleter!.isCompleted) {
@@ -193,7 +186,38 @@ class WakeWordService {
           _onWakeWord?.call();
           return;
         }
-        // Сессия закончилась без срабатывания — кулдаун 500мс
+
+        // Если listen() не запустился 3 раза подряд — реинит STT
+        if (_failCount >= 3) {
+          debugPrint('[WakeWord] reinit STT after $_failCount failures');
+          _failCount = 0;
+          try {
+            await _stt.stop();
+            _sttReady = await _stt.initialize(
+              onError: (e) {
+                debugPrint('[WakeWord] STT error: $e');
+                if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+                  _currentCompleter!.complete(false);
+                }
+              },
+              onStatus: (s) {
+                debugPrint('[WakeWord] STT status: $s');
+                if ((s == 'done' || s == 'notListening') &&
+                    _currentCompleter != null &&
+                    !_currentCompleter!.isCompleted) {
+                  _currentCompleter!.complete(false);
+                }
+              },
+            );
+            debugPrint('[WakeWord] reinit done, ready: $_sttReady');
+          } catch (e) {
+            debugPrint('[WakeWord] reinit error: $e');
+          }
+          await Future.delayed(const Duration(seconds: 1));
+          continue;
+        }
+
+        // Кулдаун 500мс
         await Future.delayed(const Duration(milliseconds: 500));
       } catch (e) {
         debugPrint('[WakeWord] loop error: $e');
@@ -206,9 +230,10 @@ class WakeWordService {
 
   /// Одна сессия STT. Completer завершается при:
   /// 1. Срабатывании wake word → true
-  /// 2. onStatus "done"/"notListening" → false (мгновенно, не ждём 310с)
+  /// 2. onStatus "done"/"notListening" → false (мгновенно)
   /// 3. onError → false (мгновенно)
-  /// 4. Таймаут 310с → false (страховка)
+  /// 4. Проверка через 1с: если listen() не запустился → false (не ждём 310с)
+  /// 5. Таймаут 310с → false (страховка)
   Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
     _currentCompleter = completer;
@@ -241,6 +266,18 @@ class WakeWordService {
       partialResults: true,
       onSoundLevelChange: null,
     );
+
+    // ПРОВЕРКА через 1 секунду: если STT не запустился — сразу завершаем
+    // Не ждём 310 секунд если onStatus не сработал
+    Future.delayed(const Duration(seconds: 1), () {
+      if (!_stt.isListening && !completer.isCompleted && !triggered) {
+        _failCount++;
+        debugPrint('[WakeWord] listen did not start (failures: $_failCount)');
+        completer.complete(false);
+      } else if (_stt.isListening) {
+        _failCount = 0;
+      }
+    });
 
     try {
       return await completer.future
