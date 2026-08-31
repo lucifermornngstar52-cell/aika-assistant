@@ -721,8 +721,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _speak('Да?');
     setState(() => _isListening = true);
     await _pingSound.pingStart();
-    // Даём Android SpeechRecognizer время освободиться после wake word STT
-    await Future.delayed(const Duration(milliseconds: 300));
     await _speechService.startListening(
       (text) async {
         try {

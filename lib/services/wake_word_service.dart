@@ -123,7 +123,6 @@ class WakeWordService {
     if (_stt.isListening) {
       try { await _stt.stop(); } catch (_) {}
     }
-    await Future.delayed(const Duration(milliseconds: 200));
 
     _loopRunning = false;  // гарантия чистого старта
     _startLoop();
