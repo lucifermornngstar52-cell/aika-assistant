@@ -193,11 +193,11 @@ class WakeWordService {
           _onWakeWord?.call();
           return;
         }
-        // Сессия закончилась без срабатывания — кулдаун 500мс
-        await Future.delayed(const Duration(milliseconds: 500));
+        // Сессия закончилась без срабатывания — перерыв 30с (перекур)
+        await Future.delayed(const Duration(seconds: 30));
       } catch (e) {
         debugPrint('[WakeWord] loop error: $e');
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(seconds: 30));
       }
     }
     _loopRunning = false;
@@ -206,9 +206,9 @@ class WakeWordService {
 
   /// Одна сессия STT. Completer завершается при:
   /// 1. Срабатывании wake word → true
-  /// 2. onStatus "done"/"notListening" → false (мгновенно, не ждём 30с)
+  /// 2. onStatus "done"/"notListening" → false (мгновенно, не ждём 310с)
   /// 3. onError → false (мгновенно)
-  /// 4. Таймаут 30с → false (страховка)
+  /// 4. Таймаут 310с → false (страховка)
   Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
     _currentCompleter = completer;
@@ -234,8 +234,8 @@ class WakeWordService {
           }
         }
       },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 30),
+      listenFor: const Duration(seconds: 300),
+      pauseFor: const Duration(seconds: 300),
       localeId: 'ru_RU',
       cancelOnError: false,
       partialResults: true,
@@ -244,7 +244,7 @@ class WakeWordService {
 
     try {
       return await completer.future
-          .timeout(const Duration(seconds: 30), onTimeout: () => false);
+          .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
       _currentCompleter = null;
       if (triggered && _stt.isListening) {
