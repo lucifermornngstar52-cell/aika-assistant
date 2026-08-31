@@ -7,12 +7,12 @@ import 'personality_service.dart';
 
 /// WakeWordService — независимый вейкворд на собственном STT.
 ///
-/// База: commit 0e8356b (первый отдельный STT).
-/// Изменения от оригинала:
-/// 1. Убран onError из listen() — невалидный параметр
-/// 2. onStatus в initialize() завершает completer при "done"/"notListening"
-/// 3. Кулдаун 500мс между сессиями — без быстрого вкл/выкл
-/// Больше НИКАКИХ изменений — никаких watchdog, re-init, session count.
+/// Принцип:
+/// - STT слушает непрерывно (между Android-сессиями 500мс)
+/// - После 4 минут суммарного слушания — 30с перерыв
+/// - После перерыва — снова 4 минуты
+/// - onStatus "done" завершает сессию мгновенно → быстрый рестарт
+/// - 2с проверка: если listen() не запустился — мгновенный retry (без 310с зависания)
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -33,6 +33,8 @@ class WakeWordService {
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
 
+  DateTime _periodStart = DateTime.now();
+
   Future<void> initialize() async {
     _sttReady = await _stt.initialize(
       onError: (e) {
@@ -43,7 +45,6 @@ class WakeWordService {
       },
       onStatus: (s) {
         debugPrint('[WakeWord] STT status: $s');
-        // "done" или "notListening" = сессия закончилась
         if ((s == 'done' || s == 'notListening') &&
             _currentCompleter != null &&
             !_currentCompleter!.isCompleted) {
@@ -166,6 +167,7 @@ class WakeWordService {
   void _startLoop() {
     if (_loopRunning) return;
     _loopRunning = true;
+    _periodStart = DateTime.now();
     _runLoop();
   }
 
@@ -193,22 +195,36 @@ class WakeWordService {
           _onWakeWord?.call();
           return;
         }
-        // Сессия закончилась без срабатывания — перерыв 30с (перекур)
-        await Future.delayed(const Duration(seconds: 30));
+
+        // Сессия закончилась. Проверяем сколько уже слушали.
+        final elapsed = DateTime.now().difference(_periodStart).inSeconds;
+        debugPrint('[WakeWord] session ended, total listened: ${elapsed}s');
+
+        if (elapsed >= 240) {
+          // 4 минуты отслушали — перерыв 30 секунд
+          debugPrint('[WakeWord] 4 min done — 30s break');
+          await Future.delayed(const Duration(seconds: 30));
+          _periodStart = DateTime.now();
+          debugPrint('[WakeWord] break over, resuming');
+        } else {
+          // Ещё не дослушали 4 минуты — быстрый рестарт (500мс)
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
       } catch (e) {
         debugPrint('[WakeWord] loop error: $e');
-        await Future.delayed(const Duration(seconds: 30));
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     }
     _loopRunning = false;
     debugPrint('[WakeWord] loop ended');
   }
 
-  /// Одна сессия STT. Completer завершается при:
-  /// 1. Срабатывании wake word → true
-  /// 2. onStatus "done"/"notListening" → false (мгновенно, не ждём 310с)
-  /// 3. onError → false (мгновенно)
-  /// 4. Таймаут 310с → false (страховка)
+  /// Одна сессия STT.
+  /// Completer завершается при:
+  /// 1. Wake word → true
+  /// 2. onStatus "done"/"notListening" → false (мгновенно)
+  /// 3. 2с проверка: listen() не запустился → false (без зависания)
+  /// 4. Таймаут 30с → false (страховка)
   Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
     _currentCompleter = completer;
@@ -242,9 +258,17 @@ class WakeWordService {
       onSoundLevelChange: null,
     );
 
+    // Проверка через 2 секунды: если listen() не запустился — сразу завершаем
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!_stt.isListening && !completer.isCompleted && !triggered) {
+        debugPrint('[WakeWord] listen did not start — instant retry');
+        completer.complete(false);
+      }
+    });
+
     try {
       return await completer.future
-          .timeout(const Duration(seconds: 310), onTimeout: () => false);
+          .timeout(const Duration(seconds: 30), onTimeout: () => false);
     } finally {
       _currentCompleter = null;
       if (triggered && _stt.isListening) {
