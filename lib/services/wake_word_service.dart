@@ -5,15 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
-/// WakeWordService — ПОЛНОСТЬЮ НЕЗАВИСИМЫЙ вейкворд на собственном STT.
+/// WakeWordService — вейкворд на собственном STT.
 ///
-/// Ключевые механизмы бессмертия:
-/// 1. onStatus "done"/"notListening" — мгновенно завершает completer,
-///    цикл перезапускается БЕЗ ожидания таймаута
-/// 2. Watchdog-таймер (каждые 2с) — если STT не слушает а сервис активен,
-///    принудительно перезапускает цикл
-/// 3. finally всегда вызывает stt.stop() — чистое состояние перед рестартом
-/// 4. После 10 сессий — реинициализация STT для сброса накопленного состояния
+/// Ключевые механизмы:
+/// 1. _processing флаг — когда команда обрабатывается (от вейкворда до rearm),
+///    watchdog НЕ перезапускает цикл, чтобы не конфликтовать с SpeechService STT
+/// 2. onStatus "done"/"notListening" — мгновенно завершает completer
+/// 3. Watchdog-таймер (каждые 2с) — перезапускает цикл если он умер
+///    (но только если _processing == false)
+/// 4. После 10 сессий — реинициализация STT
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -27,9 +27,10 @@ class WakeWordService {
   bool _active       = false;
   bool _loopRunning  = false;
   bool _suppressed   = false;
+  bool _processing   = false;  // ← НОВОЕ: команда в обработке, watchdog молчит
   Timer? _suppressTimer;
   Timer? _watchdog;
-  int _sessionCount  = 0;   // счётчик сессий для периодической реинициализации
+  int _sessionCount  = 0;
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
@@ -46,9 +47,6 @@ class WakeWordService {
       },
       onStatus: (s) {
         debugPrint('[WakeWord] STT status: $s');
-        // КРИТИЧНО: когда STT-сессия заканчивается (listenFor истёк,
-        // или OS остановила), onStatus получает "done"/"notListening".
-        // Мгновенно завершаем completer — цикл перезапускается без задержки.
         if ((s == 'done' || s == 'notListening') &&
             _currentCompleter != null && !_currentCompleter!.isCompleted) {
           _currentCompleter!.complete(false);
@@ -79,16 +77,13 @@ class WakeWordService {
   }
 
   // ── WATCHDOG — бессмертие вейкворда ───────────────────────────────
-  /// Каждые 2 секунды проверяет: если сервис активен, но цикл не запущен
-  /// и STT не слушает — принудительно перезапускает прослушивание.
-  /// Это спасает от ВСЕХ причин "тухания": таймауты, ошибки, state-баги.
   void _startWatchdog() {
     _watchdog?.cancel();
     _watchdog = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!_active) return;
-      if (_loopRunning) return;  // цикл работает — не вмешиваемся
+      if (_loopRunning) return;
+      if (_processing) return;  // ← НОВОЕ: команда в обработке — не лезем
 
-      // Цикл не запущен, но сервис активен — перезапуск
       debugPrint('[WakeWord] WATCHDOG: loop dead, restarting');
       _startLoop();
     });
@@ -100,6 +95,7 @@ class WakeWordService {
     if (_active) return;
     _onWakeWord = onWakeWordDetected;
     _active = true;
+    _processing = false;
     debugPrint('[WakeWord] started');
     _startLoop();
   }
@@ -107,6 +103,7 @@ class WakeWordService {
   Future<void> stop() async {
     _active = false;
     _loopRunning = false;
+    _processing = false;
     _suppressTimer?.cancel();
     _suppressed = false;
     if (_stt.isListening) {
@@ -115,18 +112,31 @@ class WakeWordService {
     debugPrint('[WakeWord] stopped');
   }
 
+  /// Вызывается после полной обработки команды (включая TTS).
+  /// Снимает _processing и перезапускает цикл прослушивания.
   Future<void> rearm() async {
+    _processing = false;  // ← НОВОЕ: снимаем блокировку watchdog
     if (!_active) return;
-    debugPrint('[WakeWord] rearm');
-    if (!_loopRunning) _startLoop();
-  }
+    debugPrint('[WakeWord] rearm — restarting loop');
 
-  Future<void> disarm() async {
-    _loopRunning = false;
+    // Останавливаем STT на всякий случай — чистое состояние
     if (_stt.isListening) {
       try { await _stt.stop(); } catch (_) {}
     }
-    debugPrint('[WakeWord] disarmed');
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    _loopRunning = false;  // гарантия чистого старта
+    _startLoop();
+  }
+
+  /// Блокирует вейкворд пока SpeechService записывает команду.
+  Future<void> disarm() async {
+    _loopRunning = false;
+    _processing = true;  // ← НОВОЕ: watchdog не будет перезапускать
+    if (_stt.isListening) {
+      try { await _stt.stop(); } catch (_) {}
+    }
+    debugPrint('[WakeWord] disarmed (processing=$_processing)');
   }
 
   void suppress([int seconds = 3]) {
@@ -208,7 +218,7 @@ class WakeWordService {
         continue;
       }
 
-      // Периодическая реинициализация каждые 10 сессий — сброс state-багов
+      // Периодическая реинициализация каждые 10 сессий
       if (_sessionCount >= 10) {
         debugPrint('[WakeWord] re-init after $_sessionCount sessions');
         _sessionCount = 0;
@@ -240,6 +250,7 @@ class WakeWordService {
         if (detected && _active && _loopRunning) {
           debugPrint('[WakeWord] TRIGGERED!');
           _loopRunning = false;
+          _processing = true;  // ← НОВОЕ: блокируем watchdog
           if (_stt.isListening) {
             try { await _stt.stop(); } catch (_) {}
           }
@@ -255,7 +266,6 @@ class WakeWordService {
   }
 
   /// Одна сессия прослушивания.
-  /// Завершается мгновенно при: срабатывании / ошибке / окончании сессии (onStatus done).
   Future<bool> _listenOnce() async {
     final completer = Completer<bool>();
     _currentCompleter = completer;
@@ -294,7 +304,6 @@ class WakeWordService {
           .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
       _currentCompleter = null;
-      // ВСЕГДА останавливаем STT — чистое состояние перед следующей сессией
       if (_stt.isListening) {
         try { await _stt.stop(); } catch (_) {}
       }
@@ -302,6 +311,7 @@ class WakeWordService {
   }
 
   bool get isListening => _active && _loopRunning;
+  bool get isProcessing => _processing;
   bool get isMusicPlaying => false;
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }

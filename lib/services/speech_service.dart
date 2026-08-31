@@ -115,6 +115,9 @@ class SpeechService extends ChangeNotifier {
     notifyListeners();
     onListeningStart?.call();
 
+    // Небольшая пауза чтобы предыдущий STT (wake word) полностью освободил recognizer
+    await Future.delayed(const Duration(milliseconds: 200));
+
     _stt.listen(
       onResult: (result) {
         _lastWords = result.recognizedWords;

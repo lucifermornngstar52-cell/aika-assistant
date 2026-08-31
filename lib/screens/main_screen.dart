@@ -721,8 +721,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _speak('Да?');
     setState(() => _isListening = true);
     await _pingSound.pingStart();
+    // Даём Android SpeechRecognizer время освободиться после wake word STT
+    await Future.delayed(const Duration(milliseconds: 300));
     await _speechService.startListening(
       (text) async {
+        try {
         // Если Айка задремала — радостное приветствие
         if (_moodService.isSleepy) {
           final wakeMsg = _moodService.getWakeUpMessage();
@@ -760,8 +763,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         OverlayService().asyncState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
         OverlayService().asyncState('idle');
-        // Чат-STT отработал — перезапускаем wake word
-        if (_wakeWordEnabled) await _wakeWordService.rearm();
+        } catch (e) {
+          debugPrint('[WakeWord] callback error: $e');
+          setState(() => _isListening = false);
+          OverlayService().asyncState('idle');
+        } finally {
+          // ВСЕГДА перезапускаем wake word — даже если _sendMessage упал
+          if (_wakeWordEnabled) await _wakeWordService.rearm();
+        }
       },
 
     );
@@ -2055,11 +2064,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() { _isListening = true; _isDancing = false; });
       OverlayService().asyncState('listening');
       await _speechService.startListening(
-        (text) {
-          setState(() => _isListening = false);
-          OverlayService().asyncState('idle');
-          if (_wakeWordEnabled) _wakeWordService.rearm();
-          if (text.isNotEmpty) _sendMessage(text);
+        (text) async {
+          try {
+            setState(() => _isListening = false);
+            OverlayService().asyncState('idle');
+            if (text.isNotEmpty) await _sendMessage(text);
+          } catch (e) {
+            debugPrint('[VoiceBtn] callback error: $e');
+            setState(() => _isListening = false);
+            OverlayService().asyncState('idle');
+          } finally {
+            if (_wakeWordEnabled) await _wakeWordService.rearm();
+          }
         },
       );
     }
