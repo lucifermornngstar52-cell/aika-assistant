@@ -21,7 +21,7 @@ class WakeWordService {
 
   static const _phoneChannel = EventChannel('com.aika.assistant/phone_state');
 
-  SpeechToText _stt = SpeechToText();  // non-final — заменяем при ре-инициализации
+  final SpeechToText _stt = SpeechToText();
   bool _sttReady = false;
 
   bool _active       = false;
@@ -31,7 +31,6 @@ class WakeWordService {
   Timer? _suppressTimer;
   Timer? _watchdog;
   int _sessionCount  = 0;
-  int _consecutiveErrors = 0;  // подряд ошибок → полный сброс
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
@@ -57,7 +56,6 @@ class WakeWordService {
     await updateTriggers();
     _listenPhoneState();
     _startWatchdog();
-    _consecutiveErrors = 0;
     debugPrint('[WakeWord] init, STT ready: $_sttReady, triggers: $_triggers');
   }
 
@@ -219,22 +217,34 @@ class WakeWordService {
         continue;
       }
 
-      // Периодическая реинициализация: каждые 8 сессий — НОВЫЙ экземпляр SpeechToText
-      // Старый Android SpeechRecognizer накапливает ошибки → полная замена
-      if (_sessionCount >= 8) {
-        debugPrint('[WakeWord] full re-init after $_sessionCount sessions');
+      // Периодическая реинициализация каждые 10 сессий
+      if (_sessionCount >= 10) {
+        debugPrint('[WakeWord] re-init after $_sessionCount sessions');
         _sessionCount = 0;
-        _consecutiveErrors = 0;
-        await _fullReinit();
-        continue;
-      }
-
-      // Защита: 3+ ошибок подряд → полный сброс с новой задержкой
-      if (_consecutiveErrors >= 3) {
-        debugPrint('[WakeWord] $_consecutiveErrors errors — full reset with backoff');
-        _consecutiveErrors = 0;
-        await Future.delayed(const Duration(seconds: 3));
-        await _fullReinit();
+        try {
+          await _stt.stop();
+          _sttReady = await _stt.initialize(
+            onError: (e) {
+              if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+                _currentCompleter!.complete(false);
+              }
+            },
+            onStatus: (s) {
+              if ((s == 'done' || s == 'notListening') &&
+                  _currentCompleter != null && !_currentCompleter!.isCompleted) {
+                _currentCompleter!.complete(false);
+              }
+            },
+          );
+        } catch (e) {
+          debugPrint('[WakeWord] re-init error: $e');
+        }
+        if (!_sttReady) {
+          debugPrint('[WakeWord] re-init failed — letting watchdog take over');
+          _loopRunning = false;
+          return;
+        }
+        await Future.delayed(const Duration(milliseconds: 200));
         continue;
       }
 
@@ -243,7 +253,6 @@ class WakeWordService {
         _sessionCount++;
         if (detected && _active && _loopRunning) {
           debugPrint('[WakeWord] TRIGGERED!');
-          _consecutiveErrors = 0;
           _loopRunning = false;
           _processing = true;  // ← НОВОЕ: блокируем watchdog
           if (_stt.isListening) {
@@ -254,49 +263,10 @@ class WakeWordService {
         }
       } catch (e) {
         debugPrint('[WakeWord] loop error: $e');
-        _consecutiveErrors++;
         await Future.delayed(const Duration(milliseconds: 200));
       }
     }
     _loopRunning = false;
-  }
-
-  /// Полная реинициализация: уничтожает старый SpeechToText и создаёт новый.
-  /// Это единственный надёжный способ сбросить накопленные ошибки Android SpeechRecognizer.
-  Future<void> _fullReinit() async {
-    try {
-      if (_stt.isListening) {
-        try { await _stt.stop(); } catch (_) {}
-      }
-    } catch (_) {}
-
-    // Создаём НОВЫЙ экземпляр — старый полностью отбрасывается
-    _stt = SpeechToText();
-    _currentCompleter = null;
-
-    try {
-      _sttReady = await _stt.initialize(
-        onError: (e) {
-          debugPrint('[WakeWord] STT error: $e');
-          _consecutiveErrors++;
-          if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
-            _currentCompleter!.complete(false);
-          }
-        },
-        onStatus: (s) {
-          debugPrint('[WakeWord] STT status: $s');
-          if ((s == 'done' || s == 'notListening') &&
-              _currentCompleter != null && !_currentCompleter!.isCompleted) {
-            _currentCompleter!.complete(false);
-          }
-        },
-      );
-      debugPrint('[WakeWord] full re-init done, STT ready: $_sttReady');
-    } catch (e) {
-      debugPrint('[WakeWord] full re-init FAILED: $e');
-      _sttReady = false;
-      _consecutiveErrors++;
-    }
   }
 
   /// Одна сессия прослушивания.
@@ -332,6 +302,14 @@ class WakeWordService {
       partialResults: true,
       onSoundLevelChange: null,
     );
+
+    // ПРОВЕРКА: если listen() не запустился — мгновенно возвращаем false,
+    // цикл сразу перезапускает. Не ждём 310с таймаута.
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (!_stt.isListening && !completer.isCompleted) {
+      debugPrint('[WakeWord] listen failed to start — instant retry');
+      completer.complete(false);
+    }
 
     try {
       return await completer.future
