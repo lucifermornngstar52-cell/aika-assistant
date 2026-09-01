@@ -189,25 +189,28 @@ class WakeWordService {
         continue;
       }
 
-      if (_stt.isListening) {
-        await Future.delayed(const Duration(milliseconds: 30));
-        continue;
-      }
+      // ВСЕГДА принудительно stop() перед новой сессией.
+      // SpeechRecognizer может зависнуть в isListening=true после таймаута.
+      try { await _stt.stop(); } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 50));
 
       try {
-        final detected = await _listenOnce();
+        final detected = await _listenOnce()
+            .timeout(const Duration(seconds: 15), onTimeout: () {
+          debugPrint('[WakeWord] ⏱ session timeout — restarting');
+          return false;
+        });
+
         if (detected && _active && _loopRunning) {
           debugPrint('[WakeWord] TRIGGERED!');
           _loopRunning = false;
           _onWakeWord?.call();
           return;
         }
-        // Сессия закончилась — stop() уже вызван в finally.
-        // Небольшая пауза и снова.
         await Future.delayed(const Duration(milliseconds: 100));
       } catch (e) {
         debugPrint('[WakeWord] error: $e');
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 200));
       }
     }
     _loopRunning = false;
@@ -219,44 +222,42 @@ class WakeWordService {
     _currentCompleter = completer;
     bool triggered = false;
 
-    _stt.listen(
-      onResult: (result) {
-        final text = result.recognizedWords.toLowerCase();
-        if (text.isNotEmpty) debugPrint('[WakeWord] heard "$text"');
-
-        if (_suppressed) return;
-        if (!_active || !_loopRunning) return;
-
-        for (final t in _triggers) {
-          if (t.isNotEmpty && text.contains(t)) {
-            if (!triggered) {
-              triggered = true;
-              if (!completer.isCompleted) completer.complete(true);
-            }
-            return;
-          }
-        }
-      },
-      listenFor: const Duration(seconds: 9999),
-      pauseFor: const Duration(seconds: 9999),
-      localeId: 'ru_RU',
-      cancelOnError: false,
-      partialResults: true,
-      onSoundLevelChange: (level) {
-        if (level > -5) {
-          debugPrint('[WakeWord] 🎵 sound level: $level dB');
-        }
-      },
-    );
-
     try {
-      return await completer.future;
-    } finally {
-      _currentCompleter = null;
-      // ВСЕГДА stop() — даже если сессия закончилась без trigger.
-      // Это сбрасывает STT в чистое состояние для следующего listen().
-      try { await _stt.stop(); } catch (_) {}
+      await _stt.listen(
+        onResult: (result) {
+          final text = result.recognizedWords.toLowerCase();
+          if (text.isNotEmpty) debugPrint('[WakeWord] heard "$text"');
+
+          if (_suppressed) return;
+          if (!_active || !_loopRunning) return;
+
+          for (final t in _triggers) {
+            if (t.isNotEmpty && text.contains(t)) {
+              if (!triggered) {
+                triggered = true;
+                if (!completer.isCompleted) completer.complete(true);
+              }
+              return;
+            }
+          }
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 5),
+        localeId: 'ru_RU',
+        cancelOnError: false,
+        partialResults: true,
+        onSoundLevelChange: (level) {
+          if (level > -5) {
+            debugPrint('[WakeWord] 🎵 sound level: $level dB');
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('[WakeWord] listen() error: $e');
+      if (!completer.isCompleted) completer.complete(false);
     }
+
+    return completer.future;
   }
 
   bool get isListening => _active && _loopRunning;
