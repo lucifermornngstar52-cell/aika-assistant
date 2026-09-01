@@ -308,6 +308,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Инициализируем мощный процессор голосовых команд
     _voiceProcessor.init();
     await _applyTtsSettings();
+    await PersonalityService.load();
     await _loadPrefs();
     await HabitMemoryService.load();
     await RelationshipService.load();
