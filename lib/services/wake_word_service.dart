@@ -11,7 +11,12 @@ const _micChannel = MethodChannel('com.aika.assistant/microphone');
 
 /// WakeWordService — бесконечный вейкворд.
 /// Слушает всегда. Отдаёт микрофон только при wake word.
-/// Всё. Ничего больше.
+///
+/// Устойчивость к "зависанию" recognizer engine:
+/// движок Android SpeechRecognizer иногда не восстанавливается сразу
+/// после долгой сессии (~5 минут) — требуется явный cancel() + буферная
+/// задержка + watchdog, который форсирует полную переинициализацию,
+/// если статус не менялся слишком долго.
 class WakeWordService {
   static WakeWordService? _instance;
   factory WakeWordService() => _instance ??= WakeWordService._();
@@ -26,31 +31,43 @@ class WakeWordService {
   bool _loopRunning = false;
   bool _suppressed = false;
   Timer? _suppressTimer;
+  Timer? _watchdogTimer;
 
   Completer<bool>? _currentCompleter;
+
+  DateTime _lastStatusChange = DateTime.now();
+  int _sessionCount = 0;
 
   List<String> _triggers = ['айка', 'aika'];
   Function()? _onWakeWord;
 
+  void _onSttError(dynamic e) {
+    debugPrint('[WakeWord] error: $e');
+    _lastStatusChange = DateTime.now();
+    if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+      _currentCompleter!.complete(false);
+    }
+  }
+
+  void _onSttStatus(String s) {
+    debugPrint('[WakeWord] status: $s');
+    _lastStatusChange = DateTime.now();
+    if ((s == 'done' || s == 'notListening') &&
+        _currentCompleter != null &&
+        !_currentCompleter!.isCompleted) {
+      _currentCompleter!.complete(false);
+    }
+  }
+
   Future<void> initialize() async {
     _sttReady = await _stt.initialize(
-      onError: (e) {
-        debugPrint('[WakeWord] error: $e');
-        if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
-          _currentCompleter!.complete(false);
-        }
-      },
-      onStatus: (s) {
-        debugPrint('[WakeWord] status: $s');
-        if ((s == 'done' || s == 'notListening') &&
-            _currentCompleter != null &&
-            !_currentCompleter!.isCompleted) {
-          _currentCompleter!.complete(false);
-        }
-      },
+      onError: _onSttError,
+      onStatus: _onSttStatus,
     );
+    _lastStatusChange = DateTime.now();
     await updateTriggers();
     _listenPhoneState();
+    _startWatchdog();
     debugPrint('[WakeWord] init, ready: $_sttReady');
   }
 
@@ -67,6 +84,37 @@ class WakeWordService {
       },
       onError: (e) => debugPrint('[WakeWord] phone error: $e'),
     );
+  }
+
+  /// Watchdog — следит, чтобы recognizer engine не "тух" надолго.
+  /// Если статус не менялся дольше 20 секунд, пока мы должны слушать —
+  /// значит движок застрял в промежуточном состоянии (частая проблема
+  /// после длинных сессий на некоторых версиях Android). Форсируем
+  /// cancel() + полную переинициализацию, вместо того чтобы ждать,
+  /// когда система "сама очнётся".
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
+      if (!_active || !_loopRunning) return;
+      final stuckFor = DateTime.now().difference(_lastStatusChange);
+      final reallyListening = _stt.isListening;
+      if (stuckFor.inSeconds >= 20 && !reallyListening) {
+        debugPrint('[WakeWord] 🚨 Watchdog: stuck for ${stuckFor.inSeconds}s — forcing full re-init');
+        try { await _stt.cancel(); } catch (_) {}
+        try {
+          _sttReady = await _stt.initialize(
+            onError: _onSttError,
+            onStatus: _onSttStatus,
+          );
+        } catch (e) {
+          debugPrint('[WakeWord] Watchdog re-init failed: $e');
+        }
+        _lastStatusChange = DateTime.now();
+        if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+          _currentCompleter!.complete(false);
+        }
+      }
+    });
   }
 
   Future<void> startListening(Function() onWakeWordDetected) async {
@@ -97,6 +145,7 @@ class WakeWordService {
     _active = false;
     _loopRunning = false;
     _suppressTimer?.cancel();
+    _watchdogTimer?.cancel();
     _suppressed = false;
     if (_stt.isListening) {
       try { await _stt.stop(); } catch (_) {}
@@ -189,8 +238,29 @@ class WakeWordService {
         continue;
       }
 
-      // Мгновенный рестарт — stop() и сразу listen() без задержек.
-      try { await _stt.stop(); } catch (_) {}
+      // cancel() надёжнее stop() — гарантированно освобождает recognizer
+      // engine перед новой сессией (stop() иногда оставляет "хвост").
+      try { await _stt.cancel(); } catch (_) {}
+      // Небольшая буферная задержка — даёт Android recognizer service
+      // время реально освободить аудио-ресурсы перед новым listen().
+      // Без неё возникает гонка: listen() вызывается, но система ещё
+      // не закончила teardown предыдущей сессии — микрофон "молчит"
+      // неопределённое время, пока система сама не решит его поднять.
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      _sessionCount++;
+      // Каждые 15 сессий — полная переинициализация STT engine,
+      // чтобы избежать постепенной деградации движка распознавания.
+      if (_sessionCount % 15 == 0) {
+        debugPrint('[WakeWord] 🔄 periodic full re-init (session $_sessionCount)');
+        try {
+          _sttReady = await _stt.initialize(
+            onError: _onSttError,
+            onStatus: _onSttStatus,
+          );
+          _lastStatusChange = DateTime.now();
+        } catch (_) {}
+      }
 
       try {
         final detected = await _listenOnce()
@@ -205,11 +275,11 @@ class WakeWordService {
           _onWakeWord?.call();
           return;
         }
-        // НИКАКОЙ задержки — сразу в новую сессию.
+        // Без задержки — сразу в новую сессию (после буфера выше).
       } catch (e) {
         debugPrint('[WakeWord] error: $e');
         // Минимальная задержка только при ошибке, чтобы не спамить.
-        await Future.delayed(const Duration(milliseconds: 50));
+        await Future.delayed(const Duration(milliseconds: 300));
       }
     }
     _loopRunning = false;
@@ -226,6 +296,7 @@ class WakeWordService {
         onResult: (result) {
           final text = result.recognizedWords.toLowerCase();
           if (text.isNotEmpty) debugPrint('[WakeWord] heard "$text"');
+          _lastStatusChange = DateTime.now();
 
           if (_suppressed) return;
           if (!_active || !_loopRunning) return;
@@ -246,11 +317,13 @@ class WakeWordService {
         cancelOnError: false,
         partialResults: true,
         onSoundLevelChange: (level) {
+          _lastStatusChange = DateTime.now();
           if (level > -5) {
             debugPrint('[WakeWord] 🎵 sound level: $level dB');
           }
         },
       );
+      _lastStatusChange = DateTime.now();
     } catch (e) {
       debugPrint('[WakeWord] listen() error: $e');
       if (!completer.isCompleted) completer.complete(false);
