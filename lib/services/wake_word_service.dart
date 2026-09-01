@@ -73,6 +73,13 @@ class WakeWordService {
     if (_active) return;
     _onWakeWord = onWakeWordDetected;
     _active = true;
+    // Запускаем нативный Foreground Service (microphone + WakeLock + AudioFocus)
+    try {
+      await _micChannel.invokeMethod('start');
+      debugPrint('[WakeWord] 🎤 AikaMicrophoneService started');
+    } catch (e) {
+      debugPrint('[WakeWord] ⚠ AikaMicrophoneService failed: $e');
+    }
     _startLoop();
   }
 
@@ -84,6 +91,11 @@ class WakeWordService {
     if (_stt.isListening) {
       try { await _stt.stop(); } catch (_) {}
     }
+    // Останавливаем нативный Foreground Service
+    try {
+      await _micChannel.invokeMethod('stop');
+      debugPrint('[WakeWord] 🎤 AikaMicrophoneService stopped');
+    } catch (_) {}
   }
 
   Future<void> rearm() async {
