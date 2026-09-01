@@ -19,8 +19,6 @@ import android.os.PowerManager
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 
 class AikaMicrophoneService : Service() {
 
@@ -51,9 +49,8 @@ class AikaMicrophoneService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 Log.d(TAG, "START")
-                // Проверяем разрешение на микрофон ПЕРЕД стартом
                 if (!hasMicPermission()) {
-                    Log.e(TAG, "RECORD_AUDIO not granted — cannot start microphone service")
+                    Log.e(TAG, "RECORD_AUDIO not granted — cannot start")
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -66,7 +63,7 @@ class AikaMicrophoneService : Service() {
                     isPaused = false
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start: ${e.message}")
-                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -74,7 +71,7 @@ class AikaMicrophoneService : Service() {
             ACTION_STOP -> {
                 Log.d(TAG, "STOP")
                 releaseAll()
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
                 stopSelf()
             }
         }
@@ -82,14 +79,11 @@ class AikaMicrophoneService : Service() {
     }
 
     private fun hasMicPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            this, android.Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
+        return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun startForegroundWithMicrophoneType() {
         val notification = buildNotification()
-
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
@@ -98,13 +92,7 @@ class AikaMicrophoneService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed: ${e.message}")
-            // Fallback: пробуем без типа (старый Android)
-            try {
-                startForeground(NOTIF_ID, notification)
-            } catch (e2: Exception) {
-                Log.e(TAG, "startForeground fallback failed: ${e2.message}")
-                throw e2
-            }
+            try { startForeground(NOTIF_ID, notification) } catch (e2: Exception) { throw e2 }
         }
     }
 
@@ -116,30 +104,21 @@ class AikaMicrophoneService : Service() {
             wakeLock?.setReferenceCounted(false)
             wakeLock?.acquire(24 * 60 * 60 * 1000L)
             Log.d(TAG, "WakeLock acquired")
-        } catch (e: Exception) {
-            Log.e(TAG, "WakeLock error: ${e.message}")
-        }
+        } catch (e: Exception) { Log.e(TAG, "WakeLock error: ${e.message}") }
     }
 
     private fun releaseWakeLock() {
-        try {
-            wakeLock?.let { if (it.isHeld) it.release() }
-            wakeLock = null
-        } catch (e: Exception) {
-            Log.e(TAG, "WakeLock release error: ${e.message}")
-        }
+        try { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null } catch (e: Exception) {}
     }
 
     private fun acquireAudioFocus() {
         try {
             audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val attrs = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
-
                 focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
                     .setAcceptsDelayedFocusGain(false)
@@ -150,41 +129,25 @@ class AikaMicrophoneService : Service() {
                                 Log.w(TAG, "AudioFocus LOST — retrying")
                                 handler.postDelayed({ reAcquireAudioFocus() }, 1000)
                             }
-                            AudioManager.AUDIOFOCUS_GAIN -> {
-                                Log.d(TAG, "AudioFocus GAINED")
-                            }
+                            AudioManager.AUDIOFOCUS_GAIN -> Log.d(TAG, "AudioFocus GAINED")
                         }
                     }
                     .build()
-
                 audioManager?.requestAudioFocus(focusRequest!!)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "AudioFocus error: ${e.message}")
-        }
+        } catch (e: Exception) { Log.e(TAG, "AudioFocus error: ${e.message}") }
     }
 
     private fun reAcquireAudioFocus() {
         if (isPaused) return
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                focusRequest?.let { audioManager?.requestAudioFocus(it) }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "AudioFocus re-acquire error: ${e.message}")
-        }
+        try { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { focusRequest?.let { audioManager?.requestAudioFocus(it) } } } catch (_: Exception) {}
     }
 
     private fun abandonAudioFocus() {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                focusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
-            } else {
-                audioManager?.abandonAudioFocus(null)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "AudioFocus abandon error: ${e.message}")
-        }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { focusRequest?.let { audioManager?.abandonAudioFocusRequest(it) } }
+            else { audioManager?.abandonAudioFocus(null) }
+        } catch (_: Exception) {}
     }
 
     private fun setupPhoneStateListener() {
@@ -193,67 +156,46 @@ class AikaMicrophoneService : Service() {
             telephonyManager?.listen(object : PhoneStateListener() {
                 override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                     when (state) {
-                        TelephonyManager.CALL_STATE_IDLE -> {
-                            if (isPaused) {
-                                isPaused = false
-                                reAcquireAudioFocus()
-                            }
-                        }
-                        TelephonyManager.CALL_STATE_RINGING,
-                        TelephonyManager.CALL_STATE_OFFHOOK -> {
-                            isPaused = true
-                            abandonAudioFocus()
-                        }
+                        TelephonyManager.CALL_STATE_IDLE -> { if (isPaused) { isPaused = false; reAcquireAudioFocus() } }
+                        TelephonyManager.CALL_STATE_RINGING, TelephonyManager.CALL_STATE_OFFHOOK -> { isPaused = true; abandonAudioFocus() }
                     }
                 }
             }, PhoneStateListener.LISTEN_CALL_STATE)
-        } catch (e: Exception) {
-            Log.e(TAG, "PhoneState error: ${e.message}")
-        }
+        } catch (e: Exception) { Log.e(TAG, "PhoneState error: ${e.message}") }
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, "Aika Microphone", NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Микрофон активен"
-                setShowBadge(false)
+            val channel = NotificationChannel(CHANNEL_ID, "Aika Microphone", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Микрофон активен"; setShowBadge(false)
             }
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(): Notification {
-        // Используем app icon — гарантированно существует
         val iconRes = applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_lock_silent_mode_off
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            Notification.Builder(this)
+        }
+        return builder
             .setContentTitle("Aika слушает")
             .setContentText("Микрофон активен")
             .setSmallIcon(iconRes)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(Notification.PRIORITY_LOW)
             .build()
     }
 
     private fun releaseAll() {
         abandonAudioFocus()
         releaseWakeLock()
-        try {
-            telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE)
-        } catch (e: Exception) {
-            Log.e(TAG, "PhoneState cleanup error: ${e.message}")
-        }
-        isActive = false
-        isPaused = false
+        try { telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE) } catch (_: Exception) {}
+        isActive = false; isPaused = false
     }
 
-    override fun onDestroy() {
-        releaseAll()
-        super.onDestroy()
-    }
-
+    override fun onDestroy() { releaseAll(); super.onDestroy() }
     override fun onBind(intent: Intent?): IBinder? = null
 }
