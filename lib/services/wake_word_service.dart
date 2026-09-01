@@ -194,7 +194,7 @@ class WakeWordService {
 
       try {
         final detected = await _listenOnce()
-            .timeout(const Duration(seconds: 1), onTimeout: () {
+            .timeout(const Duration(seconds: 300), onTimeout: () {
           debugPrint('[WakeWord] ⏱ timeout — instant restart');
           return false;
         });
@@ -240,8 +240,8 @@ class WakeWordService {
             }
           }
         },
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 5),
+        listenFor: const Duration(seconds: 300),
+        pauseFor: const Duration(seconds: 300),
         localeId: 'ru_RU',
         cancelOnError: false,
         partialResults: true,
