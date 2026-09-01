@@ -194,7 +194,7 @@ class WakeWordService {
 
       try {
         final detected = await _listenOnce()
-            .timeout(const Duration(seconds: 20), onTimeout: () {
+            .timeout(const Duration(seconds: 1), onTimeout: () {
           debugPrint('[WakeWord] ⏱ timeout — instant restart');
           return false;
         });
