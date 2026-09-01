@@ -210,6 +210,16 @@
     }
   };
 
+  // Alias for overlay compatibility — same as model3D
+  window.switchModel = function(path) {
+    // If relative path, make it absolute from asset base
+    if (path.indexOf('file://') !== 0 && path.indexOf('http') !== 0) {
+      path = 'file:///android_asset/flutter_assets/assets/' + path;
+    }
+    loadModel(path);
+  };
+  window.setAikaState = setState;
+
   window.addEventListener('flutterInAppWebViewPlatformReady', function() {
     dbg('Flutter ready');
     try { window.flutter_inappwebview.callHandler('onReady', {}); } catch(e) { dbg('onReady err:'+e); }
