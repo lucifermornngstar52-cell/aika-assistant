@@ -73,7 +73,17 @@ class WakeWordService {
     if (_active) return;
     _onWakeWord = onWakeWordDetected;
     _active = true;
-    // Запускаем нативный Foreground Service (microphone + WakeLock + AudioFocus)
+    // Запрашиваем exemption от battery optimization (Doze не убьёт микшер)
+    try {
+      final isOptimized = await _micChannel.invokeMethod<bool>('isBatteryOptimized') ?? false;
+      if (isOptimized) {
+        debugPrint('[WakeWord] 🔋 Requesting battery optimization exemption');
+        await _micChannel.invokeMethod('requestBatteryOptimization');
+      }
+    } catch (e) {
+      debugPrint('[WakeWord] ⚠ Battery opt check failed: $e');
+    }
+    // Запускаем нативный Foreground Service (microphone + WakeLock)
     try {
       await _micChannel.invokeMethod('start');
       debugPrint('[WakeWord] 🎤 AikaMicrophoneService started');
@@ -194,10 +204,10 @@ class WakeWordService {
         }
         // Сессия закончилась — stop() уже вызван в finally.
         // Небольшая пауза и снова.
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 100));
       } catch (e) {
         debugPrint('[WakeWord] error: $e');
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 100));
       }
     }
     _loopRunning = false;
@@ -232,7 +242,11 @@ class WakeWordService {
       localeId: 'ru_RU',
       cancelOnError: false,
       partialResults: true,
-      onSoundLevelChange: null,
+      onSoundLevelChange: (level) {
+        if (level > -5) {
+          debugPrint('[WakeWord] 🎵 sound level: $level dB');
+        }
+      },
     );
 
     try {
