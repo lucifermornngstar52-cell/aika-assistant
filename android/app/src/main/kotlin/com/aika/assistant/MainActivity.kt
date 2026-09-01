@@ -34,6 +34,7 @@ class MainActivity : FlutterActivity() {
         private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
         private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
         private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
+        private const val MICROPHONE_CHANNEL              = "com.aika.assistant/microphone"
     }
 
     // Новые нативные обработчики (openclaw-inspired)
@@ -517,7 +518,43 @@ class MainActivity : FlutterActivity() {
                 }
             })
 
-        // ── 8. Notifications permission channel ──────────────────────────────────
+        // ── 8. Microphone Service Control MethodChannel ───────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/microphone")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        try {
+                            val i = Intent(this, AikaMicrophoneService::class.java)
+                                .setAction(AikaMicrophoneService.ACTION_START)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(i)
+                            } else {
+                                startService(i)
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            Log.e("AikaMic", "Failed to start: ${e.message}")
+                            result.success(false)
+                        }
+                    }
+                    "stop" -> {
+                        try {
+                            val i = Intent(this, AikaMicrophoneService::class.java)
+                                .setAction(AikaMicrophoneService.ACTION_STOP)
+                            startService(i)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    "isActive" -> {
+                        result.success(AikaMicrophoneService.isActive)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── 9. Notifications permission channel ──────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
