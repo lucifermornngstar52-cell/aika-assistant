@@ -5,6 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'personality_service.dart';
 
+/// MethodChannel для управления нативным AikaMicrophoneService
+/// (Foreground Service с типом microphone + WakeLock + AudioFocus)
+const _micChannel = MethodChannel('com.aika.assistant/microphone');
+
 /// WakeWordService — бесконечный вейкворд.
 /// Слушает всегда. Отдаёт микрофон только при wake word.
 /// Всё. Ничего больше.
