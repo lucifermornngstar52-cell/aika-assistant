@@ -189,15 +189,13 @@ class WakeWordService {
         continue;
       }
 
-      // ВСЕГДА принудительно stop() перед новой сессией.
-      // SpeechRecognizer может зависнуть в isListening=true после таймаута.
+      // Мгновенный рестарт — stop() и сразу listen() без задержек.
       try { await _stt.stop(); } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 50));
 
       try {
         final detected = await _listenOnce()
-            .timeout(const Duration(seconds: 15), onTimeout: () {
-          debugPrint('[WakeWord] ⏱ session timeout — restarting');
+            .timeout(const Duration(seconds: 20), onTimeout: () {
+          debugPrint('[WakeWord] ⏱ timeout — instant restart');
           return false;
         });
 
@@ -207,10 +205,11 @@ class WakeWordService {
           _onWakeWord?.call();
           return;
         }
-        await Future.delayed(const Duration(milliseconds: 100));
+        // НИКАКОЙ задержки — сразу в новую сессию.
       } catch (e) {
         debugPrint('[WakeWord] error: $e');
-        await Future.delayed(const Duration(milliseconds: 200));
+        // Минимальная задержка только при ошибке, чтобы не спамить.
+        await Future.delayed(const Duration(milliseconds: 50));
       }
     }
     _loopRunning = false;
