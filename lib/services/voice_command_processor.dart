@@ -441,20 +441,42 @@ class VoiceCommandProcessor {
   }
 
   // ── Системная навигация ───────────────────────────────────────────────────
+  // Все команды идут через AikaAccessibilityService. Если сервис не запущен
+  // (пользователь не включил Accessibility, либо Android его отключил —
+  // частый случай для sideload-приложений с "Restricted settings"),
+  // native-сторона возвращает ошибку NO_SERVICE. Раньше это молча
+  // проглатывалось и команда просто ничего не делала. Теперь — явный
+  // фидбек, чтобы пользователь понимал В ЧЁМ дело.
   Future<VoiceCmdResult?> _handleNavigation(String t) async {
     if (_has(t, ['назад', 'вернись', 'go back', 'кнопка назад', 'выйди из', 'нажми назад'])) {
-      try { await _ch.invokeMethod('performBack'); return VoiceCmdResult.ok('◀️ Назад'); } catch (_) {}
+      return await _runAccessibilityAction('performBack', '◀️ Назад');
     }
     if (_has(t, ['домой', 'на главный', 'главный экран', 'go home', 'home screen', 'на главную'])) {
-      try { await _ch.invokeMethod('pressHome'); return VoiceCmdResult.ok('🏠 Главный экран'); } catch (_) {}
+      return await _runAccessibilityAction('pressHome', '🏠 Главный экран');
     }
     if (_has(t, ['недавние', 'последние приложения', 'recent apps', 'переключиться', 'открытые приложения'])) {
-      try { await _ch.invokeMethod('pressRecents'); return VoiceCmdResult.ok('📋 Недавние приложения'); } catch (_) {}
+      return await _runAccessibilityAction('pressRecents', '📋 Недавние приложения');
     }
     if (_has(t, ['закрой приложение', 'закрыть это', 'закрой это', 'close app', 'закрой текущее'])) {
-      try { await _ch.invokeMethod('closeCurrentApp'); return VoiceCmdResult.ok('✅ Закрываю приложение'); } catch (_) {}
+      return await _runAccessibilityAction('closeCurrentApp', '✅ Закрываю приложение');
     }
     return null;
+  }
+
+  Future<VoiceCmdResult?> _runAccessibilityAction(String method, String successMsg) async {
+    try {
+      await _ch.invokeMethod(method);
+      return VoiceCmdResult.ok(successMsg);
+    } on PlatformException catch (e) {
+      if (e.code == 'NO_SERVICE') {
+        return VoiceCmdResult.ok(
+          '⚠️ Не могу — включи Accessibility для Айки в настройках телефона (Настройки → Специальные возможности → Айка)',
+        );
+      }
+      return VoiceCmdResult.ok('⚠️ Не получилось: ${e.message ?? e.code}');
+    } catch (_) {
+      return VoiceCmdResult.ok('⚠️ Команда навигации не сработала, попробуй ещё раз');
+    }
   }
 
   // ── Открытие приложений ───────────────────────────────────────────────────
