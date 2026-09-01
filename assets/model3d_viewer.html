@@ -29,6 +29,37 @@
 <script src="three/GLTFLoader.js"></script>
 <script src="three/meshopt_decoder.js"></script>
 <script>
+// ── Полифилл fetch() для file:// схемы ──────────────────────────────────
+// Android WebView не поддерживает fetch() для file:// URL (throws "Failed to fetch").
+// three.js FileLoader использует fetch() по умолчанию — подменяем его на XHR-based
+// реализацию именно для file:// адресов, остальное не трогаем.
+(function() {
+  var _origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    var url = (typeof input === 'string') ? input : (input && input.url) || '';
+    if (url.indexOf('file://') === 0) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = function() {
+          if (xhr.status === 0 || xhr.status === 200) {
+            var blob = new Blob([xhr.response]);
+            var response = new Response(blob, { status: 200, statusText: 'OK' });
+            resolve(response);
+          } else {
+            reject(new Error('XHR failed with status ' + xhr.status));
+          }
+        };
+        xhr.onerror = function() { reject(new Error('XHR error loading ' + url)); };
+        xhr.send();
+      });
+    }
+    return _origFetch ? _origFetch(input, init) : Promise.reject(new Error('no fetch'));
+  };
+})();
+</script>
+<script>
 (function() {
   var canvas = document.getElementById('canvas');
   var loadingEl = document.getElementById('loading');
