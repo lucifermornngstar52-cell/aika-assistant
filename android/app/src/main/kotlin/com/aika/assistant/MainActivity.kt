@@ -8,7 +8,6 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
