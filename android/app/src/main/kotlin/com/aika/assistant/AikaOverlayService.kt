@@ -308,25 +308,22 @@ class AikaOverlayService : Service() {
             }
             ACTION_SWITCH_MODEL -> {
                 val path = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
-                Log.d("AikaOverlay", "switchModel to: $path")
+                Log.d("AikaOverlay", "switchModel to: $path (mode=$currentMode)")
                 handler.post {
                     if (webView != null) {
-                        // Сначала пробуем обычное переключение
-                        webView?.evaluateJavascript("window.switchModel('$path')") { result ->
-                            Log.d("AikaOverlay", "switchModel result: $result")
-                        }
-                        // Резерв: если через 10 сек модель не загрузилась — перезагружаем WebView
-                        handler.postDelayed({
-                            webView?.evaluateJavascript("(typeof model !== 'undefined' && model) ? 'ok' : 'null'") { check ->
-                                if (check == "null" || check == "undefined") {
-                                    Log.w("AikaOverlay", "Model stuck, reloading WebView...")
-                                    webView?.reload()
-                                    handler.postDelayed({
-                                        webView?.evaluateJavascript("window.switchModel('$path')", null)
-                                    }, 3000)
-                                }
+                        if (currentMode == "3d") {
+                            // 3D model: use model3D.loadModel with full asset URL
+                            val fullPath = "file:///android_asset/flutter_assets/assets/$path"
+                            webView?.evaluateJavascript(
+                                "window.model3D ? window.model3D.loadModel('$fullPath') : console.log('no model3D')",
+                                null
+                            )
+                        } else {
+                            // Live2D: use switchModel
+                            webView?.evaluateJavascript("window.switchModel('$path')") { result ->
+                                Log.d("AikaOverlay", "switchModel result: $result")
                             }
-                        }, 10000)
+                        }
                     } else {
                         Log.e("AikaOverlay", "webView is null!")
                         setupWindow()
