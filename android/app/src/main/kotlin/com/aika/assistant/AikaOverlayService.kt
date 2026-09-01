@@ -78,7 +78,7 @@ class AikaOverlayService : Service() {
     private var currentMode  = "live2d"  // "live2d" | "3d"
 
     private fun getHtmlPath(): String =
-        if (currentMode == "3d") "file:///android_asset/flutter_assets/assets/3d_viewer.html"
+        if (currentMode == "3d") "file:///android_asset/flutter_assets/assets/model3d_viewer.html"
         else "file:///android_asset/flutter_assets/assets/live2d_viewer.html"
     private var sizeDp       = 120f
     private var opacity      = 1f
