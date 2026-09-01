@@ -8,9 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -20,6 +17,16 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.util.Log
 
+/**
+ * AikaMicrophoneService — Foreground Service с типом microphone.
+ *
+ * 1. foregroundServiceType="microphone" → Android НЕ глушит микрофон в фоне
+ * 2. WakeLock (PARTIAL_WAKE_LOCK) → CPU не спит когда экран выключен
+ * 3. PhoneStateListener → глушит ТОЛЬКО при звонках
+ *
+ * НЕ запрашивает AudioFocus — это конфликтовало с speech_to_text.
+ * Музыка НЕ глушит микрофон.
+ */
 class AikaMicrophoneService : Service() {
 
     companion object {
@@ -28,14 +35,14 @@ class AikaMicrophoneService : Service() {
         private const val NOTIF_ID = 7771
         const val ACTION_START = "com.aika.MIC_START"
         const val ACTION_STOP = "com.aika.MIC_STOP"
+        const val ACTION_PAUSE = "com.aika.MIC_PAUSE"
+        const val ACTION_RESUME = "com.aika.MIC_RESUME"
 
         var isActive = false
             private set
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
-    private var audioManager: AudioManager? = null
-    private var focusRequest: AudioFocusRequest? = null
     private var telephonyManager: TelephonyManager? = null
     private var isPaused = false
     private val handler = Handler(Looper.getMainLooper())
@@ -50,19 +57,18 @@ class AikaMicrophoneService : Service() {
             ACTION_START -> {
                 Log.d(TAG, "START")
                 if (!hasMicPermission()) {
-                    Log.e(TAG, "RECORD_AUDIO not granted — cannot start")
+                    Log.e(TAG, "RECORD_AUDIO not granted")
                     stopSelf()
                     return START_NOT_STICKY
                 }
                 try {
                     startForegroundWithMicrophoneType()
                     acquireWakeLock()
-                    acquireAudioFocus()
                     setupPhoneStateListener()
                     isActive = true
                     isPaused = false
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to start: ${e.message}")
+                    Log.e(TAG, "Failed: ${e.message}")
                     try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
                     stopSelf()
                     return START_NOT_STICKY
@@ -73,6 +79,14 @@ class AikaMicrophoneService : Service() {
                 releaseAll()
                 try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
                 stopSelf()
+            }
+            ACTION_PAUSE -> {
+                Log.d(TAG, "PAUSE — call/voice recording")
+                isPaused = true
+            }
+            ACTION_RESUME -> {
+                Log.d(TAG, "RESUME")
+                isPaused = false
             }
         }
         return START_STICKY
@@ -108,46 +122,7 @@ class AikaMicrophoneService : Service() {
     }
 
     private fun releaseWakeLock() {
-        try { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null } catch (e: Exception) {}
-    }
-
-    private fun acquireAudioFocus() {
-        try {
-            audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val attrs = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-                focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(attrs)
-                    .setAcceptsDelayedFocusGain(false)
-                    .setWillPauseWhenDucked(false)
-                    .setOnAudioFocusChangeListener { focusChange ->
-                        when (focusChange) {
-                            AudioManager.AUDIOFOCUS_LOSS -> {
-                                Log.w(TAG, "AudioFocus LOST — retrying")
-                                handler.postDelayed({ reAcquireAudioFocus() }, 1000)
-                            }
-                            AudioManager.AUDIOFOCUS_GAIN -> Log.d(TAG, "AudioFocus GAINED")
-                        }
-                    }
-                    .build()
-                audioManager?.requestAudioFocus(focusRequest!!)
-            }
-        } catch (e: Exception) { Log.e(TAG, "AudioFocus error: ${e.message}") }
-    }
-
-    private fun reAcquireAudioFocus() {
-        if (isPaused) return
-        try { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { focusRequest?.let { audioManager?.requestAudioFocus(it) } } } catch (_: Exception) {}
-    }
-
-    private fun abandonAudioFocus() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { focusRequest?.let { audioManager?.abandonAudioFocusRequest(it) } }
-            else { audioManager?.abandonAudioFocus(null) }
-        } catch (_: Exception) {}
+        try { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null } catch (_: Exception) {}
     }
 
     private fun setupPhoneStateListener() {
@@ -156,8 +131,16 @@ class AikaMicrophoneService : Service() {
             telephonyManager?.listen(object : PhoneStateListener() {
                 override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                     when (state) {
-                        TelephonyManager.CALL_STATE_IDLE -> { if (isPaused) { isPaused = false; reAcquireAudioFocus() } }
-                        TelephonyManager.CALL_STATE_RINGING, TelephonyManager.CALL_STATE_OFFHOOK -> { isPaused = true; abandonAudioFocus() }
+                        TelephonyManager.CALL_STATE_IDLE -> {
+                            if (isPaused) {
+                                isPaused = false
+                                Log.d(TAG, "Call ended — resume")
+                            }
+                        }
+                        TelephonyManager.CALL_STATE_RINGING, TelephonyManager.CALL_STATE_OFFHOOK -> {
+                            isPaused = true
+                            Log.d(TAG, "Call active — pause")
+                        }
                     }
                 }
             }, PhoneStateListener.LISTEN_CALL_STATE)
@@ -190,7 +173,6 @@ class AikaMicrophoneService : Service() {
     }
 
     private fun releaseAll() {
-        abandonAudioFocus()
         releaseWakeLock()
         try { telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE) } catch (_: Exception) {}
         isActive = false; isPaused = false
