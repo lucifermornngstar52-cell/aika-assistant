@@ -7,6 +7,8 @@ import android.content.IntentFilter
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
@@ -549,6 +551,22 @@ class MainActivity : FlutterActivity() {
                     }
                     "isActive" -> {
                         result.success(AikaMicrophoneService.isActive)
+                    }
+                    "isBatteryOptimized" -> {
+                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                    }
+                    "requestBatteryOptimization" -> {
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                .setData(Uri.parse("package:$packageName"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            Log.e("AikaMic", "Battery opt request failed: ${e.message}")
+                            result.success(false)
+                        }
                     }
                     else -> result.notImplemented()
                 }
