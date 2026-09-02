@@ -6,7 +6,6 @@ import '../theme/app_theme.dart';
 import '../widgets/live2d_widget.dart';
 import '../services/overlay_service.dart';
 
-/// Встроенные Live2D модели
 class BuiltinModel {
   final String id;
   final String name;
@@ -24,8 +23,6 @@ final _builtinLive2D = [
   BuiltinModel(id: 'wanko',  name: 'Wanko',  assetPath: 'models/Wanko/Wanko.model3.json',  emoji: '🐶'),
 ];
 
-
-
 class ModelPickerScreen extends StatefulWidget {
   const ModelPickerScreen({super.key});
   @override
@@ -33,7 +30,6 @@ class ModelPickerScreen extends StatefulWidget {
 }
 
 class _ModelPickerScreenState extends State<ModelPickerScreen> {
-  String _mode = 'live2d';
   String _selectedId = 'natori';
   String? _customModelPath;
   String _previewState = 'idle';
@@ -51,7 +47,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _mode = prefs.getString('overlay_mode') ?? 'live2d';
       _selectedId = prefs.getString('live2d_model_id') ?? 'natori';
       _customModelPath = prefs.getString('custom_model_path');
     });
@@ -99,27 +94,19 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     setState(() => _loading = false);
   }
 
-      }
-    } catch (e) { debugPrint('FilePicker 3D error: $e'); }
-    setState(() => _loading = false);
-  }
-
   Future<void> _applyAndClose() async {
     await _save();
-      await _overlaySvc.switchModel(path);
+    String path;
+    if (_selectedId == 'custom' && _customModelPath != null) {
+      path = _customModelPath!;
     } else {
-      String path;
-      if (_selectedId == 'custom' && _customModelPath != null) {
-        path = _customModelPath!;
-      } else {
-        final model = _builtinLive2D.firstWhere(
-          (m) => m.id == _selectedId,
-          orElse: () => _builtinLive2D.first,
-        );
-        path = model.assetPath;
-      }
-      await _overlaySvc.switchModel(path);
+      final model = _builtinLive2D.firstWhere(
+        (m) => m.id == _selectedId,
+        orElse: () => _builtinLive2D.first,
+      );
+      path = model.assetPath;
     }
+    await _overlaySvc.switchModel(path);
     if (mounted) Navigator.pop(context);
   }
 
@@ -130,7 +117,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       appBar: AppBar(
         backgroundColor: AikaTheme.surface,
         title: Text('МОДЕЛЬ ПЕРСОНАЖА',
-            style: TextStyle(color: AikaTheme.neonBlue, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            style: TextStyle(color: AikaTheme.accent, fontWeight: FontWeight.bold, letterSpacing: 2)),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline, color: Colors.white54),
@@ -140,23 +127,11 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       ),
       body: Column(
         children: [
-          // ── Заголовок ───────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: AikaTheme.surface,
-            child: Row(
-              children: [
-                                const SizedBox(width: 10),
-                              ],
-            ),
-          ),
-          // ── Превью ──────────────────────────────────────────────────
           Container(
             height: 260,
             color: Colors.black,
             child: _buildPreview(),
           ),
-          // ── Переключатель состояний ───────────────────────────────
           Container(
             color: AikaTheme.surface.withOpacity(0.5),
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -169,20 +144,19 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
                     label: Text(s, style: const TextStyle(fontSize: 12)),
                     selected: _previewState == s,
                     onSelected: (_) => setState(() => _previewState = s),
-                    selectedColor: AikaTheme.neonBlue.withOpacity(0.3),
+                    selectedColor: AikaTheme.accent.withOpacity(0.3),
                     backgroundColor: AikaTheme.surface,
                     labelStyle: TextStyle(
-                      color: _previewState == s ? AikaTheme.neonBlue : Colors.white70,
+                      color: _previewState == s ? AikaTheme.accent : Colors.white70,
                     ),
                     side: BorderSide(
-                      color: _previewState == s ? AikaTheme.neonBlue : Colors.white24,
+                      color: _previewState == s ? AikaTheme.accent : Colors.white24,
                     ),
                   ),
                 )).toList(),
               ),
             ),
           ),
-          // ── Список моделей ─────────────────────────────────────────
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -193,7 +167,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _applyAndClose,
-        backgroundColor: AikaTheme.neonBlue.withOpacity(0.2),
+        backgroundColor: AikaTheme.accent.withOpacity(0.2),
         foregroundColor: Colors.white,
         icon: const Icon(Icons.check_rounded),
         label: const Text('Применить'),
@@ -201,20 +175,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     );
   }
 
-
   Widget _buildPreview() {
-    if (_mode == '3d') {
-      return Model3DWidget(
-        width: double.infinity,
-        height: 260,
-        state: _previewState,
-        modelAsset: _selected3DId == 'custom' && _custom3DPath != null
-            ? null : (_builtin3D.firstWhere(
-                (m) => m.id == _selected3DId,
-                orElse: () => _builtin3D.first,
-              )).assetPath,
-      );
-    }
     final path = _selectedId == 'custom' && _customModelPath != null
         ? _customModelPath! : (_builtinLive2D.firstWhere(
             (m) => m.id == _selectedId,
@@ -234,7 +195,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text('LIVE2D МОДЕЛИ',
-            style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12,
+            style: TextStyle(color: AikaTheme.accent, fontSize: 12,
                 fontWeight: FontWeight.bold, letterSpacing: 2)),
       ),
       ..._builtinLive2D.map((m) => _buildModelCard(
@@ -258,10 +219,9 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     ];
   }
 
-
   Widget _buildModelCard({
     required String id, required String name, required String emoji,
-    required String desc, required VoidCallback onTap, Color accentColor = Colors.blue,
+    required String desc, required VoidCallback onTap, Color accentColor = const Color(0xFFB0B0B0),
   }) {
     final isSelected = _selectedId == id;
     return GestureDetector(
@@ -318,7 +278,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
         ),
         child: const Center(child: SizedBox(
           width: 20, height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyan),
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
         )),
       );
     }
@@ -347,17 +307,16 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AikaTheme.surface,
-        title: Text('Справка', style: TextStyle(color: AikaTheme.neonBlue)),
+        title: Text('Справка', style: TextStyle(color: AikaTheme.accent)),
         content: const Text(
-          'Live2D — 2D аниме-модели с мимикой и физикой.\n'
-          'Tsumire: 24k полигонов, 9 анимаций (idle, walk, run, dance, agree, headShake, sad, sneak, TPose).\n\n'
-          'Можно загружать свои модели (.model3.json для Live2D).',
+          'Live2D — 2D аниме-модели с мимикой и физикой.\n\n'
+          'Можно загружать свои модели (.model3.json).',
           style: TextStyle(color: Colors.white70, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('OK', style: TextStyle(color: AikaTheme.neonBlue)),
+            child: Text('OK', style: TextStyle(color: AikaTheme.accent)),
           ),
         ],
       ),
