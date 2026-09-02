@@ -41,16 +41,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     'rice':   'models/Rice/Rice.model3.json',
     'wanko':  'models/Wanko/Wanko.model3.json',
   };
-
-  static const _testStates = [
-    {'id': 'idle',      'label': '😴 Idle'},
-    {'id': 'greeting',  'label': '👋 Привет'},
-    {'id': 'thinking',  'label': '🤔 Думает'},
-    {'id': 'listening', 'label': '👂 Слушает'},
-    {'id': 'talking',   'label': '💬 Говорит'},
-    {'id': 'dance',     'label': '💃 Танец'},
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -252,34 +242,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
               value: _dragEnabled,
               activeColor: _accent,
               onChanged: _setDragEnabled,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // ── Тест анимаций ─────────────────────────────────────────────────
-          _card(
-            icon: Icons.animation,
-            title: 'Тест анимаций',
-            subtitle: 'Нажми — модель покажет',
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Wrap(
-                spacing: 8, runSpacing: 8,
-                children: _testStates.map((s) => GestureDetector(
-                  onTap: () => _svc.setState(s['id']!),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Text(s['label']!,
-                      style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                  ),
-                )).toList(),
-              ),
             ),
           ),
 
