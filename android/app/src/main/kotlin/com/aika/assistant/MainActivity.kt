@@ -36,6 +36,8 @@ class MainActivity : FlutterActivity() {
         private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
         private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
         private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
+        private const val ALARM_CHANNEL                    = "com.aika.assistant/alarm"
+        private const val SECURITY_CHANNEL                 = "com.aika.assistant/security"
     }
 
     // Новые нативные обработчики (openclaw-inspired)
@@ -900,6 +902,61 @@ override fun onResume() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SENSORS_CHANNEL)
             .setMethodCallHandler(sensorsHandler)
+
+        // ── 8. Alarm channel — планирование будильников ──────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/alarm")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scheduleAlarm" -> {
+                        try {
+                            val id = call.argument<String>("id") ?: ""
+                            val triggerMillis = call.argument<Long>("triggerMillis") ?: 0L
+                            val label = call.argument<String>("label") ?: ""
+                            AikaAlarmReceiver.schedule(this, id, triggerMillis, label)
+                            result.success(true)
+                        } catch (e: Exception) { result.success(false) }
+                    }
+                    "cancelAlarm" -> {
+                        try {
+                            val id = call.argument<String>("id") ?: ""
+                            AikaAlarmReceiver.cancel(this, id)
+                            result.success(true)
+                        } catch (e: Exception) { result.success(false) }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── 9. Security channel — блокировка экрана и сирена ─────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/security")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "lockScreen" -> {
+                        try {
+                            val dm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                            try { dm.lockNow(); result.success(true) }
+                            catch (_: SecurityException) { result.success(false) }
+                        } catch (e: Exception) { result.success(false) }
+                    }
+                    "lockScreenAccessibility" -> {
+                        try {
+                            val svc = AikaAccessibilityService.get()
+                            if (svc != null && svc.lockScreen()) { result.success(true) }
+                            else { result.success(false) }
+                        } catch (e: Exception) { result.success(false) }
+                    }
+                    "triggerAlarm" -> {
+                        // Вибрация + звук как сирена
+                        try {
+                            val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+                            val pattern = longArrayOf(0, 1000, 500, 1000)
+                            vibrator.vibrate(pattern, -1)
+                            result.success(true)
+                        } catch (e: Exception) { result.success(false) }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     private fun startOverlay(intent: Intent) {

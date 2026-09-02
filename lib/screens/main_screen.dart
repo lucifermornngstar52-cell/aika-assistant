@@ -336,8 +336,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         return 'Что-то пошло не так, попробуй ещё раз';
       }
     };
-    final botEnabled = await TelegramBotService.isEnabled();
-    if (botEnabled) await TelegramBotService.start();
+    bool botEnabled = false;
+    try { botEnabled = await TelegramBotService.isEnabled(); } catch (e) { debugPrint('[Init] TelegramBot isEnabled failed: $e'); }
+    if (botEnabled) {
+      try { await TelegramBotService.start(); } catch (e) { debugPrint('[Init] TelegramBot start failed: $e'); }
+    }
 
     FocusModeService.onMessage = (msg) {
       _addMessage(ChatMessage(
@@ -348,15 +351,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
       _speak(msg);
     };
-    await _recheckOverlayPermission();
-    await _recheckAccessibilityPermission();
-    await _initNotifications();
-    _startMusicPolling();
-    _resetIdleTimer();
+    try { await _recheckOverlayPermission(); } catch (e) { debugPrint('[Init] overlay permission failed: $e'); }
+    try { await _recheckAccessibilityPermission(); } catch (e) { debugPrint('[Init] accessibility failed: $e'); }
+    try { await _initNotifications(); } catch (e) { debugPrint('[Init] notifications failed: $e'); }
+    try { _startMusicPolling(); } catch (e) { debugPrint('[Init] music polling failed: $e'); }
+    try { _resetIdleTimer(); } catch (e) { debugPrint('[Init] idle timer failed: $e'); }
     // Инициализируем новые сервисы
-    await _reminderService.initialize();
-    await _convHistory.initialize();
-    await _alarmService.initialize();
+    try { await _reminderService.initialize(); } catch (e) { debugPrint('[Init] ReminderService failed: $e'); }
+    try { await _convHistory.initialize(); } catch (e) { debugPrint('[Init] ConversationHistory failed: $e'); }
+    try { await _alarmService.initialize(); } catch (e) { debugPrint('[Init] AlarmService failed: $e'); }
 
     // Smart alarm init
     SmartAlarmService.onAlarmFired = (text) async {
@@ -369,7 +372,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
       await _speak(text);
     };
-    await SmartAlarmService.initialize();
+    try { await SmartAlarmService.initialize(); } catch (e) { debugPrint('[Init] SmartAlarmService failed: $e'); }
 
     // Notification reader — озвучивать + предлагать ответить
     NotificationReaderService.onSpeak = (text) async {
@@ -382,7 +385,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     NotificationReaderService.onSuggestReply = (appName, sender, text) async {
       if (!mounted) return null;
       // Предлагаем ответить — добавляем в чат
-      final prompt = 'Пришло сообщение от  в : "". Хочешь я предложу ответ?';
+      final prompt = 'Пришло сообщение от $sender в $appName: "$text". Хочешь я предложу ответ?';
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -412,7 +415,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
-        content: '⏰ ',
+        content: '⏰ $text',
         timestamp: DateTime.now(),
       ));
       _speak(text);
@@ -428,10 +431,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
 
     // Загружаем состояние эмоций Айки и запускаем таймеры обиды
-    await AikaFeelingsService.load();
-    await AikaAutomationService.loadLearned();
-    await AikaSelfLearningService.load();
-    _startFeelingsTimers();
+    try { await AikaFeelingsService.load(); } catch (e) { debugPrint('[Init] AikaFeelingsService failed: $e'); }
+    try { await AikaAutomationService.loadLearned(); } catch (e) { debugPrint('[Init] AikaAutomationService failed: $e'); }
+    try { await AikaSelfLearningService.load(); } catch (e) { debugPrint('[Init] AikaSelfLearningService failed: $e'); }
+    try { _startFeelingsTimers(); } catch (e) { debugPrint('[Init] feelings timers failed: $e'); }
   }
 
   Future<void> _autoStartWakeWord() async {
