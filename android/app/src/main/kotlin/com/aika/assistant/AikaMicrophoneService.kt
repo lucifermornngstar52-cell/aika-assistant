@@ -336,7 +336,7 @@ class AikaMicrophoneService : Service() {
                         val rms = calculateRMS(buffer, read)
 
                         // Периодическое логирование RMS каждые ~2 сек (32 reads)
-                        if (totalReads % 32 == 0) {
+                        if (totalReads % 32L == 0L) {
                             Log.d(TAG, "📊 RMS=$rms reads=$totalReads session=${(SystemClock.elapsedRealtime() - sessionStartMs) / 1000}s speech=$isInSpeech")
                         }
 
