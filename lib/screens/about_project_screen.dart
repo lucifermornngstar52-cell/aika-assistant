@@ -22,50 +22,12 @@ class AboutProjectScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           _card("Айка", "AI-ассистент для Android",
-            "Flutter + Kotlin\n"
-            "Live2D модели (Cubism SDK)\n"
-            "Голосовой ввод: speech_to_text\n"
-            "TTS: EdgeTTS / ElevenLabs / System\n"
-            "AI: Groq gpt-oss-120b (основной)\n"
-            "Fallback: Gemini → Claude → Deepseek\n"
-            "Оверлей поверх всех приложений\n"
-            "Wake word: непрерывное слушание\n"
-            "Управление телефоном: Accessibility Service\n"
-            "Geolocation: IP-based\n"
-            "Уведомления: NotificationListenerService\n"
-            "Тема: тёмная, серые/белые/стекло",
-          ),
-          const SizedBox(height: 12),
-          _card("AI Двигатели",
-            "Подключённые сервисы",
-            "• Groq gpt-oss-120b — основной (бесплатно)\n"
-            "• Google Gemini — fallback\n"
-            "• Claude Haiku — творческие задачи\n"
-            "• Deepseek — дешёвый fallback\n"
-            "• Переключение автоматически при 429\n"
-            "• Веб-поиск: DuckDuckGo + Brave\n"
-            "• 12 персонажей с уникальными промптами",
-          ),
-          const SizedBox(height: 12),
-          _card("Голос",
-            "TTS и распознавание",
-            "• Wake word: speech_to_text, 300с сессии\n"
-            "• TTS: EdgeTTS (WebSocket), ElevenLabs, System\n"
-            "• Распознавание: Google Speech API\n"
-            "• VAD: RMS-энергия + порог тишины\n"
-            "• Фоновое слушание: foreground service\n"
-            "• Mute во время звонков",
-          ),
-          const SizedBox(height: 12),
-          _card("Управление телефоном",
-            "Accessibility + нативные bridge",
-            "• Навигация: назад, домой, рекents\n"
-            "• Запуск приложений по имени\n"
-            "• Управление музыкой (media broadcast)\n"
-            "• Уведомления: чтение через TTS\n"
-            "• Скриншоты, фонарик, яркость\n"
-            "• MethodChannel / EventChannel bridge\n"
-            "• Smart alarm с брифингом",
+            "AI: Groq gpt-oss-120b → Gemini → Claude → Deepseek (авто-fallback)\n"
+            "Голос: speech_to_text + EdgeTTS / ElevenLabs / System TTS\n"
+            "Модели: Live2D (Hiyori, Natori, Haru, Mao, Rice, Wanko + свои .model3.json)\n"
+            "Оверлей поверх всех приложений, wake word — непрерывное слушание\n"
+            "Управление телефоном через Accessibility Service\n"
+            "Geolocation: IP-based · Уведомления: NotificationListenerService",
           ),
           const SizedBox(height: 12),
           _card("Персонажи",
@@ -75,18 +37,18 @@ class AboutProjectScreen extends StatelessWidget {
             "Ghost, Oracle",
           ),
           const SizedBox(height: 12),
-          _card("Модели",
-            "Live2D только",
-            "Hiyori, Natori, Haru, Mao, Rice, Wanko\n"
-            "Кастомные .model3.json файлы\n"
-            "3D модели удалены",
+          _card("Управление телефоном",
+            "Accessibility + нативные bridge",
+            "• Навигация: назад, домой, недавние\n"
+            "• Запуск приложений по имени, управление музыкой\n"
+            "• Скриншоты, фонарик, яркость\n"
+            "• Smart alarm с брифингом",
           ),
           const SizedBox(height: 12),
           _card("Telegram бот",
             "Регистрация и управление",
             "• Регистрация через Telegram\n"
-            "• Approve/Reject через inline кнопки\n"
-            "• License requests → server endpoint",
+            "• Approve/Reject через inline кнопки",
           ),
           const SizedBox(height: 32),
           Center(
