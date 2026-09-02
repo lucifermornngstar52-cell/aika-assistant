@@ -134,6 +134,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _isThinking = false;
   Completer<void>? _ttsCompleter;
   bool _wakeWordEnabled = false;
+  Key _live2dKey = UniqueKey(); // ФИКС: пересоздаём виджет модели после смены в ModelPickerScreen
   bool _chatMode = false; // false = command mode, true = chat/conversation mode
   bool _hasOverlayPermission = false;
   bool _hasAccessibilityPermission = false;
@@ -447,7 +448,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (mounted && has != _hasOverlayPermission) {
       setState(() => _hasOverlayPermission = has);
     }
-    if (has && mounted) {
+    // ФИКС: не показываем оверлей повторно, если пользователь явно его выключил
+    // в настройках (overlay_enabled=false) — раньше это игнорировалось при
+    // каждом resume/возврате из настроек, из-за чего оверлей "сам включался".
+    final prefs = await SharedPreferences.getInstance();
+    final overlayEnabled = prefs.getBool('overlay_enabled') ?? true;
+    if (has && overlayEnabled && mounted) {
       await OverlayService().show(state: 'idle');
     }
     // Диалог показываем ОДИН раз за сессию, не при каждом resume
@@ -2076,7 +2082,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openSettings() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    // ФИКС: если история чата была очищена на экране "История чата" (внутри
+    // Настроек), очищаем и наш локальный список сообщений, иначе следующее
+    // сообщение пересохранит старую историю обратно в SharedPreferences.
+    if (result == true && mounted) {
+      setState(() { _messages = []; _convHistory.clear(); });
+    }
     await _loadPrefs();
     await _applyTtsSettings();
     _wakeWordService.updateTriggers();
@@ -2105,6 +2117,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await Navigator.push(context, MaterialPageRoute(
       builder: (_) => const ModelPickerScreen(),
     ));
+    // ФИКС: модель менялась только в оверлее, в чате не обновлялась без
+    // перезапуска — пересоздаём виджет новым Key, чтобы он перечитал prefs.
+    if (mounted) setState(() => _live2dKey = UniqueKey());
   }
 
   @override
@@ -2180,6 +2195,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                 // Аватар — Live2D
                     Live2DWidget(
+                      key: _live2dKey,
                       width: MediaQuery.of(context).size.width,
                       height: MediaQuery.of(context).size.height,
                       state: _avatarStateString,
@@ -2535,10 +2551,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 style: TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (_userName.isNotEmpty)
-              Text("Пользователь: \$_userName",
+              Text("Пользователь: $_userName",
                   style: TextStyle(color: Colors.white54, fontSize: 13)),
             const SizedBox(height: 4),
-            Text("История: \${_messages.length} сообщений",
+            Text("История: ${_messages.length} сообщений",
                 style: TextStyle(color: Colors.white54, fontSize: 13)),
           ],
         ),
