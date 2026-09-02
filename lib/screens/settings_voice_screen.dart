@@ -19,6 +19,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   bool _loading = true;
   String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
   String? _elevenLabsVoice;
+  String? _edgeVoiceId;
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     final prefs = await SharedPreferences.getInstance();
     _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
     _elevenLabsVoice = prefs.getString('elevenlabs_voice');
+    _edgeVoiceId = prefs.getString('edge_voice');
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -81,6 +83,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           rate: _toEdgeRate(_rate),
           pitch: _toEdgePitch(_pitch),
           volume: _volume,
+          voice: _edgeVoiceId,
         );
       }
     } catch (_) {
@@ -107,17 +110,12 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     EdgeTtsService().setRate(edgeRate);
     EdgeTtsService().setPitch(edgePitch);
     EdgeTtsService().setVolume(_volume);
-    if (_selectedVoice != null) {
+    if (_ttsEngine == 'edge' && _edgeVoiceId != null) {
+      await prefs.setString('edge_voice', _edgeVoiceId!);
+      EdgeTtsService().setVoice(_edgeVoiceId!);
+    }
+    if (_ttsEngine == 'system' && _selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
-      // Also sync EdgeTTS voice if it matches our neural voice list
-      final edgeVoice = EdgeTtsService.voices.firstWhere(
-        (v) => _selectedVoice!.toLowerCase().contains(v['id']!.split('-').last.toLowerCase()),
-        orElse: () => <String, String>{},
-      );
-      if (edgeVoice.isNotEmpty) {
-        await prefs.setString('edge_voice', edgeVoice['id']!);
-        EdgeTtsService().setVoice(edgeVoice['id']!);
-      }
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -208,36 +206,57 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
                   : Text('🔊  Проверить голос', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13, fontWeight: FontWeight.w600)),
             ),
           ),
-          if (_voices.isNotEmpty && _ttsEngine != 'elevenlabs') ...[
+          if (_ttsEngine == 'edge') ...[
             const SizedBox(height: 20),
-            _label('ГОЛОС'),
-            ..._voices.map((v) {
-              final id = '${v['name']}_${v['locale']}';
-              return GestureDetector(
-                onTap: () => setState(() => _selectedVoice = v['name']),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: _selectedVoice == v['name']
-                        ? AikaTheme.neonBlue.withOpacity(0.15)
-                        : const Color(0xFF1C1C1E),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _selectedVoice == v['name'] ? AikaTheme.neonBlue : Colors.transparent,
-                    ),
+            _label('НЕЙРОННЫЙ ГОЛОС (EdgeTTS)'),
+            ...EdgeTtsService.voices.map((v) => GestureDetector(
+              onTap: () => setState(() => _edgeVoiceId = v['id']),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _edgeVoiceId == v['id']
+                      ? AikaTheme.neonBlue.withOpacity(0.15)
+                      : const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _edgeVoiceId == v['id'] ? AikaTheme.neonBlue : Colors.transparent,
                   ),
-                  child: Row(children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(v['name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                      Text(v['locale'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                    ])),
-                    if (_selectedVoice == v['name'])
-                      Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-                  ]),
                 ),
-              );
-            }),
+                child: Row(children: [
+                  Expanded(child: Text(v['label']!, style: const TextStyle(color: Colors.white, fontSize: 13))),
+                  if (_edgeVoiceId == v['id'])
+                    Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
+                ]),
+              ),
+            )),
+          ] else if (_voices.isNotEmpty && _ttsEngine == 'system') ...[
+            const SizedBox(height: 20),
+            _label('СИСТЕМНЫЙ ГОЛОС'),
+            ..._voices.map((v) => GestureDetector(
+              onTap: () => setState(() => _selectedVoice = v['name']),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _selectedVoice == v['name']
+                      ? AikaTheme.neonBlue.withOpacity(0.15)
+                      : const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _selectedVoice == v['name'] ? AikaTheme.neonBlue : Colors.transparent,
+                  ),
+                ),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(v['name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                    Text(v['locale'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                  ])),
+                  if (_selectedVoice == v['name'])
+                    Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
+                ]),
+              ),
+            )),
           ],
         ],
       ),

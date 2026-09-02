@@ -257,12 +257,22 @@ class AikaOverlayService : Service() {
         val density = resources.displayMetrics.density
 
         when (intent?.action) {
-            ACTION_SHOW, ACTION_UPDATE -> {
+            ACTION_SHOW -> {
                 val st = intent.getStringExtra(EXTRA_STATE) ?: "idle"
-                currentState = st
+                currentState = st  // сбрасывает "hidden" при повторном включении
                 handler.post {
                     if (webView == null) setupWindow()
                     else webView?.evaluateJavascript("window.setAikaState('$st')", null)
+                }
+            }
+            ACTION_UPDATE -> {
+                // Не пересоздаём окно если оно было спрятано (ACTION_HIDE)
+                if (currentState == "hidden") return START_NOT_STICKY
+                val st = intent.getStringExtra(EXTRA_STATE) ?: "idle"
+                currentState = st
+                handler.post {
+                    if (webView == null) return@post  // окно спрятано — не воссоздаём
+                    webView?.evaluateJavascript("window.setAikaState('$st')", null)
                 }
             }
             ACTION_HIDE -> {
