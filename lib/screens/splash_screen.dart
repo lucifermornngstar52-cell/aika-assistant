@@ -65,30 +65,7 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const RadialGradient(
-                  colors: [AikaTheme.neonBlue, AikaTheme.neonPurple, Colors.transparent],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AikaTheme.neonBlue.withOpacity(0.6),
-                    blurRadius: 60,
-                    spreadRadius: 10,
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 52),
-            )
-                .animate()
-                .scale(duration: 800.ms, curve: Curves.elasticOut)
-                .fadeIn(duration: 600.ms),
-
-            const SizedBox(height: 32),
+            const SizedBox(height: 0),
 
             ShaderMask(
               shaderCallback: (bounds) => const LinearGradient(
