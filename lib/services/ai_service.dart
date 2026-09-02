@@ -10,7 +10,7 @@ import 'web_search_service.dart';
 
 /// ════════════════════════════════════════════════════════════════════
 /// AiService — Мульти-AI роутер:
-/// GPT-4o → Gemini 2.5 Flash → Groq Llama3.3-70B → Claude Haiku → Deepseek
+/// Groq gpt-oss-120b (основной, бесплатно) → GPT-4o → Gemini → Claude → Deepseek
 /// + Веб-поиск (DuckDuckGo/Brave бесплатно)
 /// + Vision (GPT-4o Vision / Gemini Vision)
 /// + Image generation (DALL-E 3)
@@ -29,7 +29,7 @@ class AiService {
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent';
 
   // ── Groq (бесплатно, ультра-быстро, Llama 3.3 70B) ─────────────────
-  static String _groqKey = '';
+  static String _groqKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
   static const String _groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
   // ── Anthropic Claude ───────────────────────────────────────────────
@@ -160,16 +160,12 @@ class AiService {
       if (_deepseekKey.isNotEmpty) return 'deepseek';
     }
 
-    // Быстрые команды → Groq (мгновенно, бесплатно)
-    if (_isQuickCommand(m) && _groqKey.isNotEmpty) return 'groq';
+    // Groq — основной (бесплатно, ультра-быстро, gpt-oss-120b)
+    if (_groqKey.isNotEmpty) return 'groq';
 
-    // Творческое, длинные тексты → Claude
-    if (_isCreativeTask(m) && _claudeKey.isNotEmpty) return 'claude';
-
-    // По умолчанию — лучший доступный
+    // Fallback на другие если Groq недоступен
     if (_openAiKey.isNotEmpty) return 'gpt4o';
     if (_geminiKey.isNotEmpty) return 'gemini_pro';
-    if (_groqKey.isNotEmpty) return 'groq';
     if (_claudeKey.isNotEmpty) return 'claude';
     if (_deepseekKey.isNotEmpty) return 'deepseek';
     return 'gemini_flash'; // бесплатный fallback
@@ -185,7 +181,7 @@ class AiService {
     if (_isProviderAvailable(preferred, openAiKey)) chain.add(preferred);
 
     // Fallback цепочка
-    final fallbacks = ['gpt4o', 'gemini_pro', 'gemini_flash', 'groq', 'deepseek', 'claude', 'perplexity'];
+    final fallbacks = ['groq', 'gpt4o', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
     for (final fb in fallbacks) {
       if (fb != preferred && _isProviderAvailable(fb, openAiKey)) {
         if (hasImage && (fb == 'groq' || fb == 'deepseek' || fb == 'claude')) continue;
@@ -353,7 +349,7 @@ class AiService {
     if (_groqKey.isNotEmpty) {
       providers.add(() async {
         final body = {
-          'model': 'llama-3.3-70b-versatile',
+          'model': 'openai/gpt-oss-120b',
           'messages': [
             {'role': 'system', 'content': systemPrompt},
             {'role': 'user', 'content': userPrompt},
@@ -711,7 +707,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     messages.add({'role': 'user', 'content': message});
 
     final body = {
-      'model': 'llama-3.3-70b-versatile',
+      'model': 'openai/gpt-oss-120b',
       'messages': messages,
       'temperature': 0.85,
       'max_tokens': _maxTokens,
@@ -724,7 +720,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
         'Authorization': 'Bearer $_groqKey',
       },
       body: jsonEncode(body),
-    ).timeout(const Duration(seconds: 15));
+    ).timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       throw Exception('Groq ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
