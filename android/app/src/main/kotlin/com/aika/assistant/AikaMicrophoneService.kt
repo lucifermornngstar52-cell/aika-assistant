@@ -10,6 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -21,32 +24,30 @@ import android.telephony.TelephonyManager
 import android.util.Log
 
 /**
- * AikaMicrophoneService — "Троянская" persistизация микрофона.
+ * AikaMicrophoneService — нативный AudioRecord + VAD + wake word detection.
  *
- * Многоуровневая защита от убийства системой:
+ * Архитектура:
  *
- * УРОВЕНЬ 1 — Foreground Service (type=microphone)
- *   Android НЕ может глушить микрофон foreground-сервиса с этим типом.
+ *   Foreground Service (type=microphone)
+ *          │
+ *          ▼
+ *      AudioRecord
+ *          │ PCM 16-bit, 16kHz, mono
+ *          ▼
+ *      read() в цикле
+ *          │
+ *          ├── read > 0 → VAD (energy threshold)
+ *          │                ├── speech detected → EventChannel → Flutter STT
+ *          │                └── silence → продолжаем
+ *          │
+ *          ├── read <= 0 / exception → release() → createRecorder() → startRecording()
+ *          │
+ *          └── 60сек таймер → профилактический recreate AudioRecord
  *
- * УРОВЕНЬ 2 — START_STICKY + START_REDELIVER_INTENT
- *   Система обязана перезапустить сервис после убийства (Doze, memory pressure).
+ * Логирование на каждом шаге для диагностики ~300сек проблемы.
  *
- * УРОВЕНЬ 3 — WakeLock (PARTIAL_WAKE_LOCK) с периодическим обновлением
- *   CPU не спит когда экран выключен. WakeLock пересоздаётся каждые 30 минут.
- *
- * УРОВЕНЬ 4 — onTaskRemoved → мгновенный рестарт
- *   Когда пользователь свайпает приложение из Recents — сервис перезапускается.
- *
- * УРОВЕНЬ 5 — onDestroy → AlarmManager scheduled restart
- *   Если сервис убит — AlarmManager поднимает его через 1 секунду.
- *
- * УРОВЕНЬ 6 — Heartbeat AlarmManager каждые 60 секунд
- *   Проверяет жив ли сервис, если нет — перезапускает.
- *
- * УРОВЕНЬ 7 — BootReceiver автозапуск после перезагрузки
- *
- * УРОВЕНЬ 8 — PhoneStateListener глушит ТОЛЬКО при звонках
- *   Музыка, игры, другие приложения НЕ мешают микрофону.
+ * WakeLock — только как страховка для CPU, не как решение проблемы микрофона.
+ * AudioFocus — НЕ используем (не решает проблему микрофона).
  */
 class AikaMicrophoneService : Service() {
 
@@ -54,9 +55,22 @@ class AikaMicrophoneService : Service() {
         private const val TAG = "AikaMic"
         private const val CHANNEL_ID = "aika_microphone_channel"
         private const val NOTIF_ID = 7771
-        private const val HEARTBEAT_INTERVAL_MS = 60_000L       // 60 секунд
-        private const val RESTART_DELAY_MS = 1_000L             // 1 секунда
-        private const val WAKELOCK_REFRESH_MS = 30 * 60 * 1000L // 30 минут
+
+        // AudioRecord параметры
+        private const val SAMPLE_RATE = 16000
+        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        private const val CHUNK_SIZE = 1024  // сэмплов за read()
+
+        // VAD параметры
+        private const val VAD_ENERGY_THRESHOLD = 800.0  // RMS порог речи
+        private const val VAD_SILENCE_FRAMES = 30       // ~2 сек тишины → конец речи
+        private const val VAD_SPEECH_FRAMES = 5         // ~0.3 сек речи → начало речи
+        private const val SESSION_MAX_MS = 60_000L      // 60 сек → recreate AudioRecord
+
+        // Restart
+        private const val RESTART_DELAY_MS = 1_000L
+        private const val HEARTBEAT_INTERVAL_MS = 60_000L
 
         const val ACTION_START = "com.aika.MIC_START"
         const val ACTION_STOP = "com.aika.MIC_STOP"
@@ -64,18 +78,46 @@ class AikaMicrophoneService : Service() {
         const val ACTION_RESUME = "com.aika.MIC_RESUME"
         const val ACTION_HEARTBEAT = "com.aika.MIC_HEARTBEAT"
         const val ACTION_RESTART = "com.aika.MIC_RESTART"
+        const val ACTION_STT_DONE = "com.aika.MIC_STT_DONE"  // Flutter закончил STT → возобновить AudioRecord
 
         var isActive = false
             private set
+
+        // EventSink для EventChannel — статический, чтобы Flutter мог читать
+        @Volatile
+        var eventSink: android.os.Parcel? = null  // не используется напрямую
     }
+
+    // ─── Состояние ───────────────────────────────────────────────────
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var telephonyManager: TelephonyManager? = null
     private var isPaused = false
     private val handler = Handler(Looper.getMainLooper())
-    private var wakeLockRefreshRunnable: Runnable? = null
 
-    // ─── Lifecycle ─────────────────────────────────────────────────
+    private var audioRecord: AudioRecord? = null
+    private var audioThread: Thread? = null
+    @Volatile private var serviceRunning = false
+    @Volatile private var listeningForWakeWord = true  // false когда Flutter делает STT
+
+    // VAD state
+    private var vadSpeechCounter = 0
+    private var vadSilenceCounter = 0
+    private var isInSpeech = false
+    private var speechStartMs = 0L
+
+    // Session timing
+    private var sessionStartMs = 0L
+    private var totalReads = 0L
+    private var totalBytes = 0L
+    private var recreateCount = 0
+
+    // Статический колбэк для EventChannel
+    companion object {
+        // ... (остальные константы выше)
+    }
+
+    // ─── Lifecycle ───────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
@@ -85,20 +127,17 @@ class AikaMicrophoneService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START, ACTION_RESTART, ACTION_HEARTBEAT, null -> {
-                // null intent = система перезапустила после убийства (START_STICKY)
-                if (intent?.action == ACTION_HEARTBEAT && isActive) {
-                    // Сервис уже жив — просто обновляем WakeLock
-                    refreshWakeLock()
-                    scheduleHeartbeat()
-                    return START_STICKY
-                }
+            ACTION_START, ACTION_RESTART, null -> {
                 if (intent?.action == ACTION_RESTART) {
                     Log.d(TAG, "RESTART (from AlarmManager)")
                 }
+                if (intent?.action == ACTION_HEARTBEAT && isActive) {
+                    Log.d(TAG, "Heartbeat — service alive ✓")
+                    scheduleHeartbeat()
+                    return START_STICKY
+                }
                 if (!hasMicPermission()) {
-                    Log.e(TAG, "RECORD_AUDIO not granted — cannot start")
-                    // Всё равно возвращаем STICKY — когда permission появится, система поднимет
+                    Log.e(TAG, "RECORD_AUDIO not granted")
                     scheduleRestart()
                     return START_STICKY
                 }
@@ -109,7 +148,8 @@ class AikaMicrophoneService : Service() {
                     scheduleHeartbeat()
                     isActive = true
                     isPaused = false
-                    Log.d(TAG, "✅ Started (foreground + wakelock + heartbeat)")
+                    startAudioLoop()
+                    Log.d(TAG, "✅ Started — AudioRecord loop launched")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start: ${e.message}")
                     scheduleRestart()
@@ -118,6 +158,7 @@ class AikaMicrophoneService : Service() {
             }
             ACTION_STOP -> {
                 Log.d(TAG, "STOP (explicit)")
+                stopAudioLoop()
                 cancelHeartbeat()
                 releaseAll()
                 try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
@@ -127,17 +168,266 @@ class AikaMicrophoneService : Service() {
             ACTION_PAUSE -> {
                 Log.d(TAG, "PAUSE — call/voice recording")
                 isPaused = true
+                stopAudioLoop()
             }
             ACTION_RESUME -> {
                 Log.d(TAG, "RESUME")
                 isPaused = false
+                startAudioLoop()
+            }
+            ACTION_STT_DONE -> {
+                // Flutter закончил распознавание речи → возобновляем AudioRecord
+                Log.d(TAG, "STT done — resuming AudioRecord")
+                listeningForWakeWord = true
+                // Пересоздаём AudioRecord (не переиспользуем старый)
+                restartAudioRecord()
+            }
+            ACTION_HEARTBEAT -> {
+                Log.d(TAG, "Heartbeat — service alive ✓")
+                scheduleHeartbeat()
             }
         }
-        // START_STICKY — система обязана перезапустить сервис после убийства
         return START_STICKY
     }
 
-    // ─── УРОВЕНЬ 4: onTaskRemoved — свайп из Recents ───────────────
+    // ─── AudioRecord — создание и lifecycle ──────────────────────────
+
+    private fun createRecorder(): AudioRecord {
+        val minBufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        val bufferSize = (minBufSize * 2).coerceAtLeast(CHUNK_SIZE * 4)
+
+        Log.d(TAG, "AudioRecord created — sampleRate=$SAMPLE_RATE bufSize=$bufferSize minBuf=$minBufSize")
+
+        return AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            SAMPLE_RATE,
+            CHANNEL_CONFIG,
+            AUDIO_FORMAT,
+            bufferSize
+        )
+    }
+
+    private fun startAudioLoop() {
+        if (audioThread?.isAlive == true) {
+            Log.d(TAG, "Audio loop already running")
+            return
+        }
+        serviceRunning = true
+        listeningForWakeWord = true
+
+        audioThread = Thread { audioLoop() }.apply {
+            name = "AikaAudioLoop"
+            isDaemon = true
+            priority = Thread.MAX_PRIORITY
+            start()
+        }
+    }
+
+    private fun stopAudioLoop() {
+        serviceRunning = false
+        listeningForWakeWord = false
+        try {
+            audioThread?.join(1000)
+        } catch (_: Exception) {}
+        audioThread = null
+        releaseAudioRecord()
+    }
+
+    private fun releaseAudioRecord() {
+        try {
+            audioRecord?.stop()
+            Log.d(TAG, "AudioRecord stopped")
+        } catch (e: Exception) {
+            Log.d(TAG, "AudioRecord stop: ${e.message}")
+        }
+        try {
+            audioRecord?.release()
+            Log.d(TAG, "AudioRecord released")
+        } catch (_: Exception) {}
+        audioRecord = null
+    }
+
+    private fun restartAudioRecord() {
+        Log.d(TAG, "🔄 restartAudioRecord — release + recreate (count=${++recreateCount})")
+        releaseAudioRecord()
+        // Пересоздаём в потоке
+        if (serviceRunning && audioThread?.isAlive != true) {
+            startAudioLoop()
+        }
+    }
+
+    /**
+     * Главный цикл AudioRecord.
+     *
+     * Ключевая логика:
+     *   while (serviceRunning) {
+     *     recorder = createRecorder()
+     *     recorder.startRecording()
+     *     while (serviceRunning) {
+     *       read = recorder.read(buffer, 0, buffer.size)
+     *       if (read > 0) → VAD
+     *       else → break (release + recreate)
+     *     }
+     *     recorder.release()
+     *     sleep(300)
+     *   }
+     */
+    private fun audioLoop() {
+        Log.d(TAG, "🎧 Audio loop thread started")
+        val buffer = ShortArray(CHUNK_SIZE)
+        sessionStartMs = SystemClock.elapsedRealtime()
+        totalReads = 0
+        totalBytes = 0
+
+        while (serviceRunning) {
+            if (isPaused || !listeningForWakeWord) {
+                // Ждём пока не скажут resume
+                try { Thread.sleep(100) } catch (_: Exception) {}
+                continue
+            }
+
+            var recorder: AudioRecord? = null
+
+            try {
+                recorder = createRecorder()
+                audioRecord = recorder
+
+                if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                    Log.e(TAG, "AudioRecord NOT initialized — state=${recorder.state}")
+                    recorder.release()
+                    Thread.sleep(500)
+                    continue
+                }
+
+                recorder.startRecording()
+                Log.d(TAG, "Recording started — session #${recreateCount}")
+
+                // Внутренний цикл чтения
+                var lastRecreateCheck = SystemClock.elapsedRealtime()
+
+                while (serviceRunning && listeningForWakeWord && !isPaused) {
+                    val read = recorder.read(buffer, 0, CHUNK_SIZE)
+
+                    if (read > 0) {
+                        totalReads++
+                        totalBytes += read
+
+                        // VAD — вычисляем RMS
+                        val rms = calculateRMS(buffer, read)
+
+                        if (rms > VAD_ENERGY_THRESHOLD) {
+                            vadSpeechCounter++
+                            vadSilenceCounter = 0
+
+                            if (!isInSpeech && vadSpeechCounter >= VAD_SPEECH_FRAMES) {
+                                isInSpeech = true
+                                speechStartMs = SystemClock.elapsedRealtime()
+                                Log.d(TAG, "🎤 Speech detected — RMS=$rms (reads=$totalReads, session=${(SystemClock.elapsedRealtime() - sessionStartMs) / 1000}s)")
+                            }
+                        } else {
+                            vadSilenceCounter++
+                            vadSpeechCounter = 0
+
+                            if (isInSpeech && vadSilenceCounter >= VAD_SILENCE_FRAMES) {
+                                val speechDuration = SystemClock.elapsedRealtime() - speechStartMs
+                                isInSpeech = false
+                                Log.d(TAG, "🔇 Speech ended — duration=${speechDuration}ms (reads=$totalReads)")
+
+                                // Уведомляем Flutter — есть речь, запускай STT
+                                notifyFlutterSpeechDetected()
+                            }
+                        }
+
+                        // Профилактический recreate каждые 60 секунд
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastRecreateCheck >= SESSION_MAX_MS) {
+                            Log.d(TAG, "⏱ 60s reached — preventive recreate (reads=$totalReads, bytes=$totalBytes)")
+                            break  // выходим из внутреннего цикла → release + recreate
+                        }
+
+                    } else {
+                        // read <= 0 — AudioRecord сломался
+                        Log.e(TAG, "🔴 read=$read — AudioRecord broken! (reads=$totalReads, session=${(SystemClock.elapsedRealtime() - sessionStartMs) / 1000}s)")
+                        Log.e(TAG, "   ERROR_INVALID_OPERATION=-3, ERROR_BAD_VALUE=-2, ERROR_DEAD_OBJECT=-6")
+
+                        // НЕ пытаемся оживить — break → release → recreate
+                        break
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "🔴 AudioRecord exception: ${e.message}")
+                Log.e(TAG, "   Stack: ${e.stackTrace.take(3).joinToString(" | ")}")
+
+            } finally {
+                try {
+                    recorder?.stop()
+                    Log.d(TAG, "AudioRecord stopped (finally)")
+                } catch (e: Exception) {
+                    Log.d(TAG, "AudioRecord stop exception: ${e.message}")
+                }
+                try {
+                    recorder?.release()
+                    Log.d(TAG, "AudioRecord released (finally)")
+                } catch (_: Exception) {}
+                audioRecord = null
+            }
+
+            // Пауза перед пересозданием
+            if (serviceRunning && listeningForWakeWord && !isPaused) {
+                try {
+                    Thread.sleep(300)
+                } catch (_: Exception) {}
+                // Сбрасываем session timer
+                sessionStartMs = SystemClock.elapsedRealtime()
+                totalReads = 0
+                totalBytes = 0
+            }
+        }
+
+        Log.d(TAG, "🎧 Audio loop thread ended")
+    }
+
+    private fun calculateRMS(buffer: ShortArray, count: Int): Double {
+        var sum = 0.0
+        for (i in 0 until count) {
+            val v = buffer[i].toDouble()
+            sum += v * v
+        }
+        return Math.sqrt(sum / count)
+    }
+
+    // ─── Flutter communication ───────────────────────────────────────
+
+    /**
+     * Уведомить Flutter что обнаружена речь.
+     * Flutter запускает speech_to_text для распознавания.
+     * После распознавания Flutter вызывает ACTION_STT_DONE.
+     */
+    private fun notifyFlutterSpeechDetected() {
+        listeningForWakeWord = false  // временно停止 AudioRecord VAD
+        Log.d(TAG, "→ Notifying Flutter: speech detected, pausing VAD")
+
+        // Отправляем broadcast через статический eventSink
+        try {
+            val intent = Intent("com.aika.SPEECH_DETECTED")
+                .setPackage(packageName)
+            sendBroadcast(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Broadcast failed: ${e.message}")
+        }
+
+        // Также используем прямой колбэк если доступен
+        try {
+            handler.post {
+                AikaAudioBridge.onSpeechDetected?.invoke()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Bridge callback failed: ${e.message}")
+        }
+    }
+
+    // ─── onTaskRemoved ───────────────────────────────────────────────
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.d(TAG, "🚨 onTaskRemoved — restarting service")
@@ -158,10 +448,9 @@ class AikaMicrophoneService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
-    // ─── УРОВЕНЬ 5: onDestroy → AlarmManager restart ───────────────
-
     override fun onDestroy() {
         Log.d(TAG, "🚨 onDestroy — scheduling restart")
+        stopAudioLoop()
         releaseAll()
         scheduleRestart()
         super.onDestroy()
@@ -178,7 +467,6 @@ class AikaMicrophoneService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            // setExactAndAllowWhileIdle — работает даже в Doze mode
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME,
                 SystemClock.elapsedRealtime() + RESTART_DELAY_MS,
@@ -190,42 +478,23 @@ class AikaMicrophoneService : Service() {
         }
     }
 
-    // ─── УРОВЕНЬ 6: Heartbeat каждые 60 секунд ─────────────────────
-
     private fun scheduleHeartbeat() {
-        cancelHeartbeat()
-        val heartbeatIntent = Intent(applicationContext, AikaMicrophoneService::class.java).apply {
-            action = ACTION_HEARTBEAT
-            setPackage(packageName)
-        }
-        val pendingIntent = PendingIntent.getService(
-            applicationContext, 2, heartbeatIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        // setAndAllowWhileIdle — работает в Doze, но с ограничениями по частоте
-        // Используем setInexactRepeating как fallback для агрессивного Doze
-        alarmManager.setAndAllowWhileIdle(
-            AlarmManager.ELAPSED_REALTIME_WAKEUP,
-            SystemClock.elapsedRealtime() + HEARTBEAT_INTERVAL_MS,
-            pendingIntent
-        )
-        // Дополнительно — Handler-based heartbeat для случая когда процесс жив
-        handler.postDelayed({
-            if (!isActive) {
-                Log.d(TAG, "💀 Handler heartbeat: service died — self-restart")
-                val selfIntent = Intent(applicationContext, AikaMicrophoneService::class.java).apply {
-                    action = ACTION_RESTART
-                    setPackage(packageName)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(selfIntent)
-                } else {
-                    startService(selfIntent)
-                }
+        try {
+            val heartbeatIntent = Intent(applicationContext, AikaMicrophoneService::class.java).apply {
+                action = ACTION_HEARTBEAT
+                setPackage(packageName)
             }
-        }, HEARTBEAT_INTERVAL_MS)
-        Log.d(TAG, "Heartbeat scheduled")
+            val pendingIntent = PendingIntent.getService(
+                applicationContext, 2, heartbeatIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + HEARTBEAT_INTERVAL_MS,
+                pendingIntent
+            )
+        } catch (_: Exception) {}
     }
 
     private fun cancelHeartbeat() {
@@ -245,7 +514,7 @@ class AikaMicrophoneService : Service() {
         } catch (_: Exception) {}
     }
 
-    // ─── УРОВЕНЬ 3: WakeLock с периодическим обновлением ───────────
+    // ─── WakeLock (страховка для CPU, не решение проблемы микрофона) ──
 
     private fun hasMicPermission(): Boolean {
         return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -269,45 +538,18 @@ class AikaMicrophoneService : Service() {
         if (wakeLock?.isHeld == true) return
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Aika:MicrophoneWakeLock")
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Aika:WakeWord")
             wakeLock?.setReferenceCounted(false)
-            // 24 часа — но обновляем каждые 30 минут (см. ниже)
             wakeLock?.acquire(24 * 60 * 60 * 1000L)
-            Log.d(TAG, "WakeLock acquired")
-
-            // Периодическое обновление WakeLock — каждые 30 минут
-            wakeLockRefreshRunnable = object : Runnable {
-                override fun run() {
-                    refreshWakeLock()
-                    handler.postDelayed(this, WAKELOCK_REFRESH_MS)
-                }
-            }
-            handler.postDelayed(wakeLockRefreshRunnable!!, WAKELOCK_REFRESH_MS)
-        } catch (e: Exception) { Log.e(TAG, "WakeLock acquire error: ${e.message}") }
-    }
-
-    private fun refreshWakeLock() {
-        try {
-            if (wakeLock?.isHeld != true) {
-                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Aika:MicrophoneWakeLock")
-                wakeLock?.setReferenceCounted(false)
-            }
-            wakeLock?.acquire(24 * 60 * 60 * 1000L)
-            Log.d(TAG, "WakeLock refreshed")
-        } catch (e: Exception) { Log.e(TAG, "WakeLock refresh error: ${e.message}") }
+            Log.d(TAG, "WakeLock acquired (CPU insurance)")
+        } catch (e: Exception) { Log.e(TAG, "WakeLock error: ${e.message}") }
     }
 
     private fun releaseWakeLock() {
-        try {
-            wakeLockRefreshRunnable?.let { handler.removeCallbacks(it) }
-            wakeLockRefreshRunnable = null
-            wakeLock?.let { if (it.isHeld) it.release() }
-            wakeLock = null
-        } catch (_: Exception) {}
+        try { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null } catch (_: Exception) {}
     }
 
-    // ─── PhoneState — глушить ТОЛЬКО при звонках ───────────────────
+    // ─── PhoneState — глушить ТОЛЬКО при звонках ─────────────────────
 
     private fun setupPhoneStateListener() {
         try {
@@ -318,12 +560,14 @@ class AikaMicrophoneService : Service() {
                         TelephonyManager.CALL_STATE_IDLE -> {
                             if (isPaused) {
                                 isPaused = false
-                                Log.d(TAG, "Call ended — resume")
+                                startAudioLoop()
+                                Log.d(TAG, "Call ended — resume AudioRecord")
                             }
                         }
                         TelephonyManager.CALL_STATE_RINGING, TelephonyManager.CALL_STATE_OFFHOOK -> {
                             isPaused = true
-                            Log.d(TAG, "Call active — pause")
+                            stopAudioLoop()
+                            Log.d(TAG, "Call active — pause AudioRecord")
                         }
                     }
                 }
@@ -331,14 +575,13 @@ class AikaMicrophoneService : Service() {
         } catch (e: Exception) { Log.e(TAG, "PhoneState error: ${e.message}") }
     }
 
-    // ─── Notification ──────────────────────────────────────────────
+    // ─── Notification ────────────────────────────────────────────────
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "Aika Microphone", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Микрофон активен"
+                description = "Микрофон активен — прослушивание wake word"
                 setShowBadge(false)
-                // Важно: LOW importance = не убивается агрессивно
                 lockscreenVisibility = Notification.VISIBILITY_SECRET
             }
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
@@ -354,15 +597,15 @@ class AikaMicrophoneService : Service() {
         }
         return builder
             .setContentTitle("Aika слушает")
-            .setContentText("Микрофон активен")
+            .setContentText("Wake word active")
             .setSmallIcon(iconRes)
-            .setOngoing(true)            // Не убирается свайпом
+            .setOngoing(true)
             .setPriority(Notification.PRIORITY_LOW)
             .setShowWhen(false)
             .build()
     }
 
-    // ─── Cleanup ───────────────────────────────────────────────────
+    // ─── Cleanup ─────────────────────────────────────────────────────
 
     private fun releaseAll() {
         cancelHeartbeat()
