@@ -21,126 +21,77 @@ class AboutProjectScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Название
-          _card('Айка', 'AI-ассистент для Android',
-            'Flutter + Kotlin
-'
-            'Live2D модели (Cubism SDK)
-'
-            'Голосовой ввод: speech_to_text
-'
-            'TTS: EdgeTTS / ElevenLabs / System
-'
-            'AI: Groq gpt-oss-120b (основной)
-'
-            'Fallback: Gemini → Claude → Deepseek
-'
-            'Оверлей поверх всех приложений
-'
-            'Wake word: непрерывное слушание
-'
-            'Управление телефоном: Accessibility Service
-'
-            'Geolocation: IP-based
-'
-            'Уведомления: NotificationListenerService
-'
-            'Тема: тёмная, серые/белые/стекло',
+          _card("Айка", "AI-ассистент для Android",
+            "Flutter + Kotlin\n"
+            "Live2D модели (Cubism SDK)\n"
+            "Голосовой ввод: speech_to_text\n"
+            "TTS: EdgeTTS / ElevenLabs / System\n"
+            "AI: Groq gpt-oss-120b (основной)\n"
+            "Fallback: Gemini → Claude → Deepseek\n"
+            "Оверлей поверх всех приложений\n"
+            "Wake word: непрерывное слушание\n"
+            "Управление телефоном: Accessibility Service\n"
+            "Geolocation: IP-based\n"
+            "Уведомления: NotificationListenerService\n"
+            "Тема: тёмная, серые/белые/стекло",
           ),
           const SizedBox(height: 12),
-
-          // AI Двигатели
-          _card('AI Двигатели',
-            'Подключённые сервисы',
-            '• Groq gpt-oss-120b — основной (бесплатно)
-'
-            '• Google Gemini — fallback
-'
-            '• Claude Haiku — творческие задачи
-'
-            '• Deepseek — дешёвый fallback
-'
-            '• Переключение автоматически при 429
-'
-            '• Веб-поиск: DuckDuckGo + Brave
-'
-            '• 12 персонажей с уникальными промптами',
+          _card("AI Двигатели",
+            "Подключённые сервисы",
+            "• Groq gpt-oss-120b — основной (бесплатно)\n"
+            "• Google Gemini — fallback\n"
+            "• Claude Haiku — творческие задачи\n"
+            "• Deepseek — дешёвый fallback\n"
+            "• Переключение автоматически при 429\n"
+            "• Веб-поиск: DuckDuckGo + Brave\n"
+            "• 12 персонажей с уникальными промптами",
           ),
           const SizedBox(height: 12),
-
-          // Голос
-          _card('Голос',
-            'TTS и распознавание',
-            '• Wake word: speech_to_text, 300с сессии
-'
-            '• TTS: EdgeTTS (WebSocket), ElevenLabs, System
-'
-            '• Распознавание: Google Speech API
-'
-            '• VAD: RMS-энергия + порог тишины
-'
-            '• Фоновое слушание: foreground service
-'
-            '• Mute во время звонков',
+          _card("Голос",
+            "TTS и распознавание",
+            "• Wake word: speech_to_text, 300с сессии\n"
+            "• TTS: EdgeTTS (WebSocket), ElevenLabs, System\n"
+            "• Распознавание: Google Speech API\n"
+            "• VAD: RMS-энергия + порог тишины\n"
+            "• Фоновое слушание: foreground service\n"
+            "• Mute во время звонков",
           ),
           const SizedBox(height: 12),
-
-          // Управление
-          _card('Управление телефоном',
-            'Accessibility + нативные bridge',
-            '• Навигация: назад, домой, рекents
-'
-            '• Запуск приложений по имени
-'
-            '• Управление музыкой (media broadcast)
-'
-            '• Уведомления: чтение через TTS
-'
-            '• Скриншоты, фонарик, яркость
-'
-            '• MethodChannel / EventChannel bridge
-'
-            '• Smart alarm с брифингом',
+          _card("Управление телефоном",
+            "Accessibility + нативные bridge",
+            "• Навигация: назад, домой, рекents\n"
+            "• Запуск приложений по имени\n"
+            "• Управление музыкой (media broadcast)\n"
+            "• Уведомления: чтение через TTS\n"
+            "• Скриншоты, фонарик, яркость\n"
+            "• MethodChannel / EventChannel bridge\n"
+            "• Smart alarm с брифингом",
           ),
           const SizedBox(height: 12),
-
-          // Персонажи
-          _card('Персонажи',
-            '12 личностей',
-            'JARVIS, FRIDAY, Kawaii, Tsundere, Kuudere,
-'
-            'Yandere, Genki, Kitsune, Gabimaru, Sage,
-'
-            'Ghost, Oracle',
+          _card("Персонажи",
+            "12 личностей",
+            "JARVIS, FRIDAY, Kawaii, Tsundere, Kuudere,\n"
+            "Yandere, Genki, Kitsune, Gabimaru, Sage,\n"
+            "Ghost, Oracle",
           ),
           const SizedBox(height: 12),
-
-          // Модели
-          _card('Модели',
-            'Live2D только',
-            'Hiyori, Natori, Haru, Mao, Rice, Wanko
-'
-            'Кастомные .model3.json файлы
-'
-            '3D модели удалены',
+          _card("Модели",
+            "Live2D только",
+            "Hiyori, Natori, Haru, Mao, Rice, Wanko\n"
+            "Кастомные .model3.json файлы\n"
+            "3D модели удалены",
           ),
           const SizedBox(height: 12),
-
-          // Telegram
-          _card('Telegram бот',
-            'Регистрация и управление',
-            '• Регистрация через Telegram
-'
-            '• Approve/Reject через inline кнопки
-'
-            '•license requests → server endpoint',
+          _card("Telegram бот",
+            "Регистрация и управление",
+            "• Регистрация через Telegram\n"
+            "• Approve/Reject через inline кнопки\n"
+            "• License requests → server endpoint",
           ),
           const SizedBox(height: 32),
-
-          // Версия
           Center(
             child: Text(
-              'Aika v2 · 2026',
+              "Aika v2 · 2026",
               style: TextStyle(color: Colors.white38, fontSize: 12),
             ),
           ),
