@@ -93,8 +93,15 @@ class SettingsScreen extends StatelessWidget {
             title: 'История чата',
             subtitle: 'Все прошлые сообщения, очистка',
             icon: Icons.history,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ChatHistoryScreen())),
+            onTap: () async {
+              // ФИКС: пробрасываем флаг очистки истории на главный экран,
+              // чтобы он сбросил свой список сообщений в памяти.
+              final cleared = await Navigator.push<bool>(context,
+                  MaterialPageRoute(builder: (_) => const ChatHistoryScreen()));
+              if (cleared == true && context.mounted) {
+                Navigator.pop(context, true);
+              }
+            },
           ),
 
           _SettingsCard(
