@@ -41,7 +41,7 @@ class ScreenZone {
 }
 
 /// Сервис слежки за конкретной зоной экрана.
-/// Использует PixelCopy (через Kotlin) для захвата + GPT-4o Vision для анализа.
+/// Использует PixelCopy (через Kotlin) для захвата + Groq gpt-oss-120b Vision для анализа.
 class AikaZoneWatcherService {
   static const _reader = MethodChannel('com.aika.assistant/screen_reader');
 
@@ -117,7 +117,7 @@ class AikaZoneWatcherService {
       final croppedB64 = await _cropZone(b64Full, zone);
       if (croppedB64 == null) return;
 
-      // 3. Анализируем через GPT-4o Vision
+      // 3. Анализируем через Groq gpt-oss-120b Vision
       final ai = AiService();
       final prompt =
           'Ты игровой ассистент Айка. Смотришь на зону экрана: "${zone.name}". '
