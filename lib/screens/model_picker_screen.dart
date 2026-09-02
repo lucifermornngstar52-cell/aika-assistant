@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live2d_widget.dart';
-import '../widgets/model3d_widget.dart';
 import '../services/overlay_service.dart';
 
 /// Встроенные Live2D модели
@@ -25,24 +24,7 @@ final _builtinLive2D = [
   BuiltinModel(id: 'wanko',  name: 'Wanko',  assetPath: 'models/Wanko/Wanko.model3.json',  emoji: '🐶'),
 ];
 
-/// Встроенные 3D модели
-class Builtin3DModel {
-  final String id;
-  final String name;
-  final String assetPath;
-  final String emoji;
-  final int animCount;
-  Builtin3DModel({required this.id, required this.name, required this.assetPath, required this.emoji, this.animCount = 0});
-}
 
-final _builtin3D = [
-  Builtin3DModel(id: 'tsumire', name: 'Tsumire', assetPath: 'models/tsumire.glb', emoji: '🎀', animCount: 9),
-  Builtin3DModel(id: 'aika_model', name: 'Aika', assetPath: 'models/aika_model.glb', emoji: '🤖', animCount: 9),
-  Builtin3DModel(id: 'michelle', name: 'Michelle', assetPath: 'models/michelle.glb', emoji: '💃', animCount: 2),
-  Builtin3DModel(id: 'anime_girl', name: 'Anime Girl', assetPath: 'models/anime_girl.glb', emoji: '👧', animCount: 9),
-  Builtin3DModel(id: 'robot', name: 'Robot', assetPath: 'models/robot.glb', emoji: '🦾', animCount: 14),
-  Builtin3DModel(id: 'soldier', name: 'Soldier', assetPath: 'models/soldier.glb', emoji: '🪖', animCount: 4),
-];
 
 class ModelPickerScreen extends StatefulWidget {
   const ModelPickerScreen({super.key});
@@ -51,11 +33,9 @@ class ModelPickerScreen extends StatefulWidget {
 }
 
 class _ModelPickerScreenState extends State<ModelPickerScreen> {
-  String _mode = 'live2d'; // 'live2d' or '3d'
+  String _mode = 'live2d';
   String _selectedId = 'natori';
-  String _selected3DId = 'tsumire';
   String? _customModelPath;
-  String? _custom3DPath;
   String _previewState = 'idle';
   bool _loading = false;
   final _overlaySvc = OverlayService();
@@ -73,25 +53,16 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     setState(() {
       _mode = prefs.getString('overlay_mode') ?? 'live2d';
       _selectedId = prefs.getString('live2d_model_id') ?? 'natori';
-      _selected3DId = prefs.getString('model3d_id') ?? 'tsumire';
       _customModelPath = prefs.getString('custom_model_path');
-      _custom3DPath = prefs.getString('custom_3d_path');
     });
   }
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('overlay_mode', _mode);
-    if (_mode == 'live2d') {
-      await prefs.setString('live2d_model_id', _selectedId);
-      if (_customModelPath != null && _selectedId == 'custom') {
-        await prefs.setString('custom_model_path', _customModelPath!);
-      }
-    } else {
-      await prefs.setString('model3d_id', _selected3DId);
-      if (_custom3DPath != null && _selected3DId == 'custom') {
-        await prefs.setString('custom_3d_path', _custom3DPath!);
-      }
+    await prefs.setString('overlay_mode', 'live2d');
+    await prefs.setString('live2d_model_id', _selectedId);
+    if (_customModelPath != null && _selectedId == 'custom') {
+      await prefs.setString('custom_model_path', _customModelPath!);
     }
   }
 
@@ -128,25 +99,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     setState(() => _loading = false);
   }
 
-  Future<void> _pickCustom3D() async {
-    setState(() => _loading = true);
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['glb', 'gltf'],
-        dialogTitle: 'Выбери .glb файл',
-      );
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
-        setState(() { _custom3DPath = path; _selected3DId = 'custom'; });
-        await _save();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("3D модель загружена: ${path.split("/").last}"),
-            backgroundColor: Colors.cyan.withOpacity(0.8),
-            behavior: SnackBarBehavior.floating,
-          ));
-        }
       }
     } catch (e) { debugPrint('FilePicker 3D error: $e'); }
     setState(() => _loading = false);
@@ -154,13 +106,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
 
   Future<void> _applyAndClose() async {
     await _save();
-    if (_mode == '3d') {
-      final model = _builtin3D.firstWhere(
-        (m) => m.id == _selected3DId,
-        orElse: () => _builtin3D.first,
-      );
-      final path = _selected3DId == 'custom' && _custom3DPath != null
-          ? _custom3DPath! : model.assetPath;
       await _overlaySvc.switchModel(path);
     } else {
       String path;
@@ -195,16 +140,14 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
       ),
       body: Column(
         children: [
-          // ── Toggle: Live2D / 3D ─────────────────────────────────────
+          // ── Заголовок ───────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: AikaTheme.surface,
             child: Row(
               children: [
-                _buildModeToggle('Live2D', 'live2d', Icons.face_retouching_natural),
-                const SizedBox(width: 10),
-                _buildModeToggle('3D', '3d', Icons.view_in_ar),
-              ],
+                                const SizedBox(width: 10),
+                              ],
             ),
           ),
           // ── Превью ──────────────────────────────────────────────────
@@ -243,7 +186,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
-              children: _mode == 'live2d' ? _buildLive2DList() : _build3DList(),
+              children: _buildLive2DList(),
             ),
           ),
         ],
@@ -258,39 +201,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     );
   }
 
-  Widget _buildModeToggle(String label, String mode, IconData icon) {
-    final isSelected = _mode == mode;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _mode = mode),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? AikaTheme.neonBlue.withOpacity(0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isSelected ? AikaTheme.neonBlue : Colors.white12,
-              width: isSelected ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18,
-                color: isSelected ? AikaTheme.neonBlue : Colors.white54),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(
-                color: isSelected ? AikaTheme.neonBlue : Colors.white54,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                fontSize: 14,
-              )),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildPreview() {
     if (_mode == '3d') {
@@ -348,44 +258,12 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     ];
   }
 
-  List<Widget> _build3DList() {
-    return [
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Text('3D МОДЕЛИ (GLB)',
-            style: TextStyle(color: Colors.cyan, fontSize: 12,
-                fontWeight: FontWeight.bold, letterSpacing: 2)),
-      ),
-      ..._builtin3D.map((m) => _buildModelCard(
-        id: m.id, name: m.name, emoji: m.emoji,
-        desc: m.animCount > 0 ? '3D • ${m.animCount} анимаций' : '3D • без анимаций',
-        accentColor: Colors.cyan,
-        onTap: () async { setState(() => _selected3DId = m.id); await _save(); },
-      )),
-      const SizedBox(height: 8),
-      Divider(color: Colors.white12),
-      const SizedBox(height: 8),
-      _buildAddCard('Добавить .glb файл', Icons.view_in_ar, _pickCustom3D),
-      if (_custom3DPath != null) ...[
-        const SizedBox(height: 8),
-        _buildModelCard(
-          id: 'custom',
-          name: _custom3DPath!.split('/').last,
-          emoji: '📦', desc: '3D • пользовательская',
-          accentColor: Colors.cyan,
-          onTap: () async { setState(() => _selected3DId = 'custom'); await _save(); },
-        ),
-      ],
-      const SizedBox(height: 80),
-    ];
-  }
 
   Widget _buildModelCard({
     required String id, required String name, required String emoji,
     required String desc, required VoidCallback onTap, Color accentColor = Colors.blue,
   }) {
-    final isSelected = _mode == 'live2d'
-        ? _selectedId == id : _selected3DId == id;
+    final isSelected = _selectedId == id;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -471,10 +349,9 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
         backgroundColor: AikaTheme.surface,
         title: Text('Справка', style: TextStyle(color: AikaTheme.neonBlue)),
         content: const Text(
-          'Live2D — 2D аниме-модели с мимикой и физикой.\n\n'
-          '3D (GLB) — полноценные 3D-модели со скелетной анимацией.\n'
+          'Live2D — 2D аниме-модели с мимикой и физикой.\n'
           'Tsumire: 24k полигонов, 9 анимаций (idle, walk, run, dance, agree, headShake, sad, sneak, TPose).\n\n'
-          'Можно загружать свои модели (.model3.json для Live2D, .glb для 3D).',
+          'Можно загружать свои модели (.model3.json для Live2D).',
           style: TextStyle(color: Colors.white70, fontSize: 13),
         ),
         actions: [
