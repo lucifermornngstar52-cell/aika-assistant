@@ -265,9 +265,14 @@ class AikaOverlayService : Service() {
                     else webView?.evaluateJavascript("window.setAikaState('$st')", null)
                 }
             }
-            ACTION_HIDE -> handler.post {
-                currentState = "idle"
-                webView?.evaluateJavascript("window.setAikaState('idle')", null)
+            ACTION_HIDE -> {
+                currentState = "hidden"
+                handler.post {
+                    try { webView?.let { wm?.removeView(it) } } catch (_: Exception) {}
+                    webView?.destroy()
+                    webView = null
+                    stopSelf()
+                }
             }
             ACTION_CONFIG -> {
                 val newSize    = intent.getFloatExtra(EXTRA_SIZE, 0f)

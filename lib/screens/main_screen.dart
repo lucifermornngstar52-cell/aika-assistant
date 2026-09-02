@@ -463,6 +463,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final overlayEnabled = prefs.getBool('overlay_enabled') ?? true;
     if (has && overlayEnabled && mounted) {
       await OverlayService().show(state: 'idle');
+    } else if (!overlayEnabled && mounted) {
+      // Оверлей выключен в настройках — убираем если он был активен
+      await OverlayService().hide();
     }
     // Диалог показываем ОДИН раз за сессию, не при каждом resume
     if (!has && mounted && !_overlayDialogShown) {
