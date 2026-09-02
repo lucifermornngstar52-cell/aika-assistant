@@ -33,7 +33,6 @@ void main() async {
 
   // Загружаем все AI ключи из настроек
   final prefs = await SharedPreferences.getInstance();
-  AiService.setOpenAiKey(prefs.getString('openai_key') ?? '');
   AiService.setGeminiKey(prefs.getString('gemini_key') ?? '');
   AiService.setGroqKey(prefs.getString('groq_key') ?? '');
   AiService.setClaudeKey(prefs.getString('claude_key') ?? '');
