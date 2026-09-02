@@ -520,7 +520,22 @@ override fun onResume() {
                 }
             })
 
-        // ── 8. Microphone Service Control MethodChannel ───────────────────
+        // ── 8a. Audio Bridge EventChannel (native VAD → Flutter) ──────────
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/audio_events")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    Log.d("Aika", "Audio bridge EventChannel listening")
+                    AikaAudioBridge.onSpeechDetected = {
+                        events?.success("speech_detected")
+                    }
+                }
+                override fun onCancel(arguments: Any?) {
+                    Log.d("Aika", "Audio bridge EventChannel cancelled")
+                    AikaAudioBridge.onSpeechDetected = null
+                }
+            })
+
+        // ── 8b. Microphone Service Control MethodChannel ───────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/microphone")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -565,6 +580,17 @@ override fun onResume() {
                             result.success(true)
                         } catch (e: Exception) {
                             Log.e("AikaMic", "Battery opt request failed: ${e.message}")
+                            result.success(false)
+                        }
+                    }
+                    "sttDone" -> {
+                        // Flutter закончил STT → возобновляем AudioRecord
+                        try {
+                            val i = Intent(this, AikaMicrophoneService::class.java)
+                                .setAction(AikaMicrophoneService.ACTION_STT_DONE)
+                            startService(i)
+                            result.success(true)
+                        } catch (e: Exception) {
                             result.success(false)
                         }
                     }
