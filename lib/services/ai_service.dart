@@ -10,17 +10,12 @@ import 'web_search_service.dart';
 
 /// ════════════════════════════════════════════════════════════════════
 /// AiService — Мульти-AI роутер:
-/// Groq gpt-oss-120b (основной, бесплатно) → GPT-4o → Gemini → Claude → Deepseek
+/// Groq gpt-oss-120b (основной, бесплатно) → Gemini → Claude → Deepseek
 /// + Веб-поиск (DuckDuckGo/Brave бесплатно)
-/// + Vision (GPT-4o Vision / Gemini Vision)
-/// + Image generation (DALL-E 3)
+/// + Vision (Gemini Vision)
+/// 
 /// ════════════════════════════════════════════════════════════════════
 class AiService {
-  // ── OpenAI ─────────────────────────────────────────────────────────
-  static String _openAiKey = '';
-  static const String _openAiUrl = 'https://api.openai.com/v1/chat/completions';
-  static const String _openAiImgUrl = 'https://api.openai.com/v1/images/generations';
-
   // ── Google Gemini ───────────────────────────────────────────────────
   static String _geminiKey = '';
   static const String _geminiFlashUrl =
@@ -45,13 +40,12 @@ class AiService {
   static const String _perplexityUrl = 'https://api.perplexity.ai/chat/completions';
 
   // ── Настройки ──────────────────────────────────────────────────────
-  static String _preferredModel = 'auto'; // auto|gpt4o|gemini|groq|claude|deepseek|perplexity
+  static String _preferredModel = 'auto'; // auto|gemini|groq|claude|deepseek|perplexity
   static bool _webSearchEnabled = true;
   static int _historyLimit = 20;
   static int _maxTokens = 1024;
 
   // ── Setters (из настроек) ──────────────────────────────────────────
-  static void setOpenAiKey(String k) => _openAiKey = k;
   static void setGeminiKey(String k) => _geminiKey = k;
   static void setGroqKey(String k) => _groqKey = k;
   static void setClaudeKey(String k) => _claudeKey = k;
@@ -63,7 +57,6 @@ class AiService {
 
   // ── Статус подключённых сервисов ───────────────────────────────────
   static Map<String, bool> get connectedServices => {
-    'GPT-4o': _openAiKey.isNotEmpty,
     'Gemini': _geminiKey.isNotEmpty,
     'Groq (Free)': _groqKey.isNotEmpty,
     'Claude': _claudeKey.isNotEmpty,
@@ -81,7 +74,7 @@ class AiService {
     List<String> history = const [],
     String memoryContext = '',
     String screenContext = '',
-    String openAiKey = '',
+
     String longMemory = '',
     String imageBase64 = '',
     String imageMimeType = 'image/jpeg',
@@ -91,8 +84,6 @@ class AiService {
       value: message.length > 80 ? message.substring(0, 80) : message,
     ).catchError((_) {});
 
-    // Эффективный ключ OpenAI (из настроек или переданный)
-    final effectiveOpenAiKey = openAiKey.isNotEmpty ? openAiKey : _openAiKey;
 
     // Веб-поиск для актуальных данных
     String webContext = '';
@@ -122,7 +113,7 @@ class AiService {
           history: history,
           memoryContext: memoryContext,
           screenContext: screenContext,
-          openAiKey: effectiveOpenAiKey,
+
           longMemory: longMemory,
           imageBase64: imageBase64,
           imageMimeType: imageMimeType,
@@ -143,9 +134,8 @@ class AiService {
   String _chooseModel(String message, bool hasImage) {
     final m = message.toLowerCase();
 
-    // Vision — только GPT-4o или Gemini
+    // Vision — только Gemini
     if (hasImage) {
-      if (_openAiKey.isNotEmpty) return 'gpt4o';
       return 'gemini_pro';
     }
 
@@ -154,9 +144,7 @@ class AiService {
       return 'perplexity';
     }
 
-    // Код, математика, анализ → GPT-4o или Deepseek
     if (_isComplexTask(m)) {
-      if (_openAiKey.isNotEmpty) return 'gpt4o';
       if (_deepseekKey.isNotEmpty) return 'deepseek';
     }
 
@@ -164,7 +152,7 @@ class AiService {
     if (_groqKey.isNotEmpty) return 'groq';
 
     // Fallback на другие если Groq недоступен
-    if (_openAiKey.isNotEmpty) return 'gpt4o';
+    
     if (_geminiKey.isNotEmpty) return 'gemini_pro';
     if (_claudeKey.isNotEmpty) return 'claude';
     if (_deepseekKey.isNotEmpty) return 'deepseek';
@@ -174,16 +162,16 @@ class AiService {
   // ══════════════════════════════════════════════════════════════════
   //  Цепочка fallback
   // ══════════════════════════════════════════════════════════════════
-  List<String> _buildFallbackChain(String preferred, String openAiKey, bool hasImage) {
+  List<String> _buildFallbackChain(String preferred, bool hasImage) {
     final chain = <String>[];
 
     // Начинаем с выбранной модели
-    if (_isProviderAvailable(preferred, openAiKey)) chain.add(preferred);
+    if (_isProviderAvailable(preferred)) chain.add(preferred);
 
     // Fallback цепочка
-    final fallbacks = ['groq', 'gpt4o', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
+    final fallbacks = ['groq', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
     for (final fb in fallbacks) {
-      if (fb != preferred && _isProviderAvailable(fb, openAiKey)) {
+      if (fb != preferred && _isProviderAvailable(fb)) {
         if (hasImage && (fb == 'groq' || fb == 'deepseek' || fb == 'claude')) continue;
         chain.add(fb);
       }
@@ -195,9 +183,8 @@ class AiService {
     return chain;
   }
 
-  bool _isProviderAvailable(String provider, String openAiKey) {
+  bool _isProviderAvailable(String provider) {
     switch (provider) {
-      case 'gpt4o': return openAiKey.isNotEmpty || _openAiKey.isNotEmpty;
       case 'gemini_pro':
       case 'gemini_flash': return _geminiKey.isNotEmpty;
       case 'groq': return _groqKey.isNotEmpty;
@@ -225,7 +212,6 @@ class AiService {
     required List<String> history,
     required String memoryContext,
     required String screenContext,
-    required String openAiKey,
     required String longMemory,
     required String imageBase64,
     required String imageMimeType,
@@ -236,7 +222,6 @@ class AiService {
         return await _callOpenAi(message,
           userName: userName, assistantName: assistantName, history: history,
           memoryContext: memoryContext, screenContext: screenContext,
-          openAiKey: openAiKey.isNotEmpty ? openAiKey : _openAiKey,
           longMemory: longMemory, imageBase64: imageBase64,
           imageMimeType: imageMimeType, webContext: webContext,
           model: 'gpt-4o',
@@ -324,7 +309,6 @@ class AiService {
     // Пробуем по порядку доступности
     final providers = <Future<String> Function()>[];
 
-    if (_openAiKey.isNotEmpty) {
       providers.add(() async {
         final body = {
           'model': 'gpt-4o-mini',
@@ -393,29 +377,6 @@ class AiService {
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  DALL-E 3 — генерация изображений
-  // ══════════════════════════════════════════════════════════════════
-  Future<String?> generateImage(String prompt) async {
-    if (_openAiKey.isEmpty) return null;
-    try {
-      final body = {
-        'model': 'dall-e-3',
-        'prompt': prompt,
-        'n': 1,
-        'size': '1024x1024',
-        'quality': 'standard',
-        'response_format': 'url',
-      };
-      final response = await http.post(
-        Uri.parse(_openAiImgUrl),
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $_openAiKey'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      return data['data'][0]['url'] as String?;
-    } catch (_) { return null; }
-  }
 
   // ══════════════════════════════════════════════════════════════════
   //  СИСТЕМНЫЙ ПРОМПТ
@@ -456,7 +417,7 @@ class AiService {
 
 ИНТЕЛЛЕКТ:
 - У тебя доступ к актуальным данным из интернета (когда нужно).
-- Ты умеешь генерировать изображения через DALL-E 3.
+
 - Ты видишь экран телефона и можешь им управлять.
 - Ты знаешь всё — от науки до поп-культуры.
 
@@ -506,7 +467,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
 [ACTION:get_weather]
 
 🎨 ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ:
-[ACTION:generate_image_запрос] — нарисовать изображение через DALL-E 3
+
 Пример: [ACTION:generate_image_закат_на_Марсе]
 
 🧠 AI-УПРАВЛЕНИЕ ЭКРАНОМ:
@@ -533,37 +494,6 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  OpenAI GPT-4o / GPT-4o-mini
-  // ══════════════════════════════════════════════════════════════════
-  Future<String> _callOpenAi(
-    String message, {
-    required String userName,
-    required String assistantName,
-    required List<String> history,
-    required String memoryContext,
-    required String screenContext,
-    required String openAiKey,
-    required String longMemory,
-    required String imageBase64,
-    required String imageMimeType,
-    required String webContext,
-    String model = 'gpt-4o',
-  }) async {
-    final systemPrompt = _buildSystemPrompt(userName, assistantName,
-          longMemory: longMemory, webContext: webContext) +
-        (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '') +
-        (screenContext.isNotEmpty ? '\n\n== СЕЙЧАС НА ЭКРАНЕ ==\n$screenContext' : '');
-
-    final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': systemPrompt},
-    ];
-
-    for (final h in history.take(_historyLimit)) {
-      if (h.startsWith('user: ')) {
-        messages.add({'role': 'user', 'content': h.substring(6)});
-      } else if (h.startsWith('assistant: ')) {
-        messages.add({'role': 'assistant', 'content': h.substring(11)});
-      }
     }
 
     if (imageBase64.isNotEmpty) {
