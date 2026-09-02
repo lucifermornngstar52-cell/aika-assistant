@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../services/ai_service.dart';
@@ -171,7 +172,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             '🧠 Авто-роутинг',
             'Умный выбор модели:\n'
             '• Быстрые команды → Groq (мгновенно)\n'
-            '• Сложные вопросы → GPT-4o\n'
+            '• Сложные вопросы → Gemini\n'
             '• Актуальные данные → Perplexity\n'
             '• Творчество → Claude',
           ),
@@ -312,7 +313,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               ),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste, color: Colors.white24, size: 16),
-                onPressed: () {}, // paste hint
+                onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) ctrl.text = data!.text!; setState(() {}); }
               ),
             ),
             onChanged: (_) => setState(() {}),
