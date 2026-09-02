@@ -524,7 +524,7 @@ class WakeWordService {
           if (level > 0) _recoveryLevel = 0;
         },
         cancelOnError: false,
-        listenMode: ListenMode.deviceOnly,
+        listenMode: ListenMode.dictation,
         sampleRate: 44100,
       );
     } catch (e) {
