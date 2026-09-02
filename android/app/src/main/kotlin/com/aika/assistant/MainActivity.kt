@@ -134,6 +134,42 @@ class MainActivity : FlutterActivity() {
         try { unregisterReceiver(notificationReceiver) } catch (_: Exception) {} } catch (_: Exception) {}
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.d("Aika", "🚨 onTaskRemoved — restarting services after swipe")
+        // Перезапускаем microphone service
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            try {
+                val micIntent = Intent(this, AikaMicrophoneService::class.java).apply {
+                    action = AikaMicrophoneService.ACTION_RESTART
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(micIntent)
+                } else {
+                    startService(micIntent)
+                }
+            } catch (e: Exception) {
+                Log.e("Aika", "Mic restart on task removed failed: ${e.message}")
+            }
+        }
+        // Перезапускаем overlay
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+            try {
+                val overlayIntent = Intent(this, AikaOverlayService::class.java).apply {
+                    action = AikaOverlayService.ACTION_SHOW
+                    putExtra(AikaOverlayService.EXTRA_STATE, "idle")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(overlayIntent)
+                } else {
+                    startService(overlayIntent)
+                }
+            } catch (e: Exception) {
+                Log.e("Aika", "Overlay restart on task removed failed: ${e.message}")
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onResume() {
         super.onResume()
         // При возврате в приложение — если overlay не запущен, стартуем
