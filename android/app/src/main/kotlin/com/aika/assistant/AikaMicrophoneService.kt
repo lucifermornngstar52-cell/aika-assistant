@@ -112,11 +112,6 @@ class AikaMicrophoneService : Service() {
     private var totalBytes = 0L
     private var recreateCount = 0
 
-    // Статический колбэк для EventChannel
-    companion object {
-        // ... (остальные константы выше)
-    }
-
     // ─── Lifecycle ───────────────────────────────────────────────────
 
     override fun onCreate() {
@@ -405,25 +400,14 @@ class AikaMicrophoneService : Service() {
      * После распознавания Flutter вызывает ACTION_STT_DONE.
      */
     private fun notifyFlutterSpeechDetected() {
-        listeningForWakeWord = false  // временно停止 AudioRecord VAD
-        Log.d(TAG, "→ Notifying Flutter: speech detected, pausing VAD")
+        listeningForWakeWord = false  // временно останавливаем VAD
+        Log.d(TAG, "→ Speech detected — notifying Flutter, pausing VAD")
 
-        // Отправляем broadcast через статический eventSink
+        // Уведомляем Flutter через AikaAudioBridge
         try {
-            val intent = Intent("com.aika.SPEECH_DETECTED")
-                .setPackage(packageName)
-            sendBroadcast(intent)
+            AikaAudioBridge.notifySpeechDetected()
         } catch (e: Exception) {
-            Log.e(TAG, "Broadcast failed: ${e.message}")
-        }
-
-        // Также используем прямой колбэк если доступен
-        try {
-            handler.post {
-                AikaAudioBridge.onSpeechDetected?.invoke()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Bridge callback failed: ${e.message}")
+            Log.e(TAG, "Bridge notify failed: ${e.message}")
         }
     }
 
