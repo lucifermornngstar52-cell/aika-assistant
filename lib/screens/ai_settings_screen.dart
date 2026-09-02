@@ -10,7 +10,6 @@ class AiSettingsScreen extends StatefulWidget {
 }
 
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
-  final _openAiCtrl   = TextEditingController();
   final _geminiCtrl   = TextEditingController();
   final _groqCtrl     = TextEditingController();
   final _claudeCtrl   = TextEditingController();
@@ -25,10 +24,9 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
   final _models = {
     'auto':        '🧠 Авто (умный роутинг)',
-    'gpt4o':       '⚡ GPT-4o (OpenAI)',
     'gemini_pro':  '✨ Gemini 2.5 Flash Pro',
     'gemini_flash':'🚀 Gemini 2.0 Flash (быстрый)',
-    'groq':        '⚡ Groq Llama 3.3-70B (бесплатно)',
+    'groq':        '⚡ Groq gpt-oss-120b (бесплатно)',
     'claude':      '🤖 Claude Haiku (Anthropic)',
     'deepseek':    '🧬 Deepseek Chat (дёшево)',
     'perplexity':  '🌐 Perplexity (AI + веб)',
@@ -43,8 +41,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _openAiCtrl.text   = prefs.getString('openai_key')    ?? '';
-      _geminiCtrl.text   = prefs.getString('gemini_key')    ?? '';
+            _geminiCtrl.text   = prefs.getString('gemini_key')    ?? '';
       _groqCtrl.text     = prefs.getString('groq_key')      ?? '';
       _claudeCtrl.text   = prefs.getString('claude_key')    ?? '';
       _deepseekCtrl.text = prefs.getString('deepseek_key')  ?? '';
@@ -61,7 +58,6 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   void _applyKeys() {
-    AiService.setOpenAiKey(_openAiCtrl.text.trim());
     AiService.setGeminiKey(_geminiCtrl.text.trim());
     AiService.setGroqKey(_groqCtrl.text.trim());
     AiService.setClaudeKey(_claudeCtrl.text.trim());
@@ -74,7 +70,6 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('openai_key',    _openAiCtrl.text.trim());
     await prefs.setString('gemini_key',    _geminiCtrl.text.trim());
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
     await prefs.setString('claude_key',    _claudeCtrl.text.trim());
@@ -229,7 +224,6 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           // ── API Ключи ─────────────────────────────────────────────
           _sectionHeader('🔑 API КЛЮЧИ'),
 
-          _keyCard('OpenAI GPT-4o', _openAiCtrl, 'sk-proj-...', '🟢 бесплатно: нет\nplatform.openai.com/api-keys'),
           _keyCard('Google Gemini', _geminiCtrl, 'AIza...', '🟢 бесплатно: до 1500 запросов/день\naistudio.google.com/apikey'),
           _keyCard('Groq (Llama 3.3-70B)', _groqCtrl, 'gsk_...', '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com'),
           _keyCard('Anthropic Claude', _claudeCtrl, 'sk-ant-...', '🟡 бесплатно: есть trial\nconsole.anthropic.com'),
@@ -242,9 +236,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           _infoCard('💡 Рекомендация',
             'Для максимального результата:\n'
             '1. Groq — получить бесплатно (console.groq.com)\n'
-            '2. Gemini — бесплатно в Google AI Studio\n'
-            '3. GPT-4o — если есть бюджет (умнейший)\n\n'
-            'Groq + Gemini = мощный дуэт БЕСПЛАТНО!'),
+            '2. Gemini — бесплатно в Google AI Studio\n\n'
+            'Groq — основная модель (бесплатно, быстро, gpt-oss-120b)'),
 
           const SizedBox(height: 32),
         ],
