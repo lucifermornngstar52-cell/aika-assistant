@@ -99,7 +99,7 @@ class AiService {
         : _preferredModel;
 
     // Строим цепочку fallback
-    final chain = _buildFallbackChain(model, effectiveOpenAiKey, imageBase64.isNotEmpty);
+    final chain = _buildFallbackChain(model, imageBase64.isNotEmpty);
 
     // Пробуем по цепочке
     Exception? lastError;
