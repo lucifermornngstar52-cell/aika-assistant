@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import '../services/app_launcher_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../models/chat_message.dart';
@@ -441,16 +442,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       debugPrint('[MainScreen] wake word STT not ready — skipping autostart');
       return;
     }
+    // Запрашиваем exemption от энергосбережения — критично для foreground service.
+    // Без этого Android может убить AudioRecord в любой момент.
+    try {
+      const micChan = MethodChannel('com.aika.assistant/microphone');
+      final isOptimized = await micChan.invokeMethod('isBatteryOptimized');
+      if (isOptimized == false && mounted) {
+        debugPrint('[MainScreen] ⚠️ Battery optimization enabled — requesting exemption');
+        _showSnack('⚠️ Энергосбережение может мешать wake word. Разреши исключение для Айки.');
+        await micChan.invokeMethod('requestBatteryOptimization');
+      }
+    } catch (e) {
+      debugPrint('[MainScreen] Battery optimization check failed: $e');
+    }
     await _wakeWordService.startListening(() {
       if (!_isListening && !_isThinking) _onWakeWordDetected();
     });
-    // ФИКС: вейкворд включается автоматически при запуске приложения —
-    // сообщаем об этом явно, чтобы не было путаницы, если пользователь
-    // потом нажмёт на иконку и она "внезапно" выключится (это нормальный
-    // тоггл — иконка уже была активна).
     if (mounted) {
       setState(() => _wakeWordEnabled = true);
-      _showSnack('🎤 Wake word активирован автоматически — скажи "$_assistantName"');
+      _showSnack('🎤 Wake word активирован — скажи "$_assistantName"');
     }
   }
 
