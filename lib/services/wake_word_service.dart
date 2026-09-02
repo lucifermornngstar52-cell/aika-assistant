@@ -44,7 +44,16 @@ class WakeWordService {
           _currentCompleter!.complete(false);
         }
       },
-      onStatus: (s) => debugPrint('[WakeWord] STT status: $s'),
+      onStatus: (s) {
+        debugPrint('[WakeWord] STT status: $s');
+        // Когда STT останавливается сам — перезапускаем цикл
+        if (s == 'done' || s == 'notListening') {
+          if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+            debugPrint('[WakeWord] status $s — restarting loop');
+            _currentCompleter!.complete(false);
+          }
+        }
+      },
     );
     await updateTriggers();
     _listenPhoneState();
@@ -212,6 +221,9 @@ class WakeWordService {
         debugPrint('[WakeWord] loop error: $e');
         await Future.delayed(const Duration(milliseconds: 100));
       }
+
+      // Небольшая пауза между сессиями — даём STT полностью остановиться
+      await Future.delayed(const Duration(milliseconds: 200));
     }
     _loopRunning = false;
   }
@@ -225,6 +237,14 @@ class WakeWordService {
     _currentCompleter = completer;
     bool triggered = false;
 
+    // Watchdog: если STT остановилось без finalResult или error — перезапускаем
+    final watchdog = Timer(const Duration(seconds: 15), () {
+      if (!completer.isCompleted && !_stt.isListening) {
+        debugPrint('[WakeWord] watchdog: STT stopped without signal, restarting');
+        completer.complete(false);
+      }
+    });
+
     _stt.listen(
       onResult: (result) {
         final text = result.recognizedWords.toLowerCase();
@@ -233,7 +253,13 @@ class WakeWordService {
         }
 
         // Подавление триггеров (TTS echo) — STT продолжает работать
-        if (_suppressed) return;
+        if (_suppressed) {
+          // Но если сессия завершилась (finalResult), нужно перезапустить
+          if (result.finalResult && !completer.isCompleted) {
+            completer.complete(false);
+          }
+          return;
+        }
         if (!_active || !_loopRunning) return;
 
         for (final t in _triggers) {
@@ -245,7 +271,13 @@ class WakeWordService {
             return;
           }
         }
-        // finalResult без совпадения — НЕ завершаем, сессия продолжается
+
+        // finalResult без совпадения — сессия завершилась (Android остановил STT).
+        // НЕ остаёмся в ожидании 310с — сразу перезапускаем цикл.
+        if (result.finalResult && !completer.isCompleted) {
+          debugPrint('[WakeWord] session ended (finalResult), restarting...');
+          completer.complete(false);
+        }
       },
       listenFor: const Duration(seconds: 300),
       pauseFor: const Duration(seconds: 300),
@@ -259,6 +291,7 @@ class WakeWordService {
       return await completer.future
           .timeout(const Duration(seconds: 310), onTimeout: () => false);
     } finally {
+      watchdog.cancel();
       _currentCompleter = null;
       if (triggered && _stt.isListening) {
         try { await _stt.stop(); } catch (_) {}
