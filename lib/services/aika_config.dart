@@ -1,14 +1,11 @@
 /// Конфигурация API ключей
-/// Этот файл в .gitignore — не попадает в репозиторий
-/// Ключи можно вводить прямо в приложении: Настройки → AI Двигатели
+/// Этот файл в .gitignore — не попадёт в репозиторий
+/// Ключи вводятся в приложении: Настройки → AI Двигатели
 class AikaConfig {
-  // OpenAI / GPT-4o
-  static const String openAiKey = '';
-
   // Google Gemini (бесплатно в AI Studio)
   static const String geminiKey = '';
 
-  // Groq — БЕСПЛАТНО (console.groq.com)
+  // Groq — БЕСПЛАТНО (console.groq.com) — основной движок
   static const String groqKey = '';
 
   // Anthropic Claude
