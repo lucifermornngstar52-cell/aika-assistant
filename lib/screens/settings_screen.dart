@@ -41,9 +41,9 @@ class SettingsScreen extends StatelessWidget {
           // ── AI ─────────────────────────────────────────────────────
           _SettingsCard(
             title: '🧠 AI Двигатели',
-            subtitle: 'Groq gpt-oss-120b, Gemini, Groq, Claude, Deepseek, веб-поиск',
+            subtitle: 'Groq gpt-oss-120b, Gemini, Claude, Deepseek, веб-поиск',
             icon: Icons.auto_awesome,
-            accent: const Color(0xFF00BFFF),
+            accent: const Color(0xFFB0B0B0),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AiSettingsScreen())),
           ),
@@ -107,7 +107,7 @@ class SettingsScreen extends StatelessWidget {
 
           _SettingsCard(
             title: 'О проекте',
-            subtitle: 'Команда, возможности, стек технологий',
+            subtitle: 'Технологии, возможности, стек',
             icon: Icons.code_rounded,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AboutProjectScreen())),
