@@ -14,6 +14,7 @@ class ChatHistoryScreen extends StatefulWidget {
 class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
   List<ChatMessage> _messages = [];
   bool _loading = true;
+  bool _wasCleared = false; // ФИКС: сигнализируем родительским экранам об очистке
 
   @override
   void initState() {
@@ -51,20 +52,25 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
     if (confirm == true) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('chat_history');
-      setState(() => _messages = []);
+      setState(() { _messages = []; _wasCleared = true; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _wasCleared);
+        return false;
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, _wasCleared),
         ),
         title: const Text('История чата',
             style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
@@ -145,6 +151,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                     );
                   },
                 ),
+      ),
     );
   }
 }
