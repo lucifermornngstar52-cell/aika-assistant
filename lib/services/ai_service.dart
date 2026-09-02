@@ -218,14 +218,6 @@ class AiService {
     required String webContext,
   }) async {
     switch (provider) {
-      case 'gpt4o':
-        return await _callOpenAi(message,
-          userName: userName, assistantName: assistantName, history: history,
-          memoryContext: memoryContext, screenContext: screenContext,
-          longMemory: longMemory, imageBase64: imageBase64,
-          imageMimeType: imageMimeType, webContext: webContext,
-          model: 'gpt-4o',
-        );
       case 'gemini_pro':
         return await _callGemini(message,
           userName: userName, assistantName: assistantName, history: history,
@@ -309,26 +301,6 @@ class AiService {
     // Пробуем по порядку доступности
     final providers = <Future<String> Function()>[];
 
-      providers.add(() async {
-        final body = {
-          'model': 'gpt-4o-mini',
-          'messages': [
-            {'role': 'system', 'content': systemPrompt},
-            {'role': 'user', 'content': userPrompt},
-          ],
-          'temperature': 0.1,
-          'max_tokens': 200,
-        };
-        final response = await http.post(
-          Uri.parse(_openAiUrl),
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $_openAiKey'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 10));
-        if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return data['choices'][0]['message']['content'] as String;
-      });
-    }
 
     if (_groqKey.isNotEmpty) {
       providers.add(() async {
@@ -466,10 +438,6 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
 [ACTION:currency_all] [ACTION:currency_USD] [ACTION:currency_EUR] [ACTION:currency_KZT]
 [ACTION:get_weather]
 
-🎨 ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ:
-
-Пример: [ACTION:generate_image_закат_на_Марсе]
-
 🧠 AI-УПРАВЛЕНИЕ ЭКРАНОМ:
 [ACTION:smart_tap:описание элемента]
 [ACTION:smart_do:задача]
@@ -494,43 +462,6 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
   }
 
   // ══════════════════════════════════════════════════════════════════
-    }
-
-    if (imageBase64.isNotEmpty) {
-      messages.add({
-        'role': 'user',
-        'content': [
-          {'type': 'text', 'text': message.isNotEmpty ? message : 'Посмотри на изображение и опиши что видишь'},
-          {'type': 'image_url', 'image_url': {'url': 'data:$imageMimeType;base64,$imageBase64', 'detail': 'high'}},
-        ],
-      });
-    } else {
-      messages.add({'role': 'user', 'content': message});
-    }
-
-    final body = {
-      'model': model,
-      'messages': messages,
-      'temperature': 0.85,
-      'max_tokens': _maxTokens,
-    };
-
-    final response = await http.post(
-      Uri.parse(_openAiUrl),
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer $openAiKey',
-      },
-      body: jsonEncode(body),
-    ).timeout(const Duration(seconds: 30));
-
-    if (response.statusCode != 200) {
-      throw Exception('OpenAI ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
-    }
-
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['choices'][0]['message']['content'] as String;
-  }
 
   // ══════════════════════════════════════════════════════════════════
   //  Google Gemini 2.5 Pro / 2.0 Flash
