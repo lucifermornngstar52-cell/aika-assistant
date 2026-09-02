@@ -112,15 +112,7 @@ class WakeWordService {
       debugPrint('[WakeWord] ⚠ Battery opt check failed: $e');
     }
 
-    // Запускаем нативный AudioRecord + VAD
-    try {
-      await _micChannel.invokeMethod('start');
-      debugPrint('[WakeWord] 🎤 Native AudioRecord + VAD started');
-    } catch (e) {
-      debugPrint('[WakeWord] ⚠ Native service failed: $e');
-    }
-
-    // Слушаем EventChannel — нативный VAD присылает "speech_detected"
+    // Слушаем EventChannel ПЕРВЫМ — чтобы не пропустить первое событие
     _audioEventSub = _audioEvents.receiveBroadcastStream().listen(
       (event) {
         debugPrint('[WakeWord] ← Native event: $event');
@@ -130,6 +122,14 @@ class WakeWordService {
       },
       onError: (e) => debugPrint('[WakeWord] EventChannel error: $e'),
     );
+
+    // Запускаем нативный AudioRecord + VAD
+    try {
+      await _micChannel.invokeMethod('start');
+      debugPrint('[WakeWord] 🎤 Native AudioRecord + VAD started');
+    } catch (e) {
+      debugPrint('[WakeWord] ⚠ Native service failed: $e');
+    }
   }
 
   Future<void> stop() async {
@@ -232,7 +232,7 @@ class WakeWordService {
             _notifySttDone();
           }
         },
-        listenFor: const Duration(seconds: 8),
+        listenFor: const Duration(seconds: 10),
         pauseFor: const Duration(seconds: 3),
         partialResults: true,
         localeId: 'ru_RU',
