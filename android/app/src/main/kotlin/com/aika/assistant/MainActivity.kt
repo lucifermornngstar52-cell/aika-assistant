@@ -36,7 +36,6 @@ class MainActivity : FlutterActivity() {
         private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
         private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
         private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
-        private const val MICROPHONE_CHANNEL              = "com.aika.assistant/microphone"
     }
 
     // Новые нативные обработчики (openclaw-inspired)
@@ -519,84 +518,6 @@ override fun onResume() {
                     telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE)
                 }
             })
-
-        // ── 8a. Audio Bridge EventChannel (native VAD → Flutter) ──────────
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/audio_events")
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    Log.d("Aika", "Audio bridge EventChannel listening")
-                    AikaAudioBridge.onSpeechDetected = {
-                        events?.success("speech_detected")
-                    }
-                }
-                override fun onCancel(arguments: Any?) {
-                    Log.d("Aika", "Audio bridge EventChannel cancelled")
-                    AikaAudioBridge.onSpeechDetected = null
-                }
-            })
-
-        // ── 8b. Microphone Service Control MethodChannel ───────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/microphone")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        try {
-                            val i = Intent(this, AikaMicrophoneService::class.java)
-                                .setAction(AikaMicrophoneService.ACTION_START)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                startForegroundService(i)
-                            } else {
-                                startService(i)
-                            }
-                            result.success(true)
-                        } catch (e: Exception) {
-                            Log.e("AikaMic", "Failed to start: ${e.message}")
-                            result.success(false)
-                        }
-                    }
-                    "stop" -> {
-                        try {
-                            val i = Intent(this, AikaMicrophoneService::class.java)
-                                .setAction(AikaMicrophoneService.ACTION_STOP)
-                            startService(i)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.success(false)
-                        }
-                    }
-                    "isActive" -> {
-                        result.success(AikaMicrophoneService.isActive)
-                    }
-                    "isBatteryOptimized" -> {
-                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                        result.success(pm.isIgnoringBatteryOptimizations(packageName))
-                    }
-                    "requestBatteryOptimization" -> {
-                        try {
-                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                                .setData(Uri.parse("package:$packageName"))
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            startActivity(intent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            Log.e("AikaMic", "Battery opt request failed: ${e.message}")
-                            result.success(false)
-                        }
-                    }
-                    "sttDone" -> {
-                        // Flutter закончил STT → возобновляем AudioRecord
-                        try {
-                            val i = Intent(this, AikaMicrophoneService::class.java)
-                                .setAction(AikaMicrophoneService.ACTION_STT_DONE)
-                            startService(i)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.success(false)
-                        }
-                    }
-                    else -> result.notImplemented()
-                }
-            }
 
         // ── 9. Notifications permission channel ──────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_CHANNEL)

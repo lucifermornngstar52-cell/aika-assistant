@@ -442,19 +442,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       debugPrint('[MainScreen] wake word STT not ready — skipping autostart');
       return;
     }
-    // Запрашиваем exemption от энергосбережения — критично для foreground service.
-    // Без этого Android может убить AudioRecord в любой момент.
-    try {
-      const micChan = MethodChannel('com.aika.assistant/microphone');
-      final isOptimized = await micChan.invokeMethod('isBatteryOptimized');
-      if (isOptimized == false && mounted) {
-        debugPrint('[MainScreen] ⚠️ Battery optimization enabled — requesting exemption');
-        _showSnack('⚠️ Энергосбережение может мешать wake word. Разреши исключение для Айки.');
-        await micChan.invokeMethod('requestBatteryOptimization');
-      }
-    } catch (e) {
-      debugPrint('[MainScreen] Battery optimization check failed: $e');
-    }
     await _wakeWordService.startListening(() {
       if (!_isListening && !_isThinking) _onWakeWordDetected();
     });

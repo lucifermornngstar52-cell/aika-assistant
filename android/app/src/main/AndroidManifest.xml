@@ -127,14 +127,7 @@
 
         <meta-data android:name="flutterEmbedding" android:value="2" />
 
-        <!-- Microphone foreground service — держит микрофон активным в фоне -->
-        <service
-            android:name=".AikaMicrophoneService"
-            android:exported="false"
-            android:foregroundServiceType="microphone"
-            android:stopWithTask="false" />
-
-        <!-- Оверлей сервис -->
+<!-- Оверлей сервис -->
         <service
             android:name=".AikaOverlayService"
             android:exported="false"
