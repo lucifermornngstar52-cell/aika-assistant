@@ -17,6 +17,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
   String _side    = 'left';
   String _modelId = 'hiyori';
   bool   _dragEnabled = true;
+  bool   _overlayEnabled = true;
   final String _mode = 'live2d';
 
   static const _accent = Color(0xFF00E5FF);
@@ -28,7 +29,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     {'id': 'natori', 'label': '🌟 Natori'},
     {'id': 'haru',   'label': '⚡ Haru'},
     {'id': 'mao',    'label': '🍵 Mao'},
-    {'id': 'mark',   'label': '🧑 Mark'},
     {'id': 'rice',   'label': '🌾 Rice'},
     {'id': 'wanko',  'label': '🐶 Wanko'},
   ];
@@ -38,7 +38,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     'natori': 'models/Natori/Natori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
     'mao':    'models/Mao/Mao.model3.json',
-    'mark':   'models/Mark/Mark.model3.json',
     'rice':   'models/Rice/Rice.model3.json',
     'wanko':  'models/Wanko/Wanko.model3.json',
   };
@@ -68,6 +67,7 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
       _side       = _svc.side;
       _modelId    = prefs.getString('overlay_model_id') ?? 'hiyori';
       _dragEnabled = prefs.getBool('overlay_drag_enabled') ?? true;
+      _overlayEnabled = prefs.getBool('overlay_enabled') ?? true;
     });
   }
 
@@ -77,6 +77,17 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
     await prefs.setString('overlay_model_id', id);
     final path = _modelPaths[id] ?? _modelPaths['hiyori']!;
     await _svc.switchModel(path);
+  }
+
+  Future<void> _toggleOverlay(bool v) async {
+    setState(() => _overlayEnabled = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('overlay_enabled', v);
+    if (v) {
+      await _svc.show();
+    } else {
+      await _svc.hide();
+    }
   }
 
   Future<void> _setDragEnabled(bool v) async {
@@ -104,6 +115,20 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
+
+          // ── Включение/Отключение оверлея ──────────────────────────────────
+          _cardRow(
+            icon: Icons.visibility_outlined,
+            title: 'Оверлей активен',
+            subtitle: _overlayEnabled ? 'Модель поверх всех приложений' : 'Оверлей выключен',
+            trailing: Switch(
+              value: _overlayEnabled,
+              activeColor: _accent,
+              onChanged: _toggleOverlay,
+            ),
+          ),
+
+          const SizedBox(height: 12),
 
           // ── Размер ────────────────────────────────────────────────────────
           _card(
@@ -227,43 +252,6 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
               value: _dragEnabled,
               activeColor: _accent,
               onChanged: _setDragEnabled,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-
-          // ── Модель ────────────────────────────────────────────────────────
-          _card(
-            icon: Icons.view_in_ar_rounded,
-            title: 'Персонаж оверлея',
-            subtitle: _models.firstWhere((m) => m['id'] == _modelId,
-                orElse: () => _models.first)['label']!,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Wrap(
-                spacing: 10, runSpacing: 10,
-                children: _models.map((m) => GestureDetector(
-                  onTap: () => _switchModel(m['id']!),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: _modelId == m['id'] ? _accent.withOpacity(0.18) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: _modelId == m['id'] ? _accent : Colors.white24,
-                        width: _modelId == m['id'] ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Text(m['label']!,
-                      style: TextStyle(
-                        color: _modelId == m['id'] ? _accent : Colors.white60,
-                        fontSize: 14,
-                        fontWeight: _modelId == m['id'] ? FontWeight.bold : FontWeight.normal,
-                      )),
-                  ),
-                )).toList(),
-              ),
             ),
           ),
 
