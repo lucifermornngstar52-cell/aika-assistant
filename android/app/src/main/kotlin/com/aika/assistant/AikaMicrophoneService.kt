@@ -66,7 +66,7 @@ class AikaMicrophoneService : Service() {
         private const val VAD_ENERGY_THRESHOLD = 300.0  // RMS порог речи (снижен для Redmi 10C)
         private const val VAD_SILENCE_FRAMES = 30       // ~2 сек тишины → конец речи
         private const val VAD_SPEECH_FRAMES = 3         // ~0.2 сек речи → начало речи
-        private const val SESSION_MAX_MS = 60_000L      // 60 сек → recreate AudioRecord
+        private const val SESSION_MAX_MS = 300_000L     // 5 мин (было 60с — убрали профилактический recreate)
 
         // Restart
         private const val RESTART_DELAY_MS = 1_000L
@@ -176,6 +176,7 @@ class AikaMicrophoneService : Service() {
                 val sttDuration = if (speechDetectedAt > 0) SystemClock.elapsedRealtime() - speechDetectedAt else 0
                 Log.d(TAG, "STT done (took ${sttDuration}ms) — resuming AudioRecord")
                 listeningForWakeWord = true
+                isPaused = false  // ФИКС: снимаем pause если был disarm()
                 speechDetectedAt = 0L
                 // Пересоздаём AudioRecord (не переиспользуем старый)
                 restartAudioRecord()
@@ -366,15 +367,9 @@ class AikaMicrophoneService : Service() {
                             }
                         }
 
-                        // Профилактический recreate каждые 60 секунд
-                        // Полный цикл: stop → release → create → startRecording → verify
-                        val now = SystemClock.elapsedRealtime()
-                        if (now - lastRecreateCheck >= SESSION_MAX_MS) {
-                            Log.d(TAG, "⏱ 60s reached — full preventive recreate (reads=$totalReads, bytes=$totalBytes)")
-                            // Выходим из внутреннего цикла → finally сделает stop+release
-                            // Затем внешний цикл создаст новый AudioRecord
-                            break
-                        }
+                        // Preventive recreate убран — был причиной лишних
+                        // перебоев микрофона. AudioRecord живёт пока не сломается.
+                        // Полный recreate только при read <= 0 или ошибке.
 
                     } else {
                         // read <= 0 — AudioRecord сломался
@@ -404,10 +399,10 @@ class AikaMicrophoneService : Service() {
                 audioRecord = null
             }
 
-            // Пауза перед пересозданием
+            // Пауза перед пересозданием (500мс — полсекунды по спеке)
             if (serviceRunning && listeningForWakeWord && !isPaused) {
                 try {
-                    Thread.sleep(300)
+                    Thread.sleep(500)
                 } catch (_: Exception) {}
                 // Сбрасываем session timer
                 sessionStartMs = SystemClock.elapsedRealtime()
