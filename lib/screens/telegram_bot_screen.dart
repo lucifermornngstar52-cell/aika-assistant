@@ -14,6 +14,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
   final _tokenController = TextEditingController();
   bool _enabled = false;
   bool _loading = false;
+  bool _obscureToken = true;
   String? _botName;
   String? _error;
 
@@ -154,7 +155,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
             TextField(
               controller: _tokenController,
               style: const TextStyle(color: Colors.white, fontSize: 13),
-              obscureText: true,
+              obscureText: _obscureToken,
               decoration: InputDecoration(
                 hintText: '1234567890:AAF...',
                 hintStyle: const TextStyle(color: Colors.white38),
@@ -173,8 +174,8 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
                   borderSide: BorderSide(color: AikaTheme.neonBlue),
                 ),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.visibility, color: Colors.white38, size: 18),
-                  onPressed: () {},
+                  icon: Icon(_obscureToken ? Icons.visibility : Icons.visibility_off, color: Colors.white38, size: 18),
+                  onPressed: () => setState(() => _obscureToken = !_obscureToken),
                 ),
               ),
             ),
