@@ -38,7 +38,6 @@ class _Live2DWidgetState extends State<Live2DWidget> {
     'hiyori': 'models/Hiyori/Hiyori.model3.json',
     'haru':   'models/Haru/Haru.model3.json',
     'mao':    'models/Mao/Mao.model3.json',
-    'mark':   'models/Mark/Mark.model3.json',
     'rice':   'models/Rice/Rice.model3.json',
     'wanko':  'models/Wanko/Wanko.model3.json',
   };
