@@ -63,9 +63,9 @@ class AikaMicrophoneService : Service() {
         private const val CHUNK_SIZE = 1024  // сэмплов за read()
 
         // VAD параметры
-        private const val VAD_ENERGY_THRESHOLD = 800.0  // RMS порог речи
+        private const val VAD_ENERGY_THRESHOLD = 300.0  // RMS порог речи (снижен для Redmi 10C)
         private const val VAD_SILENCE_FRAMES = 30       // ~2 сек тишины → конец речи
-        private const val VAD_SPEECH_FRAMES = 5         // ~0.3 сек речи → начало речи
+        private const val VAD_SPEECH_FRAMES = 3         // ~0.2 сек речи → начало речи
         private const val SESSION_MAX_MS = 60_000L      // 60 сек → recreate AudioRecord
 
         // Restart
@@ -335,9 +335,17 @@ class AikaMicrophoneService : Service() {
                         // VAD — вычисляем RMS
                         val rms = calculateRMS(buffer, read)
 
+                        // Периодическое логирование RMS каждые ~2 сек (32 reads)
+                        if (totalReads % 32 == 0) {
+                            Log.d(TAG, "📊 RMS=$rms reads=$totalReads session=${(SystemClock.elapsedRealtime() - sessionStartMs) / 1000}s speech=$isInSpeech")
+                        }
+
                         if (rms > VAD_ENERGY_THRESHOLD) {
                             vadSpeechCounter++
                             vadSilenceCounter = 0
+                            if (!isInSpeech && vadSpeechCounter == 1) {
+                                Log.d(TAG, "🎤 RMS above threshold: $rms (counter=$vadSpeechCounter/$VAD_SPEECH_FRAMES)")
+                            }
 
                             if (!isInSpeech && vadSpeechCounter >= VAD_SPEECH_FRAMES) {
                                 isInSpeech = true
