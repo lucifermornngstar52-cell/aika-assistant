@@ -2531,7 +2531,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('AI-ассистент на базе GPT-4o',
+            Text('AI-ассистент на базе Groq gpt-oss-120b',
                 style: TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (_userName.isNotEmpty)
