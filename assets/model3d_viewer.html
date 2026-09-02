@@ -87,9 +87,9 @@
 
   function init() {
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(30, 1, 0.1, 1000);
-    camera.position.set(0, 1.0, 3.5);
-    camera.lookAt(0, 0.8, 0);
+    camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
+    camera.position.set(0, 0, 3.5);
+    camera.lookAt(0, 0, 0);
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.outputEncoding = THREE.sRGBEncoding;
@@ -168,16 +168,27 @@
         dbg('Loaded! objects:' + gltf.scene.children.length);
         model = gltf.scene;
 
-        // Center model at origin
+        // ── Истинное центрирование ──────────────────────────────────
+        // 1. Вычисляем bounding box модели
         var box = new THREE.Box3().setFromObject(model);
         var size = box.getSize(new THREE.Vector3());
         var center = box.getCenter(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z);
-        var sc = 2.0 / maxDim;
 
-        // Scale and center at (0, 0.8, 0) — slight upward shift for camera framing
+        // 2. Масштабируем так, чтобы модель поместилась в viewport камеры
+        //    camera at z=3.5, FOV=35° → visible height at z=0 ≈ 2*3.5*tan(17.5°) ≈ 2.2
+        //    Оставляем 10% отступа по краям
+        var maxDim = Math.max(size.x, size.y, size.z);
+        var visibleHeight = 2 * 3.5 * Math.tan((35 * Math.PI / 180) / 2);
+        var sc = (visibleHeight * 0.85) / maxDim;
+
+        // 3. Применяем масштаб, затем центрируем bbox в (0,0,0)
         model.scale.setScalar(sc);
-        model.position.set(-center.x * sc, -center.y * sc + 0.8, -center.z * sc);
+        var scaledBox = new THREE.Box3().setFromObject(model);
+        var scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+        model.position.set(-scaledCenter.x, -scaledCenter.y, -scaledCenter.z);
+
+        dbg('Centered: size=' + JSON.stringify(size) + ' scale=' + sc.toFixed(3) +
+            ' offset=(' + (-scaledCenter.x).toFixed(2) + ',' + (-scaledCenter.y).toFixed(2) + ',' + (-scaledCenter.z).toFixed(2) + ')');
 
         // Reset rotation
         targetRotY = 0; targetRotX = 0;
