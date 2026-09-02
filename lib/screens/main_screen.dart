@@ -24,7 +24,6 @@ import '../widgets/chat_bubble.dart';
 import '../widgets/voice_button.dart';
 import '../widgets/aika_avatar.dart';
 import '../widgets/live2d_widget.dart';
-import '../widgets/model3d_widget.dart';
 import 'settings_screen.dart';
 import 'personality_screen.dart';
 import 'model_picker_screen.dart';
@@ -145,7 +144,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   String? _bgCustomImage;
   bool _hasNotifPermission = false;
   bool _isDancing = false;
-  String _modelMode = "live2d"; // live2d or 3d
   bool _isStretching = false;
   Timer? _musicTimer;
 
@@ -793,7 +791,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _userName = prefs.getString('user_name') ?? '';
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
       _bgCustomImage = prefs.getString('bg_custom_image');
-      _modelMode = prefs.getString("overlay_mode") ?? "live2d";
     });
     // Синхронизируем имя ассистента с wake-word триггерами
     if (!prefs.containsKey('assistant_name') || (prefs.getString('assistant_name') ?? '').isEmpty) {
@@ -2187,14 +2184,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-                // Аватар — Live2D или 3D
-                  if (_modelMode == '3d')
-                    Model3DWidget(
-                      width: MediaQuery.of(context).size.width,
-                      height: MediaQuery.of(context).size.height,
-                      state: _avatarStateString,
-                    )
-                  else
+                // Аватар — Live2D
                     Live2DWidget(
                       width: MediaQuery.of(context).size.width,
                       height: MediaQuery.of(context).size.height,
