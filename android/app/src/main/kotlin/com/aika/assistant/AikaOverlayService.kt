@@ -66,6 +66,7 @@ class AikaOverlayService : Service() {
         private const val BASE_URL   = "file:///android_asset/flutter_assets/assets/"
 
         var isRunning = false
+        var isHiddenByUser = false  // persist across service instances
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -260,6 +261,7 @@ class AikaOverlayService : Service() {
             ACTION_SHOW -> {
                 val st = intent.getStringExtra(EXTRA_STATE) ?: "idle"
                 currentState = st  // сбрасывает "hidden" при повторном включении
+                isHiddenByUser = false  // user re-enabled overlay
                 handler.post {
                     if (webView == null) setupWindow()
                     else webView?.evaluateJavascript("window.setAikaState('$st')", null)
@@ -267,7 +269,7 @@ class AikaOverlayService : Service() {
             }
             ACTION_UPDATE -> {
                 // Не пересоздаём окно если оно было спрятано (ACTION_HIDE)
-                if (currentState == "hidden") return START_NOT_STICKY
+                if (isHiddenByUser) return START_NOT_STICKY
                 val st = intent.getStringExtra(EXTRA_STATE) ?: "idle"
                 currentState = st
                 handler.post {
@@ -277,6 +279,7 @@ class AikaOverlayService : Service() {
             }
             ACTION_HIDE -> {
                 currentState = "hidden"
+                isHiddenByUser = true  // remember across instances
                 handler.post {
                     try { webView?.let { wm?.removeView(it) } } catch (_: Exception) {}
                     webView?.destroy()

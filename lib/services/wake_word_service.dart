@@ -245,6 +245,10 @@ class WakeWordService {
       }
     });
 
+    // Очищаем предыдущую сессию перед стартом
+    if (_stt.isListening) {
+      try { await _stt.stop(); } catch (_) {}
+    }
     _stt.listen(
       onResult: (result) {
         final text = result.recognizedWords.toLowerCase();
@@ -293,7 +297,8 @@ class WakeWordService {
     } finally {
       watchdog.cancel();
       _currentCompleter = null;
-      if (triggered && _stt.isListening) {
+      // ВСЕГДА останавливаем STT — даже без триггера, иначе след. сессия упадёт
+      if (_stt.isListening) {
         try { await _stt.stop(); } catch (_) {}
       }
     }

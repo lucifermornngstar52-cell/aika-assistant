@@ -31,7 +31,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     final prefs = await SharedPreferences.getInstance();
     _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
     _elevenLabsVoice = prefs.getString('elevenlabs_voice');
-    _edgeVoiceId = prefs.getString('edge_voice');
+    _edgeVoiceId = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -83,7 +83,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           rate: _toEdgeRate(_rate),
           pitch: _toEdgePitch(_pitch),
           volume: _volume,
-          voice: _edgeVoiceId,
+          voice: _edgeVoiceId ?? 'ru-RU-DariyaNeural',
         );
       }
     } catch (_) {
@@ -110,9 +110,10 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     EdgeTtsService().setRate(edgeRate);
     EdgeTtsService().setPitch(edgePitch);
     EdgeTtsService().setVolume(_volume);
-    if (_ttsEngine == 'edge' && _edgeVoiceId != null) {
-      await prefs.setString('edge_voice', _edgeVoiceId!);
-      EdgeTtsService().setVoice(_edgeVoiceId!);
+    if (_ttsEngine == 'edge') {
+      final voice = _edgeVoiceId ?? 'ru-RU-DariyaNeural';
+      await prefs.setString('edge_voice', voice);
+      EdgeTtsService().setVoice(voice);
     }
     if (_ttsEngine == 'system' && _selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
