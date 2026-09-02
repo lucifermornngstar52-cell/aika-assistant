@@ -437,10 +437,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_wakeWordEnabled) return;
     // Запускаем проактивные подсказки раз в 5 минут
     Future.delayed(const Duration(minutes: 5), _checkProactiveSuggestions);
+    if (!_wakeWordService.isReady) {
+      debugPrint('[MainScreen] wake word STT not ready — skipping autostart');
+      return;
+    }
     await _wakeWordService.startListening(() {
       if (!_isListening && !_isThinking) _onWakeWordDetected();
     });
-    if (mounted) setState(() => _wakeWordEnabled = true);
+    // ФИКС: вейкворд включается автоматически при запуске приложения —
+    // сообщаем об этом явно, чтобы не было путаницы, если пользователь
+    // потом нажмёт на иконку и она "внезапно" выключится (это нормальный
+    // тоггл — иконка уже была активна).
+    if (mounted) {
+      setState(() => _wakeWordEnabled = true);
+      _showSnack('🎤 Wake word активирован автоматически — скажи "$_assistantName"');
+    }
   }
 
   Future<void> _recheckOverlayPermission() async {
@@ -708,6 +719,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() => _wakeWordEnabled = false);
       _showSnack('Wake word выключен');
     } else {
+      // ФИКС: проверяем, что распознаватель речи реально готов (разрешение
+      // на микрофон есть) — раньше кнопка включалась визуально, даже если
+      // STT не смог инициализироваться, что выглядело как "сам выключается".
+      if (!_wakeWordService.isReady) {
+        _showSnack('⚠️ Нет доступа к микрофону — проверь разрешения');
+        return;
+      }
       await _wakeWordService.startListening(() {
         if (!_isListening && !_isThinking) _onWakeWordDetected();
       });
