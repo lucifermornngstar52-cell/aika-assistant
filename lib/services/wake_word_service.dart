@@ -268,5 +268,6 @@ class WakeWordService {
 
   bool get isListening => _active && _loopRunning;
   bool get isMusicPlaying => false;
+  bool get isReady => _sttReady; // готов ли распознаватель речи (нужна разрешена мик-разрешение)
   List<String> get currentTriggers => List.unmodifiable(_triggers);
 }
