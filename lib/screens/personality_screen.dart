@@ -165,10 +165,10 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
     // Цвет для SCI-FI карточек
     final isSci = info['tag'] == 'SCI-FI';
     final accent = isSci
-        ? (p == AikaPersonality.jarvis ? const Color(0xFF00BFFF)
-           : p == AikaPersonality.friday ? const Color(0xFF7B68EE)
+        ? (p == AikaPersonality.jarvis ? const Color(0xFFB0B0B0)
+           : p == AikaPersonality.friday ? const Color(0xFF9B9B9B)
            : p == AikaPersonality.ghost ? const Color(0xFF708090)
-           : const Color(0xFF9B59B6))
+           : const Color(0xFFA0A0A0))
         : AikaTheme.neonBlue;
 
     return GestureDetector(
