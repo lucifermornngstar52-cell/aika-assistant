@@ -135,7 +135,7 @@ class MainActivity : FlutterActivity() {
         try { unregisterReceiver(notificationReceiver) } catch (_: Exception) {} } catch (_: Exception) {}
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
+    override fun onTaskRemoved(rootIntent: Intent) {
         Log.d("Aika", "🚨 onTaskRemoved — restarting services after swipe")
         // Перезапускаем microphone service
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
