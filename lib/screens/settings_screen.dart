@@ -41,7 +41,7 @@ class SettingsScreen extends StatelessWidget {
           // ── AI ─────────────────────────────────────────────────────
           _SettingsCard(
             title: '🧠 AI Двигатели',
-            subtitle: 'GPT-4o, Gemini, Groq, Claude, Deepseek, веб-поиск',
+            subtitle: 'Groq gpt-oss-120b, Gemini, Groq, Claude, Deepseek, веб-поиск',
             icon: Icons.auto_awesome,
             accent: const Color(0xFF00BFFF),
             onTap: () => Navigator.push(context,
