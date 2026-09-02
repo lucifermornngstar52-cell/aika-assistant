@@ -318,7 +318,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return await DeviceSecurityService.handleTelegramCommand(text, chatId);
     };
         TelegramBotService.onMessage = (text, from) async {
-      const openAiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
       final ctx = await _memoryService.getUserContext();
       final history = await _memoryService.getHistory();
       final memCtx = await _peopleMemory.buildMemoryContext();
@@ -329,7 +328,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           assistantName: ctx['assistantName'] ?? _assistantName,
           history: history,
           memoryContext: memCtx,
-          openAiKey: openAiKey,
         );
         return reply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
       } catch (e) {
@@ -1464,13 +1462,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // Генерируем ответ через AI
         final ctx = await _memoryService.getUserContext();
         final history = await _memoryService.getHistory();
-        const openAiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
-        final aiReply = await _aiService.sendMessage(
+          final aiReply = await _aiService.sendMessage(
           'Составь короткий вежливый ответ на сообщение: "${notif['title']}: ${notif['text']}"',
           userName: ctx['userName'] ?? '',
           assistantName: ctx['assistantName'] ?? _assistantName,
           history: history,
-          openAiKey: openAiKey,
         );
         final cleanReply = aiReply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
         final sent = await NotificationReplyService.replyToNotification(
@@ -1982,7 +1978,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ? 'Сейчас на экране: \${ScreenWatcherService.currentLabel} (\${ScreenWatcherService.currentPackage})'
           : '';
       final _prefs = await SharedPreferences.getInstance();
-      final _openAiKey = _prefs.getString('openai_api_key') ?? '';
       // Проверяем настроение ассистента — может не хотеть отвечать
       final moodRefusal = await AssistantMoodService.checkWillRespond(
           PersonalityService.current.name);
@@ -2022,7 +2017,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         history: history,
         memoryContext: memoryCtx,
         screenContext: screenCtx,
-        openAiKey: _openAiKey,
       );
       final actionResult = await _deviceService.parseAndExecute(response);
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
