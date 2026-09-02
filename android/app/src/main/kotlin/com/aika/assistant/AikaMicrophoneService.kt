@@ -99,6 +99,7 @@ class AikaMicrophoneService : Service() {
     private var audioThread: Thread? = null
     @Volatile private var serviceRunning = false
     @Volatile private var listeningForWakeWord = true  // false когда Flutter делает STT
+    @Volatile private var speechDetectedAt = 0L         // когда VAD обнаружил речь (для sttDone watchdog)
 
     // VAD state
     private var vadSpeechCounter = 0
@@ -172,8 +173,10 @@ class AikaMicrophoneService : Service() {
             }
             ACTION_STT_DONE -> {
                 // Flutter закончил распознавание речи → возобновляем AudioRecord
-                Log.d(TAG, "STT done — resuming AudioRecord")
+                val sttDuration = if (speechDetectedAt > 0) SystemClock.elapsedRealtime() - speechDetectedAt else 0
+                Log.d(TAG, "STT done (took ${sttDuration}ms) — resuming AudioRecord")
                 listeningForWakeWord = true
+                speechDetectedAt = 0L
                 // Пересоздаём AudioRecord (не переиспользуем старый)
                 restartAudioRecord()
             }
@@ -276,6 +279,16 @@ class AikaMicrophoneService : Service() {
 
         while (serviceRunning) {
             if (isPaused || !listeningForWakeWord) {
+                // STT timeout watchdog — если Flutter не прислал sttDone за 15 сек
+                if (!listeningForWakeWord && speechDetectedAt > 0) {
+                    val sttElapsed = SystemClock.elapsedRealtime() - speechDetectedAt
+                    if (sttElapsed > 15_000L) {
+                        Log.w(TAG, "🔴 STT timeout — no sttDone in ${sttElapsed}ms — force resume AudioRecord")
+                        listeningForWakeWord = true
+                        speechDetectedAt = 0L
+                        restartAudioRecord()
+                    }
+                }
                 // Ждём пока не скажут resume
                 try { Thread.sleep(100) } catch (_: Exception) {}
                 continue
@@ -295,10 +308,22 @@ class AikaMicrophoneService : Service() {
                 }
 
                 recorder.startRecording()
-                Log.d(TAG, "Recording started — session #${recreateCount}")
+
+                // Verify recording state
+                if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    Log.e(TAG, "🔴 AudioRecord NOT recording after startRecording — state=${recorder.recordingState}")
+                    recorder.release()
+                    Thread.sleep(500)
+                    continue
+                }
+                Log.d(TAG, "Recording started + verified RECORDSTATE_RECORDING — session #${recreateCount}")
 
                 // Внутренний цикл чтения
                 var lastRecreateCheck = SystemClock.elapsedRealtime()
+                // Сбрасываем session timer для нового recorder
+                sessionStartMs = SystemClock.elapsedRealtime()
+                totalReads = 0
+                totalBytes = 0
 
                 while (serviceRunning && listeningForWakeWord && !isPaused) {
                     val read = recorder.read(buffer, 0, CHUNK_SIZE)
@@ -334,10 +359,13 @@ class AikaMicrophoneService : Service() {
                         }
 
                         // Профилактический recreate каждые 60 секунд
+                        // Полный цикл: stop → release → create → startRecording → verify
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastRecreateCheck >= SESSION_MAX_MS) {
-                            Log.d(TAG, "⏱ 60s reached — preventive recreate (reads=$totalReads, bytes=$totalBytes)")
-                            break  // выходим из внутреннего цикла → release + recreate
+                            Log.d(TAG, "⏱ 60s reached — full preventive recreate (reads=$totalReads, bytes=$totalBytes)")
+                            // Выходим из внутреннего цикла → finally сделает stop+release
+                            // Затем внешний цикл создаст новый AudioRecord
+                            break
                         }
 
                     } else {
@@ -401,7 +429,8 @@ class AikaMicrophoneService : Service() {
      */
     private fun notifyFlutterSpeechDetected() {
         listeningForWakeWord = false  // временно останавливаем VAD
-        Log.d(TAG, "→ Speech detected — notifying Flutter, pausing VAD")
+        speechDetectedAt = SystemClock.elapsedRealtime()
+        Log.d(TAG, "→ Speech detected at $speechDetectedAt — notifying Flutter, pausing VAD (sttDone watchdog: 15s)")
 
         // Уведомляем Flutter через AikaAudioBridge
         try {
