@@ -172,7 +172,7 @@ class AiService {
     final fallbacks = ['groq', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
     for (final fb in fallbacks) {
       if (fb != preferred && _isProviderAvailable(fb)) {
-        if (hasImage && (fb == 'groq' || fb == 'deepseek' || fb == 'claude')) continue;
+        if (hasImage && (fb == 'deepseek' || fb == 'perplexity')) continue;
         chain.add(fb);
       }
     }
@@ -239,6 +239,7 @@ class AiService {
           userName: userName, assistantName: assistantName, history: history,
           memoryContext: memoryContext, screenContext: screenContext,
           longMemory: longMemory, webContext: webContext,
+          imageBase64: imageBase64, imageMimeType: imageMimeType,
         );
       case 'claude':
         return await _callClaude(message,
@@ -546,6 +547,8 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     required String screenContext,
     required String longMemory,
     required String webContext,
+    String imageBase64 = '',
+    String imageMimeType = 'image/jpeg',
   }) async {
     if (_groqKey.isEmpty) throw Exception('Нет Groq ключа');
 
@@ -565,10 +568,22 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
         messages.add({'role': 'assistant', 'content': h.substring(11)});
       }
     }
-    messages.add({'role': 'user', 'content': message});
+
+    // Vision support — Groq llama-4-scout supports images
+    if (imageBase64.isNotEmpty) {
+      messages.add({
+        'role': 'user',
+        'content': [
+          {'type': 'image_url', 'image_url': {'url': 'data:$imageMimeType;base64,$imageBase64'}},
+          {'type': 'text', 'text': message.isNotEmpty ? message : 'Опиши изображение'},
+        ],
+      });
+    } else {
+      messages.add({'role': 'user', 'content': message});
+    }
 
     final body = {
-      'model': 'openai/gpt-oss-120b',
+      'model': imageBase64.isNotEmpty ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'openai/gpt-oss-120b',
       'messages': messages,
       'temperature': 0.85,
       'max_tokens': _maxTokens,

@@ -62,6 +62,26 @@ class _PermissionsOnboardingScreenState
       permission: Permission.microphone,
     ),
     _PermEntry(
+      emoji: '📷',
+      title: 'Камера',
+      subtitle: 'Покажи мне что угодно',
+      description:
+          'Могу фотографировать и анализировать изображения. '
+          'Скажи "сфотографируй и расскажи что видишь" — и я опишу фото.',
+      grantText: 'Разрешить доступ к камере',
+      permission: Permission.camera,
+    ),
+    _PermEntry(
+      emoji: '📍',
+      title: 'Геолокация',
+      subtitle: 'Погода и местоположение',
+      description:
+          'Определяю погоду по твоему местоположению и могу '
+          'навигировать в приложении карт.',
+      grantText: 'Разрешить доступ к геолокации',
+      permission: Permission.location,
+    ),
+    _PermEntry(
       emoji: '🔔',
       title: 'Уведомления',
       subtitle: 'Буду сообщать о важных событиях',
@@ -70,6 +90,16 @@ class _PermissionsOnboardingScreenState
           'Также читаю входящие уведомления и могу отвечать на сообщения.',
       grantText: 'Разрешить уведомления',
       permission: Permission.notification,
+    ),
+    _PermEntry(
+      emoji: '📞',
+      title: 'Телефон и SMS',
+      subtitle: 'Звонки, сообщения, журнал звонков',
+      description:
+          'Могу звонить контактам, отправлять SMS и читать '
+          'журнал звонков по голосовой команде.',
+      grantText: 'Разрешить доступ к телефону',
+      permission: Permission.phone,
     ),
     _PermEntry(
       emoji: '📅',
@@ -92,6 +122,16 @@ class _PermissionsOnboardingScreenState
       grantText: 'Разрешить доступ к контактам',
       permission: Permission.contacts,
       optional: true,
+    ),
+    _PermEntry(
+      emoji: '📸',
+      title: 'Доступ к фото',
+      subtitle: 'Прикрепляй изображения в чат',
+      description:
+          'Доступ к галерее для прикрепления фото в чат. '
+          'Могу анализировать скриншоты и изображения.',
+      grantText: 'Разрешить доступ к фото',
+      permission: Permission.photos,
     ),
     _PermEntry(
       emoji: '🏃',

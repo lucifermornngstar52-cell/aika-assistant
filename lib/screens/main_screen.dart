@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:io';
 import '../services/app_launcher_service.dart';
@@ -189,13 +190,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Съёмка фото через камеру
   Future<void> _pickImageFromCamera() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        dialogTitle: 'Сделай фото',
-        allowCompression: true,
+      final picker = ImagePicker();
+      final xFile = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
       );
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
+      if (xFile != null) {
+        final path = xFile.path;
         final bytes = await File(path).readAsBytes();
         final b64 = base64Encode(bytes);
         setState(() {
@@ -204,7 +207,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      // Фолбэк — открываем обычный выбор файла
+      debugPrint('Camera: $e');
+      // Фолбэк — открываем галерею
       await _pickImage();
     }
   }
