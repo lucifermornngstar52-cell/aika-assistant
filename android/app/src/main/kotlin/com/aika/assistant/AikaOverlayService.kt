@@ -112,7 +112,15 @@ class AikaOverlayService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load prefs: ${e.message}")
         }
-        handler.post { setupWindow() }
+        // НЕ создаём окно если пользователь его выключил (isHiddenByUser).
+        // onCreate вызывается ДО onStartCommand — если тут сделать setupWindow,
+        // то проверка isHiddenByUser в onStartCommand уже бесполезна.
+        // ACTION_SHOW в onStartCommand вызовет setupWindow если нужно.
+        if (!isHiddenByUser) {
+            handler.post { setupWindow() }
+        } else {
+            Log.d(TAG, "onCreate: skipping setupWindow — isHiddenByUser=true")
+        }
     }
 
     override fun onDestroy() {
@@ -284,7 +292,9 @@ class AikaOverlayService : Service() {
                     try { webView?.let { wm?.removeView(it) } } catch (_: Exception) {}
                     webView?.destroy()
                     webView = null
-                    stopSelf()
+                    // НЕ вызываем stopSelf() — сервис остаётся живым.
+                    // Это prevents recreation в onStartCommand где
+                    // isHiddenByUser ещё не успел бы сработать в onCreate.
                 }
             }
             ACTION_CONFIG -> {

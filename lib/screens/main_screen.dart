@@ -440,7 +440,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _autoStartWakeWord() async {
     if (_wakeWordEnabled) return;
     // Запускаем проактивные подсказки раз в 5 минут
-    Future.delayed(const Duration(minutes: 5), _checkProactiveSuggestions);
     if (!_wakeWordService.isReady) {
       debugPrint('[MainScreen] wake word STT not ready — skipping autostart');
       return;
@@ -748,39 +747,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _speechService.startListening(
       (text) async {
         try {
-        // Если Айка задремала — радостное приветствие
-        if (_moodService.isSleepy) {
-          final wakeMsg = _moodService.getWakeUpMessage();
-          _addMessage(ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            role: MessageRole.aika,
-            content: wakeMsg,
-            timestamp: DateTime.now(),
-          ));
-          await _speak(wakeMsg);
-          _moodService.onUserSpoke();
-        }
+        // Авто-сообщения отключены
 
-        // ── Emotion Detection ────────────────────────────────────────────────
-        final detectedEmotion = EmotionService.detect(text);
-        if (EmotionService.shouldReact(detectedEmotion)) {
-          final reaction = EmotionService.getEmotionReaction(detectedEmotion);
-          if (reaction != null) {
-            _addMessage(ChatMessage(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              role: MessageRole.aika,
-              content: reaction,
-              timestamp: DateTime.now(),
-            ));
-            await _speak(reaction);
-          }
-        }
-        // Меняем настроение Айки по эмоции
-        if (detectedEmotion != UserEmotion.neutral) {
-          final moodName = EmotionService.getAikaMoodForEmotion(detectedEmotion);
-          if (moodName == 'happy') _moodService.onUserSpoke();
-          else if (moodName == 'thinking') _moodService.onThinking();
-        }
+        // Авто-реакции и авто-сообщения отключены
         setState(() => _isListening = false);
         OverlayService().asyncState('thinking');
         if (text.isNotEmpty) await _sendMessage(text);
@@ -2117,21 +2086,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _checkProactiveSuggestions() async {
-    if (!mounted) return;
-    final suggestion = await HabitMemoryService.getProactiveSuggestion();
-    if (suggestion != null && mounted && !_isListening && !_isThinking) {
-      _addMessage(ChatMessage(
-        id: 'habit_${DateTime.now().millisecondsSinceEpoch}',
-        role: MessageRole.aika,
-        content: suggestion,
-        timestamp: DateTime.now(),
-      ));
-      await _speak(suggestion);
-    }
-    // Перезапускаем через 5 минут
-    if (mounted) {
-      Future.delayed(const Duration(minutes: 5), _checkProactiveSuggestions);
-    }
+    // Авто-сообщения отключены — Айка ничего не отправляет сама
   }
 
   Future<void> _openModelPicker() async {
