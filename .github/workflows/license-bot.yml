@@ -5,18 +5,23 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   poll:
     runs-on: ubuntu-latest
     steps:
+      # ФИКС: secrets.GH_PAT просрочен — checkout падал с "could not read Username".
+      # Используем встроенный github.token (достаточен для checkout + push в свой репо).
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}
+          token: ${{ github.token }}
 
       - name: Poll Telegram & Update Licenses
         env:
           BOT_TOKEN: ${{ secrets.AIKA_BOT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PYEOF'
           import json, urllib.request, urllib.parse, os, datetime, subprocess
