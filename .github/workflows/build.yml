@@ -3,11 +3,15 @@ name: Build APK
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'build-*' ]
   workflow_dispatch:
 
 concurrency:
   group: build-apk
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -71,11 +75,17 @@ jobs:
           path: build/app/outputs/flutter-apk/aika-release.apk
           retention-days: 30
 
+      - name: Prepare release asset (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cp build/app/outputs/flutter-apk/aika-release.apk              "aika-assistant-${{ github.ref_name }}.apk"
+
       - name: Create Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: build/app/outputs/flutter-apk/aika-release.apk
+          name: "Aika Assistant — ${{ github.ref_name }}"
+          files: "aika-assistant-${{ github.ref_name }}.apk"
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
