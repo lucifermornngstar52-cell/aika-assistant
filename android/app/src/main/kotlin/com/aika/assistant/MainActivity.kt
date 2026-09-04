@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
         private const val NOTIFICATION_EVENTS_CHANNEL  = "com.aika.assistant/notification_events"
         private const val NOTIFICATIONS_CHANNEL          = "com.aika.assistant/notifications"
         private const val CALENDAR_CHANNEL                = "com.aika.assistant/calendar"
+        private const val LICENSE_CHANNEL                = "com.aika.assistant/license"
         private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
         private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
         private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
@@ -169,6 +170,17 @@ override fun onResume() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ── 0. License channel ────────────────────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LICENSE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getDeviceId" -> {
+                        result.success(Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         // ── 1. Overlay channel ────────────────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)

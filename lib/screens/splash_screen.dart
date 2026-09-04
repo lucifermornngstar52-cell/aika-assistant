@@ -5,6 +5,8 @@ import '../theme/app_theme.dart';
 import 'main_screen.dart';
 import 'onboarding_screen.dart';
 import 'permissions_onboarding_screen.dart';
+import 'license_gate_screen.dart';
+import '../services/license_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -29,6 +31,21 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigate() async {
+    // Лицензия: без активации приложение не запускается
+    final licensed = await LicenseService.isActivated();
+    if (!mounted) return;
+    if (!licensed) {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const LicenseGateScreen(),
+          transitionsBuilder: (_, anim, __, child) =>
+              FadeTransition(opacity: anim, child: child),
+          transitionDuration: const Duration(milliseconds: 600),
+        ),
+      );
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('user_name');
     if (!mounted) return;

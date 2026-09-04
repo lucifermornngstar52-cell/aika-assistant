@@ -40,6 +40,7 @@ dependencies:
   
   # HTTP
   http: ^1.2.1
+  crypto: ^3.0.3
 
   # File picker (для выбора Live2D модели)
   file_picker: ^8.1.2
