@@ -1,8 +1,3 @@
-# ОТКЛЮЧЁН: на боте 8339740462 установлен webhook на ssh.inkognit.org:8443
-# (серверная обработка одобрений лицензий). Пока webhook активен,
-# getUpdates всегда возвращает 409 Conflict — polling здесь бесполезен
-# и только сжигал Actions-минуты каждые 5 минут.
-# Включать только если серверный webhook будет снят.
 name: Aika License Bot
 
 on:
@@ -10,23 +5,18 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   poll:
     runs-on: ubuntu-latest
     steps:
-      # ФИКС: secrets.GH_PAT просрочен — checkout падал с "could not read Username".
-      # Используем встроенный github.token (достаточен для checkout + push в свой репо).
       - uses: actions/checkout@v4
         with:
-          token: ${{ github.token }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Poll Telegram & Update Licenses
         env:
           BOT_TOKEN: ${{ secrets.AIKA_BOT_TOKEN }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           python3 - <<'PYEOF'
           import json, urllib.request, urllib.parse, os, datetime, subprocess
