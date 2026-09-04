@@ -469,6 +469,14 @@ class VoiceCommandProcessor {
       return VoiceCmdResult.ok(successMsg);
     } on PlatformException catch (e) {
       if (e.code == 'NO_SERVICE') {
+        final hint = e.message ?? '';
+        if (hint.contains('не привязан')) {
+          // Тумблер ВКЛЮЧЁН в системе, но сервис не привязан (типично после
+          // переустановки APK) — подсказываем конкретное действие.
+          return VoiceCmdResult.ok(
+            '⚠️ Accessibility включён, но сервис отвязан. Выключи и снова включи Айку в Настройки → Специальные возможности (или перезапусти телефон)',
+          );
+        }
         return VoiceCmdResult.ok(
           '⚠️ Не могу — включи Accessibility для Айки в настройках телефона (Настройки → Специальные возможности → Айка)',
         );

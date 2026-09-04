@@ -134,9 +134,9 @@ class AiService {
   String _chooseModel(String message, bool hasImage) {
     final m = message.toLowerCase();
 
-    // Vision — только Gemini
+    // Vision — Groq qwen3.6-27b (multimodal). gpt-oss-120b не видит картинки.
     if (hasImage) {
-      return 'gemini_pro';
+      return 'groq';
     }
 
     // Актуальные данные + поиск → Perplexity если есть
@@ -569,7 +569,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
       }
     }
 
-    // Vision support — Groq llama-4-scout supports images
+    // Vision support — Groq qwen3.6-27b (multimodal, 2026)
     if (imageBase64.isNotEmpty) {
       messages.add({
         'role': 'user',
@@ -583,7 +583,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     }
 
     final body = {
-      'model': imageBase64.isNotEmpty ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'openai/gpt-oss-120b',
+      'model': imageBase64.isNotEmpty ? 'qwen/qwen3.6-27b' : 'openai/gpt-oss-120b',
       'messages': messages,
       'temperature': 0.85,
       'max_tokens': _maxTokens,

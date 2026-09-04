@@ -11,11 +11,7 @@ class AiSettingsScreen extends StatefulWidget {
 }
 
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
-  final _geminiCtrl   = TextEditingController();
   final _groqCtrl     = TextEditingController();
-  final _claudeCtrl   = TextEditingController();
-  final _deepseekCtrl = TextEditingController();
-  final _perplexCtrl  = TextEditingController();
   final _braveCtrl    = TextEditingController();
 
   String _selectedModel = 'auto';
@@ -42,11 +38,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-            _geminiCtrl.text   = prefs.getString('gemini_key')    ?? '';
       _groqCtrl.text     = prefs.getString('groq_key')      ?? '';
-      _claudeCtrl.text   = prefs.getString('claude_key')    ?? '';
-      _deepseekCtrl.text = prefs.getString('deepseek_key')  ?? '';
-      _perplexCtrl.text  = prefs.getString('perplexity_key')?? '';
       _braveCtrl.text    = prefs.getString('brave_key')     ?? '';
       _selectedModel     = prefs.getString('ai_model')      ?? 'auto';
       _webSearch         = prefs.getBool('ai_web_search')   ?? true;
@@ -59,11 +51,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   void _applyKeys() {
-    AiService.setGeminiKey(_geminiCtrl.text.trim());
     AiService.setGroqKey(_groqCtrl.text.trim());
-    AiService.setClaudeKey(_claudeCtrl.text.trim());
-    AiService.setDeepseekKey(_deepseekCtrl.text.trim());
-    AiService.setPerplexityKey(_perplexCtrl.text.trim());
     AiService.setPreferredModel(_selectedModel);
     AiService.setWebSearch(_webSearch);
     AiService.setMaxTokens(_maxTokens);
@@ -71,11 +59,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('gemini_key',    _geminiCtrl.text.trim());
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
-    await prefs.setString('claude_key',    _claudeCtrl.text.trim());
-    await prefs.setString('deepseek_key',  _deepseekCtrl.text.trim());
-    await prefs.setString('perplexity_key',_perplexCtrl.text.trim());
     await prefs.setString('brave_key',     _braveCtrl.text.trim());
     await prefs.setString('ai_model',      _selectedModel);
     await prefs.setBool('ai_web_search',   _webSearch);
@@ -225,11 +209,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           // ── API Ключи ─────────────────────────────────────────────
           _sectionHeader('🔑 API КЛЮЧИ'),
 
-          _keyCard('Google Gemini', _geminiCtrl, 'AIza...', '🟢 бесплатно: до 1500 запросов/день\naistudio.google.com/apikey'),
-          _keyCard('Groq (Llama 3.3-70B)', _groqCtrl, 'gsk_...', '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com'),
-          _keyCard('Anthropic Claude', _claudeCtrl, 'sk-ant-...', '🟡 бесплатно: есть trial\nconsole.anthropic.com'),
-          _keyCard('Deepseek', _deepseekCtrl, 'sk-...', '🟢 очень дёшево: \$0.01 за 1M токенов\nplatform.deepseek.com'),
-          _keyCard('Perplexity (AI+Web)', _perplexCtrl, 'pplx-...', '🟡 бесплатно: trial\nperplexity.ai/settings/api'),
+          _keyCard('Groq (gpt-oss-120b)', _groqCtrl, 'gsk_...', '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com'),
           _keyCard('Brave Search', _braveCtrl, 'BSA...', '🟢 бесплатно: 2000 запросов/месяц\napi.search.brave.com'),
 
           const SizedBox(height: 24),

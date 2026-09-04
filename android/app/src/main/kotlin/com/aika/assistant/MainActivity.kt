@@ -145,7 +145,35 @@ override fun onResume() {
         }
     }
 
+    // Проверка системной настройки: включена ли Айка в Специальных возможностях.
+    // Работает даже когда сам сервис ещё не привязан (instance == null).
+    private fun isAccessibilityEnabledBySettings(): Boolean {
+        return try {
+            val setting = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+            setting.contains("com.aika.assistant/.AikaAccessibilityService") ||
+                setting.contains("com.aika.assistant/com.aika.assistant.AikaAccessibilityService")
+        } catch (e: Exception) {
+            Log.e("Aika", "isAccessibilityEnabledBySettings failed: ${e.message}")
+            false
+        }
+    }
+
     private fun autoStartOverlay() {
+        // ФИКС: пользователь выключил оверлей в настройках приложения —
+        // не запускаем его заново при старте/resume приложения.
+        try {
+            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val overlayEnabled = flutterPrefs.getBoolean("flutter.overlay_enabled", true)
+            if (!overlayEnabled) {
+                Log.d("Aika", "Overlay disabled by user (overlay_enabled=false) — skipping auto-start")
+                return
+            }
+        } catch (e: Exception) {
+            Log.e("Aika", "Failed to read overlay_enabled pref: ${e.message}")
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(this)) {
                 Log.d("Aika", "Overlay permission not granted — skipping auto-start")
@@ -485,7 +513,11 @@ override fun onResume() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isAccessibilityEnabled" -> {
-                        val enabled = AikaAccessibilityService.instance != null
+                        // ФИКС: instance может быть null после переустановки APK —
+                        // система держит тумблер включённым, но сервис не перепривязан.
+                        // Проверяем также системную настройку ENABLED_ACCESSIBILITY_SERVICES.
+                        val enabled = AikaAccessibilityService.instance != null ||
+                            isAccessibilityEnabledBySettings()
                         result.success(enabled)
                     }
                     "openAccessibilitySettings" -> {
@@ -560,7 +592,16 @@ override fun onResume() {
             .setMethodCallHandler { call, result ->
                 val svc = AikaAccessibilityService.instance
                 if (svc == null) {
-                    result.error("NO_SERVICE", "AccessibilityService не запущен", null)
+                    // Различаем: (а) accessibility вообще не включён,
+                    // (б) включён в системе, но сервис не привязан (после
+                    // переустановки APK) — нужен перезапуск тумблера/телефона.
+                    val enabledInSettings = isAccessibilityEnabledBySettings()
+                    val hint = if (enabledInSettings)
+                        "AccessibilityService включён в системе, но не привязан. " +
+                        "Выключи и снова включи Айку в Специальных возможностях (или перезапусти телефон)"
+                    else
+                        "AccessibilityService не запущен"
+                    result.error("NO_SERVICE", hint, null)
                     return@setMethodCallHandler
                 }
                 when (call.method) {

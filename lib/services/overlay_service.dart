@@ -51,6 +51,11 @@ class OverlayService {
   }
 
   Future<void> show({String state = 'idle'}) async {
+    // ФИКС: оверлей выключен пользователем в настройках (overlay_enabled=false)
+    // → никто не имеет права его показать: ни wake word, ни приветствие,
+    // ни resume. Иначе оверлей "воскресал" после выхода из приложения.
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('overlay_enabled') ?? true)) return;
     try {
       await _overlayChannel.invokeMethod('showOverlay', {'state': state});
       await _sendConfig();

@@ -14,6 +14,16 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         Log.d("Aika", "Boot completed — checking overlay permission")
+        // ФИКС: если пользователь выключил оверлей в настройках приложения —
+        // не воскрешаем его после перезагрузки.
+        try {
+            val flutterPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val overlayEnabled = flutterPrefs.getBoolean("flutter.overlay_enabled", true)
+            if (!overlayEnabled) {
+                Log.d("Aika", "Overlay disabled by user — skipping auto-start on boot")
+                return
+            }
+        } catch (_: Exception) {}
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(context)) {
                 Log.d("Aika", "No overlay permission — skipping auto-start on boot")
