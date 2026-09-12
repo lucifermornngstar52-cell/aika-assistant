@@ -129,11 +129,6 @@ class AikaAccessibilityService : AccessibilityService() {
     // Реальный захват пикселей (API 30+) + игровые жесты.
     // ════════════════════════════════════════════════════════════════
 
-    fun getScreenSize(): Map<String, Any> {
-        val dm = resources.displayMetrics
-        return mapOf("width" to dm.widthPixels, "height" to dm.heightPixels)
-    }
-
     /**
      * Реальный захват экрана (Android 11+ / API 30+).
      * Возвращает JPEG в base64 или null. БЛОКИРУЮЩИЙ — вызывать только с фонового потока!
