@@ -217,12 +217,20 @@ class MinecraftPilotService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_groqKey',
+          // Cloudflare у Groq банит не-браузерные клиенты (403, код 1010).
+          // Без этого заголовка запросы из Dart молча отклоняются.
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+          'Accept': 'application/json',
         },
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 30));
 
       if (resp.statusCode != 200) {
-        _addLog('⚠️ Groq HTTP ${resp.statusCode}');
+        final snip = utf8.decode(resp.bodyBytes);
+        _addLog('⚠️ Groq HTTP \${resp.statusCode}: '
+            '\${snip.length > 120 ? snip.substring(0, 120) : snip}');
         return null;
       }
 

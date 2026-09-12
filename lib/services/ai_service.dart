@@ -332,7 +332,13 @@ class AiService {
         };
         final response = await http.post(
           Uri.parse(_groqUrl),
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $_groqKey'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_groqKey',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+          },
           body: jsonEncode(body),
         ).timeout(const Duration(seconds: 8));
         if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
