@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/services.dart';
 import '../services/minecraft_pilot_service.dart';
 import '../theme/app_theme.dart';
 
@@ -59,6 +60,50 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
   void _stop() {
     MinecraftPilotService.stop();
     setState(() => _starting = false);
+  }
+
+  // ── Жест-тест: проверка нативного слоя без ИИ ──
+  static const _ch = MethodChannel('com.aika.assistant/screen_reader');
+
+  Future<void> _testGesture(String kind) async {
+    try {
+      final size = await _ch.invokeMethod('getScreenSize');
+      final w = (size['width'] as num).toDouble();
+      final h = (size['height'] as num).toDouble();
+      switch (kind) {
+        case 'tap':
+          await _ch.invokeMethod('tapAt', {'x': w / 2, 'y': h / 2});
+          break;
+        case 'swipe':
+          await _ch.invokeMethod('swipe', {
+            'x1': w * 0.8, 'y1': h * 0.4,
+            'x2': w * 0.2, 'y2': h * 0.4, 'duration': 300,
+          });
+          break;
+        case 'hold':
+          await _ch.invokeMethod('holdTouch', {'x': w / 2, 'y': h / 2, 'duration': 2000});
+          break;
+        case 'joy':
+          await _ch.invokeMethod('joystickMove', {
+            'cx': w * 0.12, 'cy': h * 0.88,
+            'angle': 0.0, 'duration': 2000,
+          });
+          break;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Жест $kind отправлен — видно результат?'),
+          backgroundColor: AikaTheme.surface,
+        ));
+      }
+    } on PlatformException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Ошибка: \${e.message}'),
+          backgroundColor: Colors.red.shade900,
+        ));
+      }
+    }
   }
 
   Future<void> _launch() async {
@@ -215,6 +260,31 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
                     ),
             ),
             const SizedBox(height: 8),
+            // ── Жест-тест ──
+            _card(
+              icon: '🧪',
+              title: 'Жест-тест (проверка без ИИ)',
+              child: Column(
+                children: [
+                  Text(
+                    'Открой Minecraft, потом жми кнопки — если экран игры реагирует, '
+                    'жесты работают, и проблема только в модели.',
+                    style: TextStyle(color: AikaTheme.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8, runSpacing: 8,
+                    children: [
+                      _testBtn('Тап центр', 'tap'),
+                      _testBtn('Свайп ←', 'swipe'),
+                      _testBtn('Держать 2с', 'hold'),
+                      _testBtn('Вперёд 2с', 'joy'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
             Text(
               'Требуется: Android 11+, включённый Accessibility, Groq-ключ в настройках ИИ.',
               style: TextStyle(color: AikaTheme.textSecondary, fontSize: 11),
@@ -224,6 +294,17 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
       ),
     );
   }
+
+  Widget _testBtn(String label, String kind) => OutlinedButton(
+        onPressed: () => _testGesture(kind),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AikaTheme.textPrimary,
+          side: BorderSide(color: AikaTheme.glassWhite),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12)),
+      );
 
   Widget _card({required String icon, required String title, required Widget child}) {
     return Container(

@@ -206,7 +206,10 @@ class MinecraftPilotService {
           }
         ],
         'temperature': 0.2,
-        'max_tokens': 300,
+        'max_tokens': 400,
+        // ГЛАВНЫЙ ФИКС: без этого qwen3.6 уходит в thinking-режим,
+        // жжёт все токены на рассуждения и не выдаёт JSON действия.
+        'reasoning_effort': 'none',
       };
 
       final resp = await http.post(
@@ -249,7 +252,17 @@ class MinecraftPilotService {
         // Джойстик: левый нижний угол (как в Bedrock classic)
         final cx = w * 0.12;
         final cy = h * 0.88;
-        final angle = (p['angle'] as num?)?.toDouble() ?? 0;
+        var angle = (p['angle'] as num?)?.toDouble();
+        // Модель иногда присылает dx/dy вместо angle — переводим:
+        // dx>0 = вправо, dy>0 = вниз; angle: 0=вперёд, 90=вправо, 180=назад, 270=влево
+        if (angle == null) {
+          final dx = (p['dx'] as num?)?.toDouble() ?? 0.0;
+          final dy = (p['dy'] as num?)?.toDouble() ?? 0.0;
+          if (dx != 0 || dy != 0) {
+            angle = 90.0 * dx + 180.0 * dy.abs();
+          }
+        }
+        angle ??= 0.0;
         final dur = ((p['duration'] as num?)?.toDouble() ?? 1500).toInt();
         await _ch.invokeMethod('joystickMove', {
           'cx': cx, 'cy': cy,
@@ -258,26 +271,36 @@ class MinecraftPilotService {
         break;
 
       case 'look':
-        final dx = ((p['dx'] as num?)?.toDouble() ?? 0.3) * w;
-        final dy = ((p['dy'] as num?)?.toDouble() ?? 0) * h;
+        // Модель присылает ЛИБО dx/dy (доли экрана), ЛИБО angle (0=вверх, 90=вправо).
+        var dx = (p['dx'] as num?)?.toDouble();
+        var dy = (p['dy'] as num?)?.toDouble();
+        final angle = (p['angle'] as num?)?.toDouble();
+        if (dx == null && dy == null && angle != null) {
+          // angle: 90 → вправо на пол-экрана, 270 → влево, 0 → вверх, 180 → вниз
+          dx = 0.5 * (angle == 90 ? 1 : angle == 270 ? -1 : 0);
+          dy = angle == 0 ? -0.25 : angle == 180 ? 0.25 : 0.0;
+        }
+        dx ??= 0.3;
+        dy ??= 0.0;
         final sx = w * 0.75, sy = h * 0.45;
         await _ch.invokeMethod('swipe', {
           'x1': sx, 'y1': sy,
-          'x2': sx - dx, 'y2': sy - dy,
+          'x2': (sx - dx * w).toDouble(),
+          'y2': (sy - dy * h).toDouble(),
           'duration': 300,
         });
         await Future.delayed(const Duration(milliseconds: 400));
         break;
 
       case 'tap':
-        final x = ((p['x'] as num?)?.toDouble() ?? w / 2).toDouble();
-        final y = ((p['y'] as num?)?.toDouble() ?? h / 2).toDouble();
+        final x = (((p['x'] as num?)?.toDouble() ?? w / 2).toDouble()).clamp(5.0, w - 5.0);
+        final y = (((p['y'] as num?)?.toDouble() ?? h / 2).toDouble()).clamp(5.0, h - 5.0);
         await _ch.invokeMethod('tapAt', {'x': x, 'y': y});
         break;
 
       case 'hold':
-        final x = ((p['x'] as num?)?.toDouble() ?? w / 2).toDouble();
-        final y = ((p['y'] as num?)?.toDouble() ?? h / 2).toDouble();
+        final x = (((p['x'] as num?)?.toDouble() ?? w / 2).toDouble()).clamp(5.0, w - 5.0);
+        final y = (((p['y'] as num?)?.toDouble() ?? h / 2).toDouble()).clamp(5.0, h - 5.0);
         final dur = ((p['duration'] as num?)?.toDouble() ?? 3000).toInt();
         await _ch.invokeMethod('holdTouch', {
           'x': x, 'y': y, 'duration': dur.clamp(300, 8000),
