@@ -6,8 +6,13 @@ import android.app.UiAutomation
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
+import android.util.Base64
+import android.view.Display
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -117,6 +122,86 @@ class AikaAccessibilityService : AccessibilityService() {
             .addStroke(GestureDescription.StrokeDescription(path1, 0L, 400L))
             .addStroke(GestureDescription.StrokeDescription(path2, 0L, 400L))
             .build(), null, null)
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // SCREEN PILOT (игровой автопилот — Minecraft и др.)
+    // Реальный захват пикселей (API 30+) + игровые жесты.
+    // ════════════════════════════════════════════════════════════════
+
+    fun getScreenSize(): Map<String, Any> {
+        val dm = resources.displayMetrics
+        return mapOf("width" to dm.widthPixels, "height" to dm.heightPixels)
+    }
+
+    /**
+     * Реальный захват экрана (Android 11+ / API 30+).
+     * Возвращает JPEG в base64 или null. БЛОКИРУЮЩИЙ — вызывать только с фонового потока!
+     * [maxWidth] — даунскейл ширины (экономия трафика до LLM), [quality] — JPEG 0..100.
+     */
+    fun captureScreenJpeg(maxWidth: Int = 720, quality: Int = 55): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        var out: String? = null
+        val latch = CountDownLatch(1)
+        val direct = java.util.concurrent.Executor { it.run() }
+        val cb = object : AccessibilityService.TakeScreenshotCallback {
+            override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                try {
+                    val buffer = screenshot.hardwareBuffer
+                    if (buffer != null) {
+                        val bmp = Bitmap.wrapHardwareBuffer(buffer, null)?.copy(Bitmap.Config.ARGB_8888, false)
+                        buffer.close()
+                        if (bmp != null) {
+                            val w = bmp.width
+                            val scale = if (w > maxWidth) maxWidth.toFloat() / w else 1f
+                            val small = if (scale < 1f)
+                                Bitmap.createScaledBitmap(bmp, (w * scale).toInt(), (bmp.height * scale).toInt(), true)
+                            else bmp
+                            val bos = ByteArrayOutputStream()
+                            small.compress(Bitmap.CompressFormat.JPEG, quality, bos)
+                            out = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                            if (small !== bmp) small.recycle()
+                            bmp.recycle()
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            override fun onFailure(errorCode: Int) {
+                latch.countDown()
+            }
+        }
+        return try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, direct, cb)
+            latch.await(4, java.util.concurrent.TimeUnit.SECONDS)
+            out
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Удержание пальца в точке N секунд — ломать блок / копать в Minecraft. */
+    fun holdTouchAt(x: Float, y: Float, durationMs: Long): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(100L, 12_000L))
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+    }
+
+    /**
+     * Джойстик Minecraft Bedrock: тап в центр джойстика и удержание в направлении angleDeg.
+     * angleDeg: 0 = вперёд (вверх экрана), 90 = вправо, 180 = назад, 270 = влево.
+     * Палец держится durationMs — персонаж идёт всё это время.
+     */
+    fun joystickMove(cx: Float, cy: Float, angleDeg: Double, durationMs: Long, radiusPx: Float = 130f): Boolean {
+        val rad = Math.toRadians(angleDeg)
+        val ex = (cx + radiusPx * Math.sin(rad)).toFloat()
+        val ey = (cy - radiusPx * Math.cos(rad)).toFloat()
+        val path = Path().apply { moveTo(cx, cy); lineTo(ex, ey) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(150L, 10_000L))
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
     // ════════════════════════════════════════════════════════════════

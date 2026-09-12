@@ -45,6 +45,7 @@ class MainActivity : FlutterActivity() {
     private val calendarHandler by lazy { CalendarHandler(applicationContext) }
     private val contactsHandler by lazy { ContactsHandler(applicationContext) }
     private val sensorsHandler  by lazy { SensorsHandler(applicationContext) }
+    private val mainHandler     by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
 
     // EventChannel sink для отправки событий смены приложений во Flutter
     private var screenEventSink: EventChannel.EventSink? = null
@@ -787,6 +788,45 @@ override fun onResume() {
 
                     "takeScreenshot" -> {
                         result.success(svc.takeScreenshot())
+                    }
+
+                    // ── Screen Pilot (игровой автопилот) ──────────────────────
+
+                    "getScreenSize" -> {
+                        result.success(svc.getScreenSize())
+                    }
+
+                    "captureScreen" -> {
+                        // Реальный захват пикселей — БЛОКИРУЮЩИЙ, уводим с main-потока.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                            result.error("UNSUPPORTED", "Захват экрана требует Android 11+", null)
+                            return@setMethodCallHandler
+                        }
+                        val maxWidth = call.argument<Int>("maxWidth") ?: 720
+                        val quality  = call.argument<Int>("quality") ?: 55
+                        Thread {
+                            val b64 = try { svc.captureScreenJpeg(maxWidth, quality) } catch (e: Exception) { null }
+                            mainHandler.post {
+                                if (b64 != null) result.success(b64)
+                                else result.error("CAPTURE_FAILED", "Не удалось захватить экран", null)
+                            }
+                        }.start()
+                    }
+
+                    "holdTouch" -> {
+                        val x  = (call.argument<Double>("x") ?: 540.0).toFloat()
+                        val y  = (call.argument<Double>("y") ?: 1000.0).toFloat()
+                        val dur = (call.argument<Int>("duration") ?: 1000).toLong()
+                        result.success(svc.holdTouchAt(x, y, dur))
+                    }
+
+                    "joystickMove" -> {
+                        val cx = (call.argument<Double>("cx") ?: 150.0).toFloat()
+                        val cy = (call.argument<Double>("cy") ?: 1900.0).toFloat()
+                        val angle = call.argument<Double>("angle") ?: 0.0
+                        val dur = (call.argument<Int>("duration") ?: 1000).toLong()
+                        val radius = (call.argument<Double>("radius") ?: 130.0).toFloat()
+                        result.success(svc.joystickMove(cx, cy, angle, dur, radius))
                     }
 
                     "powerDialog" -> {
