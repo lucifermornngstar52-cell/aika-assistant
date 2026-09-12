@@ -13,6 +13,8 @@ class AiSettingsScreen extends StatefulWidget {
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _groqCtrl     = TextEditingController();
   final _braveCtrl    = TextEditingController();
+  final _localUrlCtrl = TextEditingController();
+  final _localModelCtrl = TextEditingController();
 
   String _selectedModel = 'auto';
   bool _webSearch = true;
@@ -23,6 +25,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     'auto':        '🧠 Авто (умный роутинг)',
     'gemini_pro':  '✨ Gemini 2.5 Flash Pro',
     'gemini_flash':'🚀 Gemini 2.0 Flash (быстрый)',
+    'local':       '🏠 Своя модель (Ollama — свой сервер)',
     'groq':        '⚡ Groq gpt-oss-120b (бесплатно)',
     'claude':      '🤖 Claude Haiku (Anthropic)',
     'deepseek':    '🧬 Deepseek Chat (дёшево)',
@@ -40,6 +43,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     setState(() {
       _groqCtrl.text     = prefs.getString('groq_key')      ?? '';
       _braveCtrl.text    = prefs.getString('brave_key')     ?? '';
+      _localUrlCtrl.text   = prefs.getString('local_url')   ?? 'http://192.168.0.100:11434/v1/chat/completions';
+      _localModelCtrl.text = prefs.getString('local_model') ?? 'llama3.2:1b';
       _selectedModel     = prefs.getString('ai_model')      ?? 'auto';
       _webSearch         = prefs.getBool('ai_web_search')   ?? true;
       _maxTokens         = prefs.getInt('ai_max_tokens')    ?? 1024;
@@ -52,6 +57,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
   void _applyKeys() {
     AiService.setGroqKey(_groqCtrl.text.trim());
+    AiService.setLocalUrl(_localUrlCtrl.text.trim());
+    AiService.setLocalModel(_localModelCtrl.text.trim());
     AiService.setPreferredModel(_selectedModel);
     AiService.setWebSearch(_webSearch);
     AiService.setMaxTokens(_maxTokens);
@@ -61,6 +68,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
     await prefs.setString('brave_key',     _braveCtrl.text.trim());
+    await prefs.setString('local_url',   _localUrlCtrl.text.trim());
+    await prefs.setString('local_model', _localModelCtrl.text.trim());
     await prefs.setString('ai_model',      _selectedModel);
     await prefs.setBool('ai_web_search',   _webSearch);
     await prefs.setInt('ai_max_tokens',    _maxTokens);
@@ -209,6 +218,11 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           // ── API Ключи ─────────────────────────────────────────────
           _sectionHeader('🔑 API КЛЮЧИ'),
 
+          _keyCard('🏠 Адрес своего сервера (Ollama)', _localUrlCtrl,
+              'http://192.168.0.100:11434/v1/chat/completions',
+              '💡 Ollama на твоём компьютере. На ноуте: ollama serve\nIP ноута в той же Wi-Fi сети, порт 11434\nПолное «своё» — без ключей и чужих облаков'),
+          _keyCard('🏠 Имя модели на сервере', _localModelCtrl, 'llama3.2:1b',
+              '💡 Скачай на ноуте: ollama pull llama3.2:1b\nДля слабого ноута также: qwen2.5:0.5b, smollm2:360m'),
           _keyCard('Groq (gpt-oss-120b)', _groqCtrl, 'gsk_...', '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com'),
           _keyCard('Brave Search', _braveCtrl, 'BSA...', '🟢 бесплатно: 2000 запросов/месяц\napi.search.brave.com'),
 

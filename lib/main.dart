@@ -38,6 +38,8 @@ void main() async {
   AiService.setClaudeKey(prefs.getString('claude_key') ?? '');
   AiService.setDeepseekKey(prefs.getString('deepseek_key') ?? '');
   AiService.setPerplexityKey(prefs.getString('perplexity_key') ?? '');
+  AiService.setLocalUrl(prefs.getString('local_url') ?? 'http://192.168.0.100:11434/v1/chat/completions');
+  AiService.setLocalModel(prefs.getString('local_model') ?? 'llama3.2:1b');
   AiService.setPreferredModel(prefs.getString('ai_model') ?? 'auto');
   AiService.setWebSearch(prefs.getBool('ai_web_search') ?? true);
   AiService.setMaxTokens(prefs.getInt('ai_max_tokens') ?? 1024);

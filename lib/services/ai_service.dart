@@ -35,12 +35,16 @@ class AiService {
   static String _deepseekKey = '';
   static const String _deepseekUrl = 'https://api.deepseek.com/v1/chat/completions';
 
+  // ── СВОЯ модель (Ollama на своём компьютере, без чужих API) ──────
+  static String _localUrl = 'http://192.168.0.100:11434/v1/chat/completions';
+  static String _localModel = 'llama3.2:1b';
+
   // ── Perplexity (AI + веб-поиск в одном) ───────────────────────────
   static String _perplexityKey = '';
   static const String _perplexityUrl = 'https://api.perplexity.ai/chat/completions';
 
   // ── Настройки ──────────────────────────────────────────────────────
-  static String _preferredModel = 'auto'; // auto|gemini|groq|claude|deepseek|perplexity
+  static String _preferredModel = 'auto'; // auto|local|gemini|groq|claude|deepseek|perplexity
   static bool _webSearchEnabled = true;
   static int _historyLimit = 20;
   static int _maxTokens = 1024;
@@ -51,12 +55,15 @@ class AiService {
   static void setClaudeKey(String k) => _claudeKey = k;
   static void setDeepseekKey(String k) => _deepseekKey = k;
   static void setPerplexityKey(String k) => _perplexityKey = k;
+  static void setLocalUrl(String u) => _localUrl = u.trim();
+  static void setLocalModel(String m) => _localModel = m.trim();
   static void setPreferredModel(String m) => _preferredModel = m;
   static void setWebSearch(bool v) => _webSearchEnabled = v;
   static void setMaxTokens(int v) => _maxTokens = v;
 
   // ── Статус подключённых сервисов ───────────────────────────────────
   static Map<String, bool> get connectedServices => {
+    'Своя (Ollama)': _localUrl.isNotEmpty,
     'Gemini': _geminiKey.isNotEmpty,
     'Groq (Free)': _groqKey.isNotEmpty,
     'Claude': _claudeKey.isNotEmpty,
@@ -166,13 +173,15 @@ class AiService {
     final chain = <String>[];
 
     // Начинаем с выбранной модели
-    if (_isProviderAvailable(preferred)) chain.add(preferred);
+    if (_isProviderAvailable(preferred) && !(hasImage && preferred == 'local')) {
+      chain.add(preferred);
+    }
 
-    // Fallback цепочка
-    final fallbacks = ['groq', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
+    // Fallback цепочка (local — своё, приоритетно)
+    final fallbacks = ['local', 'groq', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
     for (final fb in fallbacks) {
       if (fb != preferred && _isProviderAvailable(fb)) {
-        if (hasImage && (fb == 'deepseek' || fb == 'perplexity')) continue;
+        if (hasImage && (fb == 'deepseek' || fb == 'perplexity' || fb == 'local')) continue;
         chain.add(fb);
       }
     }
@@ -191,6 +200,7 @@ class AiService {
       case 'claude': return _claudeKey.isNotEmpty;
       case 'deepseek': return _deepseekKey.isNotEmpty;
       case 'perplexity': return _perplexityKey.isNotEmpty;
+      case 'local': return _localUrl.isNotEmpty;
       default: return false;
     }
   }
@@ -240,6 +250,12 @@ class AiService {
           memoryContext: memoryContext, screenContext: screenContext,
           longMemory: longMemory, webContext: webContext,
           imageBase64: imageBase64, imageMimeType: imageMimeType,
+        );
+      case 'local':
+        return await _callLocal(message,
+          userName: userName, assistantName: assistantName, history: history,
+          memoryContext: memoryContext, screenContext: screenContext,
+          longMemory: longMemory, webContext: webContext,
         );
       case 'claude':
         return await _callClaude(message,
@@ -538,6 +554,62 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
   // ══════════════════════════════════════════════════════════════════
   //  Groq — Llama 3.3 70B (бесплатно, ультра-быстро)
   // ══════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════
+  //  СВОЯ МОДЕЛЬ — Ollama на своём компьютере (OpenAI-совместимый API)
+  //  Без ключей, без чужих облаков: http://<IP ноута>:11434/v1/chat/completions
+  // ══════════════════════════════════════════════════════════════════
+  Future<String> _callLocal(
+    String message, {
+    required String userName,
+    required String assistantName,
+    required List<String> history,
+    required String memoryContext,
+    required String screenContext,
+    required String longMemory,
+    required String webContext,
+  }) async {
+    if (_localUrl.isEmpty) throw Exception('Не задан адрес своего сервера');
+
+    final systemPrompt = _buildSystemPrompt(userName, assistantName,
+          longMemory: longMemory, webContext: webContext) +
+        (memoryContext.isNotEmpty ? '\n\n== ПАМЯТЬ ==\n$memoryContext' : '') +
+        (screenContext.isNotEmpty ? '\n\n== СЕЙЧАС НА ЭКРАНЕ ==\n$screenContext' : '');
+
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': systemPrompt},
+    ];
+
+    // локальной 1B-модели короткая память проще: последние 6 сообщений
+    for (final h in history.take(6)) {
+      if (h.startsWith('user: ')) {
+        messages.add({'role': 'user', 'content': h.substring(6)});
+      } else if (h.startsWith('assistant: ')) {
+        messages.add({'role': 'assistant', 'content': h.substring(11)});
+      }
+    }
+    messages.add({'role': 'user', 'content': message});
+
+    final body = {
+      'model': _localModel,
+      'messages': messages,
+      'temperature': 0.8,
+      'max_tokens': _maxTokens,
+    };
+
+    final response = await http.post(
+      Uri.parse(_localUrl),
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 120)); // свой CPU медленней облака
+
+    if (response.statusCode != 200) {
+      throw Exception('Локальный сервер: HTTP ${response.statusCode}');
+    }
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    final content = data['choices'][0]['message']['content'] as String;
+    return content.trim();
+  }
+
   Future<String> _callGroq(
     String message, {
     required String userName,
