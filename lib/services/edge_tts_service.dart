@@ -175,6 +175,19 @@ class EdgeTtsService extends ChangeNotifier {
   }
 
   Future<void> _speakSystem(String text) async {
+    // ФИКС: применяем выбранный в настройках системный голос, скорость
+    // и высоту — раньше системный движок игнорировал выбор голоса
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sysVoice = prefs.getString('tts_voice');
+      final sysRate = prefs.getDouble('tts_rate') ?? 0.5;
+      final sysPitch = prefs.getDouble('tts_pitch') ?? 1.0;
+      if (sysVoice != null && sysVoice.isNotEmpty) {
+        await _systemTts.setVoice({'name': sysVoice, 'locale': 'ru-RU'});
+      }
+      await _systemTts.setSpeechRate(sysRate);
+      await _systemTts.setPitch(sysPitch);
+    } catch (_) {}
     try { await _systemTts.setVolume(_volume); } catch (_) {}
     final done = Completer<void>();
     _systemTts.setCompletionHandler(() {

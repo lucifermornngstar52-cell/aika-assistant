@@ -84,6 +84,11 @@ class ElevenLabsTtsService {
       final similarity = prefs.getDouble('elevenlabs_similarity') ?? 0.75;
       final style = prefs.getDouble('elevenlabs_style') ?? 0.0;
 
+      // ФИКС: перечитываем выбранный голос из настроек при каждом синтезе —
+      // раньше голос применялся только после перезапуска приложения
+      final savedVoice = prefs.getString('elevenlabs_voice');
+      if (savedVoice != null && savedVoice.isNotEmpty) _selectedVoiceId = savedVoice;
+
       final resp = await http.post(
         Uri.parse('$_baseUrl/text-to-speech/$_selectedVoiceId'),
         headers: {

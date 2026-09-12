@@ -95,7 +95,11 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('tts_engine', _ttsEngine);
-    if (_elevenLabsVoice != null) await prefs.setString('elevenlabs_voice', _elevenLabsVoice!);
+    if (_elevenLabsVoice != null) {
+      await prefs.setString('elevenlabs_voice', _elevenLabsVoice!);
+      // ФИКС: применяем голос сразу в работающий сервис — без перезапуска
+      ElevenLabsTtsService().setVoice(_elevenLabsVoice!);
+    }
     await prefs.setDouble('tts_rate', _rate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
