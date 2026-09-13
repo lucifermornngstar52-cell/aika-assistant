@@ -1,10 +1,9 @@
 name: Сборка APK Айки
 
+# ФИКС: раньше на каждый пуш стартовали ДВЕ сборки (build-apk.yml + build.yml).
+# Теперь подписанный релиз собирает build.yml на каждый пуш, а этот workflow —
+# только по кнопке (workflow_dispatch), когда нужен debug-APK.
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
