@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,12 +28,14 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  await PersonalityService.load();
-  await ThemeSwitcherService().load();
-  await WardrobeService.load();
+  // ФИКС: сбой хранилища при запуске ронял приложение до SplashScreen —
+  // теперь приложение стартует даже если настройки не прочитались
+  try {
+    await PersonalityService.load();
+    await ThemeSwitcherService().load();
+    await WardrobeService.load();
 
-  // Загружаем все AI ключи из настроек
-  final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
   AiService.setGeminiKey(prefs.getString('gemini_key') ?? '');
   AiService.setGroqKey(prefs.getString('groq_key') ?? '');
   AiService.setClaudeKey(prefs.getString('claude_key') ?? '');
@@ -45,6 +48,9 @@ void main() async {
   AiService.setMaxTokens(prefs.getInt('ai_max_tokens') ?? 1024);
   WebSearchService.setBraveKey(prefs.getString('brave_key') ?? '');
 
+  } catch (e) {
+    debugPrint('Ошибка инициализации сервисов: $e');
+  }
   runApp(const AikaApp());
 }
 

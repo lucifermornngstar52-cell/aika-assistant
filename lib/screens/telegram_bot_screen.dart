@@ -12,6 +12,13 @@ class TelegramBotScreen extends StatefulWidget {
 
 class _TelegramBotScreenState extends State<TelegramBotScreen> {
   final _tokenController = TextEditingController();
+
+  // ФИКС: контроллер не освобождался
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    super.dispose();
+  }
   bool _enabled = false;
   bool _loading = false;
   bool _obscureToken = true;
@@ -50,15 +57,14 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     setState(() { _loading = true; _error = null; });
 
     final botName = await TelegramBotService.validateToken(tokenText);
+    if (!mounted) return;  // ФИКС: setState после dispose крашил приложение
     if (botName == null) {
       setState(() { _loading = false; _error = 'Токен недействителен. Проверь правильность.'; });
       return;
     }
 
     await TelegramBotService.saveToken(tokenText);
-    final prefs = await SharedPreferences.getInstance();
-    // Сохраняем chat_id при первом входящем сообщении автоматически
-    
+    if (!mounted) return;  // ФИКС: аналогично после сохранения токена
     setState(() {
       _loading = false;
       _botName = botName;

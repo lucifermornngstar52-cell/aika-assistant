@@ -30,6 +30,7 @@ class _SettingsGeneralScreenState extends State<SettingsGeneralScreen> {
     final prefs = await SharedPreferences.getInstance();
     await _themeSwitcher.load();
     final hasPerm = await _overlaySvc.hasPermission();
+    if (!mounted) return;  // ФИКС: setState после dispose
     setState(() {
       _nameCtrl.text = prefs.getString('assistant_name') ?? 'Aivora';
       _userNameCtrl.text = prefs.getString('user_name') ?? '';

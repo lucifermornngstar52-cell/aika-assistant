@@ -18,6 +18,13 @@ class LicenseGateScreen extends StatefulWidget {
 
 class _LicenseGateScreenState extends State<LicenseGateScreen> {
   final _controller = TextEditingController();
+
+  // ФИКС: контроллер не освобождался
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
   String _deviceHash = '...';
   String? _error;
   bool _checking = false;

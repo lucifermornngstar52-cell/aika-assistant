@@ -26,8 +26,10 @@ class _CurrencyScreenState extends State<CurrencyScreen> {
     setState(() { _isLoading = true; _error = null; });
     try {
       final rates = await _service.getRates();
+      if (!mounted) return;  // ФИКС: setState после dispose
       setState(() { _rates = rates; _isLoading = false; _lastUpdated = DateTime.now(); });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _error = e.toString(); _isLoading = false; });
     }
   }

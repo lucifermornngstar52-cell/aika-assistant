@@ -11,6 +11,16 @@ class AiSettingsScreen extends StatefulWidget {
 }
 
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
+  // ФИКС: контроллеры не освобождались — утечка памяти при каждом открытии
+  @override
+  void dispose() {
+    _groqCtrl.dispose();
+    _braveCtrl.dispose();
+    _localUrlCtrl.dispose();
+    _localModelCtrl.dispose();
+    super.dispose();
+  }
+
   final _groqCtrl     = TextEditingController();
   final _braveCtrl    = TextEditingController();
   final _localUrlCtrl = TextEditingController();

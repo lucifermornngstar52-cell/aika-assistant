@@ -52,6 +52,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
     if (confirm == true) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('chat_history');
+      if (!mounted) return;  // ФИКС: setState после dispose
       setState(() { _messages = []; _wasCleared = true; });
     }
   }

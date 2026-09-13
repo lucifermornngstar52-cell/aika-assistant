@@ -22,14 +22,29 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
     _load();
   }
 
+  // ФИКС: TabController не освобождался — утечка vsync
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+
   Future<void> _load() async {
-    final now = DateTime.now();
-    final todayStr = '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
-    final tom = now.add(const Duration(days: 1));
-    final tomStr = '${tom.year}-${tom.month.toString().padLeft(2,'0')}-${tom.day.toString().padLeft(2,'0')}';
-    final t = await _service.getEvents(date: todayStr);
-    final tm = await _service.getEvents(date: tomStr);
-    setState(() { _todayEvents = t; _tomorrowEvents = tm; _loading = false; });
+    // ФИКС: при ошибке загрузки экран зависал с вечным спиннером
+    try {
+      final now = DateTime.now();
+      final todayStr = '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+      final tom = now.add(const Duration(days: 1));
+      final tomStr = '${tom.year}-${tom.month.toString().padLeft(2,'0')}-${tom.day.toString().padLeft(2,'0')}';
+      final t = await _service.getEvents(date: todayStr);
+      final tm = await _service.getEvents(date: tomStr);
+      if (!mounted) return;  // ФИКС: setState после dispose
+      setState(() { _todayEvents = t; _tomorrowEvents = tm; _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _addEventDialog() async {
@@ -114,6 +129,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
                   date: dateStr,
                   note: noteCtrl.text.trim(),
                 ));
+                // ФИКС: pop по устаревшему контексту после await ронял диалог
+                if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 _load();
               },
