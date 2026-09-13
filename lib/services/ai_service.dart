@@ -186,8 +186,10 @@ class AiService {
       }
     }
 
-    // Gemini Flash — всегда последний бесплатный fallback
-    if (!chain.contains('gemini_flash')) chain.add('gemini_flash');
+    // Gemini Flash — последний бесплатный fallback (только если есть ключ)
+    if (_isProviderAvailable('gemini_flash') && !chain.contains('gemini_flash')) {
+      chain.add('gemini_flash');
+    }
 
     return chain;
   }
@@ -208,7 +210,43 @@ class AiService {
   bool _isFallbackError(String err) {
     return err.contains('429') || err.contains('503') || err.contains('quota') ||
            err.contains('overloaded') || err.contains('timeout') || err.contains('502') ||
-           err.contains('rate') || err.contains('capacity');
+           err.contains('rate') || err.contains('capacity') ||
+           // ФИКС: пустой/заблокированный ответ провайдера — повод перейти
+           // к следующему в цепочке, а не ронять весь запрос
+           err.contains('пустой ответ') || err.contains('empty response');
+  }
+
+  /// ФИКС: раньше ответ парсился в лоб (data['choices'][0]['message']['content'])
+  /// — если модель возвращала пустой ответ или Gemini блокировал его по safety,
+  /// TypeError убивал весь запрос вместо перехода к следующему провайдеру.
+  String _extractContent(dynamic data) {
+    final choices = data['choices'];
+    if (choices is List && choices.isNotEmpty) {
+      final c = choices[0]['message']?['content'];
+      if (c is String && c.trim().isNotEmpty) return c;
+    }
+    throw Exception('Провайдер вернул пустой ответ (empty response)');
+  }
+
+  String _extractGeminiText(dynamic data) {
+    final candidates = data['candidates'];
+    if (candidates is List && candidates.isNotEmpty) {
+      final parts = candidates[0]['content']?['parts'];
+      if (parts is List && parts.isNotEmpty) {
+        final t = parts[0]['text'];
+        if (t is String && t.trim().isNotEmpty) return t;
+      }
+    }
+    throw Exception('Провайдер вернул пустой ответ (empty response)');
+  }
+
+  String _extractClaudeText(dynamic data) {
+    final content = data['content'];
+    if (content is List && content.isNotEmpty) {
+      final t = content[0]?['text'];
+      if (t is String && t.trim().isNotEmpty) return t;
+    }
+    throw Exception('Провайдер вернул пустой ответ (empty response)');
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -343,7 +381,7 @@ class AiService {
         ).timeout(const Duration(seconds: 8));
         if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return data['choices'][0]['message']['content'] as String;
+    return _extractContent(data);
       });
     }
 
@@ -361,7 +399,7 @@ class AiService {
         ).timeout(const Duration(seconds: 10));
         if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return data['candidates'][0]['content']['parts'][0]['text'] as String;
+        return _extractGeminiText(data);
       });
     }
 
@@ -554,7 +592,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['candidates'][0]['content']['parts'][0]['text'] as String;
+    return _extractGeminiText(data);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -612,8 +650,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
       throw Exception('Локальный сервер: HTTP ${response.statusCode}');
     }
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    final content = data['choices'][0]['message']['content'] as String;
-    return content.trim();
+    return _extractContent(data);
   }
 
   Future<String> _callGroq(
@@ -681,7 +718,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['choices'][0]['message']['content'] as String;
+    return _extractContent(data);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -749,7 +786,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['content'][0]['text'] as String;
+    return _extractClaudeText(data);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -805,7 +842,7 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['choices'][0]['message']['content'] as String;
+    return _extractContent(data);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -859,6 +896,6 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return data['choices'][0]['message']['content'] as String;
+    return _extractContent(data);
   }
 }
