@@ -180,7 +180,10 @@ class AikaAccessibilityService : AccessibilityService() {
 
     /** Удержание пальца в точке N секунд — ломать блок / копать в Minecraft. */
     fun holdTouchAt(x: Float, y: Float, durationMs: Long): Boolean {
-        val path = Path().apply { moveTo(x, y) }
+        // ФИКС: путь из одной точки (только moveTo) — пустой контур,
+        // dispatchGesture на многих версиях Android его отвергает.
+        // Держим с микродвижением в 1px — на игру не влияет.
+        val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
         val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(100L, 12_000L))
         return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }

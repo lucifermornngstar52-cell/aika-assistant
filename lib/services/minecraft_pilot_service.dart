@@ -34,7 +34,7 @@ class MinecraftPilotService {
   /// Пауза после действия перед новым скриншотом (мс).
   static int actionDelayMs = 2500;
   /// Максимальное число итераций (защита от вечного цикла).
-  static int maxIterations = 60;
+  static int maxIterations = 100;
 
   static String? _groqKey;
 
@@ -95,26 +95,39 @@ class MinecraftPilotService {
     final w = size['width'] as int;
     final h = size['height'] as int;
 
+    var consecutiveFails = 0;
     while (_running && _iteration < maxIterations) {
-      _iteration++;
-      _addLog('── Итерация $_iteration/$maxIterations ──');
-
       // 1. Скриншот
       final b64 = await _captureScreen();
       if (b64 == null) {
-        _addLog('❌ Не удалось сделать скриншот');
-        result = 'Ошибка захвата экрана. Проверь: Accessibility включён, Android 11+, игра открыта';
-        break;
+        consecutiveFails++;
+        _addLog('❌ Скриншот не получился ($consecutiveFails/5)');
+        if (consecutiveFails >= 5) {
+          result = 'Экран не захватывается. Проверь: Accessibility включён и перепривязан, Android 11+, игра открыта';
+          break;
+        }
+        await Future.delayed(const Duration(seconds: 3));
+        continue;
       }
 
       // 2. Спрашиваем vision-модель
       final action = await _askVision(b64, w, h, history);
       if (action == null) {
-        _addLog('❌ Vision не ответил, жду 5с и пробую снова');
+        // ФИКС: раньше неудача vision сжигала итерацию — 60 ошибок подряд
+        // молча выедали весь лимит. Теперь считаем только реальные шаги.
+        consecutiveFails++;
+        _addLog('❌ Vision не ответил ($consecutiveFails/5), жду 5с');
+        if (consecutiveFails >= 5) {
+          result = 'Vision-модель не отвечает 5 раз подряд — смотри ошибки Groq выше (ключ? лимиты?)';
+          break;
+        }
         await Future.delayed(const Duration(seconds: 5));
         continue;
       }
+      consecutiveFails = 0;
 
+      _iteration++;
+      _addLog('── Шаг $_iteration/$maxIterations ──');
       _addLog('🧠 ${action['thought'] ?? ''}');
       final pRaw = action['params'];
       final p = pRaw is Map<String, dynamic> ? pRaw : <String, dynamic>{};
@@ -123,9 +136,16 @@ class MinecraftPilotService {
       history.add('${action['action']} ${jsonEncode(p)}');
       if (history.length > 8) history.removeAt(0);
 
-      // 3. Выполняем
+      // 3. Выполняем.
+      // ФИКС: раньше одно исключение из жеста убивало весь запуск
+      // без единого сообщения — теперь логируем и продолжаем.
       final act = action['action'] as String? ?? 'none';
-      final done = await _execute(act, p, w, h);
+      var done = false;
+      try {
+        done = await _execute(act, p, w, h);
+      } catch (e) {
+        _addLog('⚠️ Жест не удался: $e — пробую дальше');
+      }
 
       if (done) {
         _addLog('✅ Задача выполнена!');
@@ -171,8 +191,9 @@ class MinecraftPilotService {
   "thought": "что ты видишь и что делаешь, 1 фраза на русском",
   "action": "move" | "look" | "tap" | "hold" | "none" | "done",
   "params": {
-    // move: идти джойстиком
+    // move: идти джойстиком; cx/cy — центр джойстика В ПИКСЕЛЯХ (видно на скриншоте, левый нижний угол)
     "angle": 0-360,
+    "cx": 150, "cy": 1900,
     "duration": 1500,
     // look: повернуть камеру (dx>0=вправо, dy>0=вниз; доли экрана)
     "dx": 0.3, "dy": -0.1,
@@ -191,46 +212,70 @@ class MinecraftPilotService {
 ''';
 
     try {
-      final body = {
-        'model': _visionModel,
-        'messages': [
-          {
-            'role': 'user',
-            'content': [
-              {'type': 'text', 'text': prompt},
-              {
-                'type': 'image_url',
-                'image_url': {'url': 'data:image/jpeg;base64,$imgB64'},
-              },
-            ],
-          }
-        ],
-        'temperature': 0.2,
-        'max_tokens': 400,
-        // ГЛАВНЫЙ ФИКС: без этого qwen3.6 уходит в thinking-режим,
-        // жжёт все токены на рассуждения и не выдаёт JSON действия.
-        'reasoning_effort': 'none',
-      };
+      // ФИКС: раньше один 400/404 (модель не та / параметр не тот) —
+      // и пилот навсегда молчал. Теперь пробуем комбинации по очереди.
+      const modelCandidates = [
+        // (модель, с reasoning_effort или без)
+        (_visionModel, true),
+        (_visionModel, false),
+        ('meta-llama/llama-4-scout-17b-16e-instruct', false), // запасная vision-модель Groq
+      ];
 
-      final resp = await http.post(
-        Uri.parse(_groqUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_groqKey',
-          // Cloudflare у Groq банит не-браузерные клиенты (403, код 1010).
-          // Без этого заголовка запросы из Dart молча отклоняются.
-          'User-Agent':
-              'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
-              '(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
+      http.Response? resp;
+      String? failReason;
+      for (final (m, useRef) in modelCandidates) {
+        final body = {
+          'model': m,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$imgB64'},
+                },
+              ],
+            }
+          ],
+          'temperature': 0.2,
+          'max_tokens': 400,
+          // Без этого qwen уходит в thinking-режим и не выдаёт JSON действия.
+          if (useRef) 'reasoning_effort': 'none',
+        };
+        resp = await http.post(
+          Uri.parse(_groqUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_groqKey',
+            // Cloudflare у Groq банит не-браузерные клиенты (403, код 1010).
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 30));
 
-      if (resp.statusCode != 200) {
+        if (resp.statusCode == 200) break;
+
         final snip = utf8.decode(resp.bodyBytes);
-        _addLog('⚠️ Groq HTTP ${resp.statusCode}: '
-            '${snip.length > 120 ? snip.substring(0, 120) : snip}');
+        failReason = 'HTTP ${resp.statusCode}: '
+            '${snip.length > 120 ? snip.substring(0, 120) : snip}';
+        if (resp.statusCode == 429) {
+          _addLog('⏳ Лимит Groq, жду 15с…');
+          await Future.delayed(const Duration(seconds: 15));
+        }
+        _addLog('⚠️ Groq $m → $failReason');
+        if (resp.statusCode != 400 && resp.statusCode != 404) {
+          // 401/403 — ключ, 500-е — сервис: дальше перебирать бессмысленно,
+          // но не роняем пилот — вернёмся через цикл.
+          return null;
+        }
+        // 400/404 — пробуем следующую комбинацию
+      }
+      if (resp == null || resp.statusCode != 200) {
+        _addLog('⚠️ Groq отклонил все варианты: $failReason');
         return null;
       }
 
@@ -257,9 +302,15 @@ class MinecraftPilotService {
       String action, Map<String, dynamic> p, int w, int h) async {
     switch (action) {
       case 'move':
-        // Джойстик: левый нижний угол (как в Bedrock classic)
-        final cx = w * 0.12;
-        final cy = h * 0.88;
+        // Джойстик: модель ВИДИТ скриншот и может указать его точный центр (cx/cy).
+        // Если не указала — левый нижний угол (как в Bedrock classic).
+        var cx = (p['cx'] as num?)?.toDouble() ?? w * 0.12;
+        var cy = (p['cy'] as num?)?.toDouble() ?? h * 0.88;
+        // если модель прислала доли (0..1) вместо пикселей — переводим
+        if (cx >= 0 && cx <= 1) cx *= w;
+        if (cy >= 0 && cy <= 1) cy *= h;
+        cx = cx.clamp(10.0, w - 10.0);
+        cy = cy.clamp(10.0, h - 10.0);
         var angle = (p['angle'] as num?)?.toDouble();
         // Модель иногда присылает dx/dy вместо angle — переводим:
         // dx>0 = вправо, dy>0 = вниз; angle: 0=вперёд, 90=вправо, 180=назад, 270=влево
@@ -271,10 +322,12 @@ class MinecraftPilotService {
           }
         }
         angle ??= 0.0;
-        final dur = ((p['duration'] as num?)?.toDouble() ?? 1500).toInt();
+        var dur = (p['duration'] as num?)?.toDouble() ?? 1500;
+        // модель может прислать секунды вместо миллисекунд
+        if (dur > 0 && dur < 10) dur *= 1000;
         await _ch.invokeMethod('joystickMove', {
           'cx': cx, 'cy': cy,
-          'angle': angle, 'duration': dur.clamp(100, 8000),
+          'angle': angle, 'duration': dur.toInt().clamp(100, 8000),
         });
         break;
 
@@ -291,27 +344,40 @@ class MinecraftPilotService {
         dx ??= 0.3;
         dy ??= 0.0;
         final sx = w * 0.75, sy = h * 0.45;
+        // ФИКС: было sx - dx*w — камера крутилась в ПРОТИВОПОЛОЖНУЮ сторону:
+        // модель просит вправо, а пилот смотрел влево, и промахивался всегда.
+        // Теперь свайп идёт в ту сторону, которую просит модель.
+        final x2 = (sx + dx * w).clamp(10.0, w - 10.0);
+        final y2 = (sy + dy * h).clamp(10.0, h - 10.0);
         await _ch.invokeMethod('swipe', {
           'x1': sx, 'y1': sy,
-          'x2': (sx - dx * w).toDouble(),
-          'y2': (sy - dy * h).toDouble(),
+          'x2': x2.toDouble(), 'y2': y2.toDouble(),
           'duration': 300,
         });
         await Future.delayed(const Duration(milliseconds: 400));
         break;
 
       case 'tap':
-        final x = (((p['x'] as num?)?.toDouble() ?? w / 2).toDouble()).clamp(5.0, w - 5.0);
-        final y = (((p['y'] as num?)?.toDouble() ?? h / 2).toDouble()).clamp(5.0, h - 5.0);
-        await _ch.invokeMethod('tapAt', {'x': x, 'y': y});
+        var x = (p['x'] as num?)?.toDouble() ?? w / 2;
+        var y = (p['y'] as num?)?.toDouble() ?? h / 2;
+        // модель любит присылать координаты долями экрана (0..1) — учитываем
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) { x *= w; y *= h; }
+        await _ch.invokeMethod('tapAt', {
+          'x': x.clamp(5.0, w - 5.0).toDouble(),
+          'y': y.clamp(5.0, h - 5.0).toDouble(),
+        });
         break;
 
       case 'hold':
-        final x = (((p['x'] as num?)?.toDouble() ?? w / 2).toDouble()).clamp(5.0, w - 5.0);
-        final y = (((p['y'] as num?)?.toDouble() ?? h / 2).toDouble()).clamp(5.0, h - 5.0);
-        final dur = ((p['duration'] as num?)?.toDouble() ?? 3000).toInt();
+        var x = (p['x'] as num?)?.toDouble() ?? w / 2;
+        var y = (p['y'] as num?)?.toDouble() ?? h / 2;
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) { x *= w; y *= h; }
+        var dur = (p['duration'] as num?)?.toDouble() ?? 3000;
+        if (dur > 0 && dur < 10) dur *= 1000; // секунды → мс
         await _ch.invokeMethod('holdTouch', {
-          'x': x, 'y': y, 'duration': dur.clamp(300, 8000),
+          'x': x.clamp(5.0, w - 5.0).toDouble(),
+          'y': y.clamp(5.0, h - 5.0).toDouble(),
+          'duration': dur.toInt().clamp(300, 8000),
         });
         break;
 

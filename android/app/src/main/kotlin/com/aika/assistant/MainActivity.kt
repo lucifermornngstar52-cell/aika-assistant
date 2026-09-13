@@ -792,10 +792,6 @@ override fun onResume() {
 
                     // ── Screen Pilot (игровой автопилот) ──────────────────────
 
-                    "getScreenSize" -> {
-                        result.success(svc.getScreenSize())
-                    }
-
                     "captureScreen" -> {
                         // Реальный захват пикселей — БЛОКИРУЮЩИЙ, уводим с main-потока.
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
