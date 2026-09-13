@@ -15,7 +15,7 @@ class MusicControlService {
     try {
       await _channel.invokeMethod('mediaControl', {'action': action});
     } on PlatformException catch (e) {
-      debugPrint('[MusicControl] ошибка \$action: \${e.message}');
+      debugPrint('[MusicControl] ошибка $action: ${e.message}');
     }
   }
 

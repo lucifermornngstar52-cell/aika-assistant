@@ -7,17 +7,17 @@ class BriefingService {
     final now = DateTime.now();
     final greeting = _getGreeting(now.hour);
     final dayName = _getDayName(now.weekday);
-    final dateStr = '\${now.day} \${_getMonthName(now.month)}';
+    final dateStr = '${now.day} ${_getMonthName(now.month)}';
 
     final buf = StringBuffer();
-    buf.writeln('\$greeting! 🌸');
-    buf.writeln('Сегодня \$dayName, \$dateStr.');
+    buf.writeln('$greeting! 🌸');
+    buf.writeln('Сегодня $dayName, $dateStr.');
     buf.writeln('');
 
     try {
       // Погода (заглушка — можно подключить API)
       if (city.isNotEmpty) {
-        buf.writeln('🌤 Погода в \$city: данные недоступны.');
+        buf.writeln('🌤 Погода в $city: данные недоступны.');
       }
     } catch (e) {
       buf.writeln('☁️ Погоду не удалось получить.');
@@ -35,7 +35,7 @@ class BriefingService {
         buf.writeln('');
         buf.writeln('📅 Твой план на сегодня:');
         for (final e in events) {
-          buf.writeln('  • \${e.timeStr} — \${e.title}');
+          buf.writeln('  • ${e.timeStr} — ${e.title}');
         }
       }
     } catch (_) {}

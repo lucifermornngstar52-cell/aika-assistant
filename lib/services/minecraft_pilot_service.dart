@@ -229,8 +229,8 @@ class MinecraftPilotService {
 
       if (resp.statusCode != 200) {
         final snip = utf8.decode(resp.bodyBytes);
-        _addLog('⚠️ Groq HTTP \${resp.statusCode}: '
-            '\${snip.length > 120 ? snip.substring(0, 120) : snip}');
+        _addLog('⚠️ Groq HTTP ${resp.statusCode}: '
+            '${snip.length > 120 ? snip.substring(0, 120) : snip}');
         return null;
       }
 

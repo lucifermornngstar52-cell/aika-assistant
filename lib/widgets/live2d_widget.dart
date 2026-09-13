@@ -134,7 +134,7 @@ class _Live2DWidgetState extends State<Live2DWidget> {
           });
         },
         onReceivedError: (ctrl, req, err) {
-          debugPrint('[Live2DWidget] WebView error: \${err.description}');
+          debugPrint('[Live2DWidget] WebView error: ${err.description}');
         },
       ),
     );

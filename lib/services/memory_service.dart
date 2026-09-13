@@ -42,7 +42,7 @@ class MemoryService {
   Future<void> addMessage(String role, String content) async {
     final prefs = await SharedPreferences.getInstance();
     final history = prefs.getStringList(_keyConversation) ?? [];
-    history.add('\$role: \$content');
+    history.add('$role: $content');
     if (history.length > _maxHistory) {
       history.removeRange(0, history.length - _maxHistory);
     }
@@ -67,7 +67,7 @@ class MemoryService {
 
   Future<void> appendMemoryFact(String fact) async {
     final current = await getLongMemory();
-    final updated = current.isEmpty ? fact : '\$current\n- \$fact';
+    final updated = current.isEmpty ? fact : '$current\n- $fact';
     await setLongMemory(updated);
   }
 

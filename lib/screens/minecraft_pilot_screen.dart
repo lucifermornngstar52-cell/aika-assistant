@@ -99,7 +99,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
     } on PlatformException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Ошибка: \${e.message}'),
+          content: Text('Ошибка: ${e.message}'),
           backgroundColor: Colors.red.shade900,
         ));
       }

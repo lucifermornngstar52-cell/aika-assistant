@@ -228,7 +228,7 @@ class AikaUiControlService {
       final ai = AiService();
       final prompt =
           'Ты игровой ассистент Айка. '
-          "Текст с экрана пользователя:\n\$screenText\n\n"
+          "Текст с экрана пользователя:\n$screenText\n\n"
           'Инструкция: "$_watchInstruction". '
           'Если нашла что-то важное — напиши КОРОТКО (1-2 предложения). '
           'Если ничего важного — ответь только "OK".';
@@ -277,9 +277,9 @@ class AikaUiControlService {
       final recent = actions.length > 20 ? actions.sublist(actions.length - 20) : actions;
       final lines = recent.map((e) {
         final m = json.decode(e) as Map;
-        return "\${m['action']}: \${m['context']}";
+        return "${m['action']}: ${m['context']}";
       }).toList();
-      return "История действий:\n\${lines.join('\n')}";
+      return "История действий:\n${lines.join('\n')}";
     } catch (_) {
       return '';
     }

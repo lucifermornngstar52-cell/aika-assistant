@@ -242,7 +242,7 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
               child: _lottieAsset != null
                   ? Lottie.asset(
                       _lottieAsset!,
-                      key: ValueKey('lottie_\${widget.state}'),
+                      key: ValueKey('lottie_${widget.state}'),
                       width: widget.size,
                       height: widget.size * 1.3,
                       fit: BoxFit.contain,
@@ -256,7 +256,7 @@ class _AikaAvatarState extends State<AikaAvatar> with TickerProviderStateMixin {
                     )
                   : Image.asset(
                       _currentSprite,
-                      key: ValueKey('png_\${widget.state}_\${_danceFrame}_\${_stretchFrame}'),
+                      key: ValueKey('png_${widget.state}_${_danceFrame}_${_stretchFrame}'),
                       width: widget.size,
                       height: widget.size * 1.3,
                       fit: BoxFit.contain,

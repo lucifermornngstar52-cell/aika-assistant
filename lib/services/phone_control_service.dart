@@ -277,7 +277,7 @@ class PhoneControlService {
       await _screenCh.invokeMethod('performBack');
       return PhoneCommandResult.ok('◀️ Назад');
     } catch (e) {
-      return PhoneCommandResult.error('Не удалось: \$e');
+      return PhoneCommandResult.error('Не удалось: $e');
     }
   }
 
@@ -286,7 +286,7 @@ class PhoneControlService {
       await _screenCh.invokeMethod('pressHome');
       return PhoneCommandResult.ok('🏠 Главный экран');
     } catch (e) {
-      return PhoneCommandResult.error('Не удалось: \$e');
+      return PhoneCommandResult.error('Не удалось: $e');
     }
   }
 
@@ -295,7 +295,7 @@ class PhoneControlService {
       await _screenCh.invokeMethod('pressRecents');
       return PhoneCommandResult.ok('📋 Недавние приложения');
     } catch (e) {
-      return PhoneCommandResult.error('Не удалось: \$e');
+      return PhoneCommandResult.error('Не удалось: $e');
     }
   }
 
@@ -304,7 +304,7 @@ class PhoneControlService {
       await _screenCh.invokeMethod('closeCurrentApp');
       return PhoneCommandResult.ok('✅ Закрываю приложение');
     } catch (e) {
-      return PhoneCommandResult.error('Не удалось закрыть: \$e');
+      return PhoneCommandResult.error('Не удалось закрыть: $e');
     }
   }
 
@@ -330,9 +330,9 @@ class PhoneControlService {
       };
       final pkg = knownApps[appName.toLowerCase()] ?? appName;
       await _screenCh.invokeMethod('uninstallApp', {'package': pkg});
-      return PhoneCommandResult.ok('🗑 Открываю удаление \$appName...');
+      return PhoneCommandResult.ok('🗑 Открываю удаление $appName...');
     } catch (e) {
-      return PhoneCommandResult.error('Не удалось удалить: \$e');
+      return PhoneCommandResult.error('Не удалось удалить: $e');
     }
   }
 
@@ -348,9 +348,9 @@ class PhoneControlService {
       };
       final pkg = knownApps[appName.toLowerCase()] ?? appName;
       await _screenCh.invokeMethod('openAppSettings', {'package': pkg});
-      return PhoneCommandResult.ok('⚙️ Настройки \$appName открыты');
+      return PhoneCommandResult.ok('⚙️ Настройки $appName открыты');
     } catch (e) {
-      return PhoneCommandResult.error('Не удалось: \$e');
+      return PhoneCommandResult.error('Не удалось: $e');
     }
   }
 

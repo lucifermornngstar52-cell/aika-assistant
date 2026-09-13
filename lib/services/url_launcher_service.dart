@@ -11,12 +11,12 @@ class UrlLauncherService {
       // Нормализуем URL
       String normalized = url.trim();
       if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-        normalized = 'https://\$normalized';
+        normalized = 'https://$normalized';
       }
       final result = await _channel.invokeMethod<bool>('launchUrl', {'url': normalized});
       return result ?? false;
     } on PlatformException catch (e) {
-      debugPrint('[UrlLauncher] ошибка: \${e.message}');
+      debugPrint('[UrlLauncher] ошибка: ${e.message}');
       return false;
     }
   }
@@ -90,10 +90,10 @@ class UrlLauncherService {
   static String _resolveUrl(String input) {
     // Если выглядит как домен — добавляем https
     if (input.contains('.') && !input.contains(' ')) {
-      return 'https://\$input';
+      return 'https://$input';
     }
     // Иначе — поиск в гугле
     final encoded = Uri.encodeComponent(input);
-    return 'https://www.google.com/search?q=\$encoded';
+    return 'https://www.google.com/search?q=$encoded';
   }
 }

@@ -24,7 +24,7 @@ class MessageSenderService {
     } on PlatformException catch (e) {
       final code = e.code;
       if (code == 'NO_SERVICE') return 'Accessibility Service не активен - включи в настройках';
-      return 'Ошибка отправки: \${e.message ?? code}';
+      return 'Ошибка отправки: ${e.message ?? code}';
     } catch (_) {
       return 'Не удалось отправить сообщение';
     }

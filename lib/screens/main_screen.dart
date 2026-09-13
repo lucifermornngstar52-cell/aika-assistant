@@ -804,14 +804,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       for (final h in savedHistory) {
         if (h.startsWith('user: ')) {
           restored.add(ChatMessage(
-            id: '\${DateTime.now().millisecondsSinceEpoch}\${h.hashCode}',
+            id: '${DateTime.now().millisecondsSinceEpoch}${h.hashCode}',
             content: h.substring(6),
             role: MessageRole.user,
             timestamp: DateTime.now(),
           ));
         } else if (h.startsWith('assistant: ')) {
           restored.add(ChatMessage(
-            id: '\${DateTime.now().millisecondsSinceEpoch + 1}\${h.hashCode}',
+            id: '${DateTime.now().millisecondsSinceEpoch + 1}${h.hashCode}',
             content: h.substring(11),
             role: MessageRole.aika,
             timestamp: DateTime.now(),
@@ -927,7 +927,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       onMessage: (msg) {
         if (!mounted || _isListening || _isThinking) return;
         _addMessage(ChatMessage(
-          id: 'feeling_\${DateTime.now().millisecondsSinceEpoch}',
+          id: 'feeling_${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: msg,
           timestamp: DateTime.now(),
@@ -1079,7 +1079,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // Wake word не останавливался — suppress уже активен
         return;
       } catch (e) {
-        debugPrint('[_speak] EdgeTTS failed: \$e — fallback system TTS');
+        debugPrint('[_speak] EdgeTTS failed: $e — fallback system TTS');
       }
     }
 
@@ -1091,7 +1091,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (!completer.isCompleted) completer.complete();
     });
     _tts.setErrorHandler((e) {
-      debugPrint('[TTS] error: \$e');
+      debugPrint('[TTS] error: $e');
       if (!completer.isCompleted) completer.complete();
     });
 
@@ -1103,7 +1103,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         onTimeout: () {},
       );
     } catch (e) {
-      debugPrint('[_speak] error: \$e');
+      debugPrint('[_speak] error: $e');
     } finally {
       _ttsCompleter = null;
       OverlayService().asyncState('idle');
@@ -1565,7 +1565,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           text,
           userName: _userName,
           assistantName: _assistantName,
-          history: _messages.map((m) => '\${m.role.name}: \${m.content}').toList(),
+          history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
         );
         _addMessage(ChatMessage(
           id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
@@ -1741,7 +1741,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         PersonalityService.current.name);
     if (feelingReaction != null && mounted) {
       _addMessage(ChatMessage(
-        id: 'feel_\${DateTime.now().millisecondsSinceEpoch}',
+        id: 'feel_${DateTime.now().millisecondsSinceEpoch}',
         role: MessageRole.aika,
         content: feelingReaction,
         timestamp: DateTime.now(),
@@ -1757,7 +1757,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           PersonalityService.current.name);
       if (cReaction != null && mounted) {
         _addMessage(ChatMessage(
-          id: 'compl_\${DateTime.now().millisecondsSinceEpoch}',
+          id: 'compl_${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: cReaction,
           timestamp: DateTime.now(),
@@ -1809,7 +1809,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         onAlert: (alert) {
           if (!mounted) return;
           _addMessage(ChatMessage(
-            id: 'game_\${DateTime.now().millisecondsSinceEpoch}',
+            id: 'game_${DateTime.now().millisecondsSinceEpoch}',
             role: MessageRole.aika, content: alert, timestamp: DateTime.now(),
           ));
           _speak(alert);
@@ -1839,7 +1839,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         onGameAlert: (alert) {
           if (!mounted) return;
           _addMessage(ChatMessage(
-            id: 'game_\${DateTime.now().millisecondsSinceEpoch}',
+            id: 'game_${DateTime.now().millisecondsSinceEpoch}',
             role: MessageRole.aika, content: alert, timestamp: DateTime.now(),
           ));
           _speak(alert);
@@ -1979,7 +1979,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final memoryCtx   = await _peopleMemory.buildMemoryContext();
       final longMemory  = context['longMemory'] ?? '';
       final screenCtx   = ScreenWatcherService.currentLabel.isNotEmpty
-          ? 'Сейчас на экране: \${ScreenWatcherService.currentLabel} (\${ScreenWatcherService.currentPackage})'
+          ? 'Сейчас на экране: ${ScreenWatcherService.currentLabel} (${ScreenWatcherService.currentPackage})'
           : '';
       final _prefs = await SharedPreferences.getInstance();
       // Проверяем настроение ассистента — может не хотеть отвечать
@@ -1987,7 +1987,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           PersonalityService.current.name);
       if (moodRefusal != null && mounted) {
         _addMessage(ChatMessage(
-          id: 'mood_\${DateTime.now().millisecondsSinceEpoch}',
+          id: 'mood_${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: moodRefusal,
           timestamp: DateTime.now(),
@@ -2003,7 +2003,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           text, PersonalityService.current.name);
       if (relationReaction != null && mounted) {
         _addMessage(ChatMessage(
-          id: 'rel_\${DateTime.now().millisecondsSinceEpoch}',
+          id: 'rel_${DateTime.now().millisecondsSinceEpoch}',
           role: MessageRole.aika,
           content: relationReaction,
           timestamp: DateTime.now(),
@@ -2332,7 +2332,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text("\$_assistantName думает...",
+                    Text("$_assistantName думает...",
                         style: TextStyle(color: AikaTheme.neonBlue, fontSize: 12)),
                   ],
                 ),
@@ -2590,7 +2590,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 8),
           Text(
-            "Я \$_assistantName. Чем могу помочь?",
+            "Я $_assistantName. Чем могу помочь?",
             style: TextStyle(color: AikaTheme.textSecondary, fontSize: 14),
           ),
           const SizedBox(height: 24),
