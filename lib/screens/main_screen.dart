@@ -15,6 +15,7 @@ import '../services/device_service.dart';
 import '../services/memory_service.dart';
 import '../services/speech_service.dart';
 import '../services/wake_word_service.dart';
+import '../services/voice_session_service.dart';
 import '../services/smart_notifications_service.dart';
 import '../services/habit_memory_service.dart';
 import '../services/relationship_service.dart';
@@ -99,6 +100,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final MemoryService _memoryService = MemoryService();
   final SpeechService _speechService = SpeechService();
   final WakeWordService _wakeWordService = WakeWordService();
+  final VoiceSessionService _voiceSession = VoiceSessionService();
+  /// Живой диалог: wake word → свободная беседа с перебиванием TTS.
+  bool _liveDialogMode = false;
   final PeopleMemoryService _peopleMemory = PeopleMemoryService();
   final ReminderService _reminderService = ReminderService();
   final MoodService _moodService = MoodService();
@@ -310,6 +314,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // WakeWordService имеет СОБСТВЕННЫЙ STT — независимый от SpeechService.
     // Wake word работает постоянно, чат-STT подключается только после срабатывания.
     await _wakeWordService.initialize();
+    _setupVoiceSession();
     // Инициализируем мощный процессор голосовых команд
     _voiceProcessor.init();
     await _applyTtsSettings();
@@ -741,8 +746,112 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  // ═════════════════════════════════════════════════════════════════
+  //  ЖИВОЙ ДИАЛОГ (VoiceSessionService)
+  // ═════════════════════════════════════════════════════════════════
+
+  /// Подключаем живой диалог к уже работающим STT/TTS/AI-мозгу.
+  void _setupVoiceSession() {
+    _voiceSession.onStateChanged = (st) {
+      if (!mounted) return;
+      setState(() {
+        _isListening = st == VoiceSessionState.listening;
+        _isThinking = st == VoiceSessionState.thinking;
+      });
+      switch (st) {
+        case VoiceSessionState.listening:
+          OverlayService().asyncState('listening');
+          break;
+        case VoiceSessionState.thinking:
+          OverlayService().asyncState('thinking');
+          break;
+        case VoiceSessionState.speaking:
+          OverlayService().asyncState('talking');
+          break;
+        case VoiceSessionState.idle:
+          OverlayService().asyncState('idle');
+          break;
+      }
+    };
+
+    // AI-ответ для живой беседы: тот же мозг и память, что в обычном чате,
+    // но БЕЗ озвучки — состоянием речи управляет сессия.
+    _voiceSession.onTurn = _liveDialogTurn;
+
+    _voiceSession.onSpeak = (text) => _speak(text);
+    _voiceSession.onStopSpeak = _stopAllSpeakingNow;
+    _voiceSession.onSessionEnd = () async {
+      if (!mounted) return;
+      setState(() { _isListening = false; _isThinking = false; });
+      OverlayService().asyncState('idle');
+      if (_wakeWordEnabled) await _wakeWordService.rearm();
+    };
+  }
+
+  /// Ответ AI на реплику в живой беседе. Возвращает текст — озвучит сессия.
+  Future<String?> _liveDialogTurn(String text) async {
+    try {
+      _addMessage(ChatMessage(
+        id: 'u${DateTime.now().millisecondsSinceEpoch}',
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      await _memoryService.addMessage('user', text);
+      _resetIdleTimer();
+
+      final context = await _memoryService.getUserContext();
+      final history = await _memoryService.getHistory();
+      final memoryCtx = await _peopleMemory.buildMemoryContext();
+      final screenCtx = ScreenWatcherService.currentLabel.isNotEmpty
+          ? 'Сейчас на экране: ${ScreenWatcherService.currentLabel} (${ScreenWatcherService.currentPackage})'
+          : '';
+
+      final response = await _aiService.sendMessage(
+        text,
+        userName: context['userName'] ?? '',
+        assistantName: context['assistantName'] ?? _assistantName,
+        history: history,
+        memoryContext: memoryCtx,
+        screenContext: screenCtx,
+      );
+      final actionResult = await _deviceService.parseAndExecute(response);
+      final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
+      final finalMsg = actionResult != null ? '$display\n$actionResult' : display;
+      await _memoryService.addMessage('assistant', display);
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: finalMsg,
+        timestamp: DateTime.now(),
+      ));
+      return finalMsg;
+    } catch (e) {
+      debugPrint('[LiveDialog] turn error: $e');
+      return null;
+    }
+  }
+
+  /// МГНОВЕННОЕ замолкание — для перебивания TTS (barge-in).
+  Future<void> _stopAllSpeakingNow() async {
+    try { await _tts.stop(); } catch (_) {}
+    try { await _edgeTts.stop(); } catch (_) {}
+    try { await ElevenLabsTtsService().stop(); } catch (_) {}
+    try { await OpenAiTtsService().stop(); } catch (_) {}
+    final c = _ttsCompleter;
+    if (c != null && !c.isCompleted) c.complete();
+    _ttsCompleter = null;
+  }
+
   Future<void> _onWakeWordDetected() async {
     _resetIdleTimer();
+    // ── ЖИВОЙ ДИАЛОГ: wake word → сессия разговора → снова wake word ──
+    if (_liveDialogMode) {
+      await OverlayService().show(state: 'listening');
+      await _pingSound.pingStart();
+      await _voiceSession.start(greeting: 'Да?');
+      return; // сессия сама рулит состоянием; wake word вернётся через onSessionEnd
+    }
     // Wake word уже остановил свой STT при срабатывании (disarm).
     // Чат-STT подключается на своём экземпляре — без конфликтов.
     await OverlayService().show(state: 'listening');
@@ -788,6 +897,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
       _assistantName = savedName;
       _userName = prefs.getString('user_name') ?? '';
+      _liveDialogMode = prefs.getBool('live_dialog_mode') ?? false;
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
       _bgCustomImage = prefs.getString('bg_custom_image');
     });
@@ -2116,6 +2226,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _idleTimer?.cancel();
     AikaFeelingsService.stopIdleTimers();
     _deviceService.dispose();
+    _voiceSession.stop();
     _wakeWordService.stop();
     SmartAlarmService.dispose();
     super.dispose();

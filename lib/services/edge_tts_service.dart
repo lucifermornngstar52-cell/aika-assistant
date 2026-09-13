@@ -38,6 +38,11 @@ class EdgeTtsService extends ChangeNotifier {
   bool _wsReady = false;
   // ФИКС: активный стрим и файл — чтобы stop() мог их оборвать
   StreamSubscription? _activeWsSub;
+  // ФИКС для перебивания (barge-in): stop() должен мгновенно завершать
+  // ожидающие await'ы внутри speak(), иначе реплика висит до 15-секундного
+  // таймаута, хотя звук уже остановлен.
+  Completer<void>? _activeDownloadDone;
+  Completer<void>? _activePlaybackDone;
   IOSink? _activeSink;
   Timer? _wsKeepalive;
   int _failCount = 0; // счётчик ошибок подряд
@@ -244,6 +249,12 @@ class EdgeTtsService extends ChangeNotifier {
   Future<void> stop() async {
     // ФИКС: раньше stop() не отменял WebSocket-стрим и не закрывал файл —
     // байты продолжали писаться и перебивали новую речь
+    // ФИКС 2: не завершал ожидающие completer'ы — перебитая реплика
+    // висела в await до таймаута, ломая живой диалог (barge-in).
+    final dl = _activeDownloadDone;
+    if (dl != null && !dl.isCompleted) dl.complete();
+    final pb = _activePlaybackDone;
+    if (pb != null && !pb.isCompleted) pb.complete();
     await _activeWsSub?.cancel();
     _activeWsSub = null;
     try { await _activeSink?.close(); } catch (_) {}
@@ -285,6 +296,7 @@ class EdgeTtsService extends ChangeNotifier {
 
     final audioBytes = <int>[];
     final done = Completer<void>();
+    _activeDownloadDone = done;
     bool playbackStarted = false;
 
     final dir = await getTemporaryDirectory();
@@ -318,6 +330,7 @@ class EdgeTtsService extends ChangeNotifier {
         } else if (data is String && data.contains('Path:turn.end')) {
           await sink.flush();
           await sink.close();
+          _activeDownloadDone = null;
           if (!done.isCompleted) done.complete();
           sub?.cancel();
         }
@@ -338,6 +351,7 @@ class EdgeTtsService extends ChangeNotifier {
 
     if (playbackStarted) {
       final playDone = Completer<void>();
+      _activePlaybackDone = playDone;
       late StreamSubscription playSub;
       playSub = _player.onPlayerComplete.listen((_) {
         if (!playDone.isCompleted) playDone.complete();
@@ -349,6 +363,7 @@ class EdgeTtsService extends ChangeNotifier {
       } finally {
         // ФИКС: при таймауте подписка оставалась висеть
         unawaited(playSub.cancel());
+        _activePlaybackDone = null;
       }
     }
 

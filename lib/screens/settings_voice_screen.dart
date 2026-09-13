@@ -20,6 +20,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
   String? _elevenLabsVoice;
   String? _edgeVoiceId;
+  bool _liveDialog = false;
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
     _elevenLabsVoice = prefs.getString('elevenlabs_voice');
     _edgeVoiceId = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
+    _liveDialog = prefs.getBool('live_dialog_mode') ?? false;
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -211,6 +213,27 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
                   : Text('🔊  Проверить голос', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13, fontWeight: FontWeight.w600)),
             ),
           ),
+          const SizedBox(height: 20),
+          _label('ЖИВОЙ ДИАЛОГ'),
+          _card(Column(children: [
+            SwitchListTile(
+              value: _liveDialog,
+              activeColor: AikaTheme.neonBlue,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Режим свободной беседы',
+                  style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: const Text(
+                  'После wake word — живой разговор: можно перебивать Айку, '
+                  'она слушает поверх своей речи. Сессия закрывается по тишине '
+                  'или слову «пока». Выключено — один вопрос-ответ, как раньше.',
+                  style: TextStyle(color: Colors.white38, fontSize: 11)),
+              onChanged: (v) async {
+                setState(() => _liveDialog = v);
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('live_dialog_mode', v);
+              },
+            ),
+          ])),
           if (_ttsEngine == 'edge') ...[
             const SizedBox(height: 20),
             _label('НЕЙРОННЫЙ ГОЛОС (EdgeTTS)'),
