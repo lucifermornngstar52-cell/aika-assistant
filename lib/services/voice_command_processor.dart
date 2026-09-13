@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:android_intent_plus/android_intent.dart';
@@ -185,6 +186,9 @@ class VoiceCommandProcessor {
     if (appResult != null) return appResult;
 
     // ── 18. Поиск в Google ────────────────────────────────────────────────
+    // ФИКС: вызов _handleSearch был пропущен — все команды поиска уходили мимо
+    final searchResult = await _handleSearch(t, text);
+    if (searchResult != null) return searchResult;
 
     // ── 19. YouTube ───────────────────────────────────────────────────────
     final ytResult = await _handleYouTube(t, text);
@@ -361,9 +365,10 @@ class VoiceCommandProcessor {
       }
     }
     // Не трогаем громкость если это команда запуска приложения
-    if (_has(t, ['включи', 'вкл']) && !_has(t, ['spotify', 'спотифай', 'спотифи',
-        'whatsapp', 'ватсап', 'вотсап', 'вацап', 'телеграм', 'telegram',
-        'ютуб', 'youtube', 'инстаграм', 'инста', 'тик', 'музык'])) {
+    // ФИКС: раньше «включи <любое слово>» перехватывалось сюда и выкручивало
+    // громкость на 100% — реагируем только на явные команды звука
+    if (_has(t, ['включи звук', 'включи громкость', 'вкл звук',
+                 'включить звук', 'включить громкость', 'unmute'])) {
       VolumeController().setVolume(_vol = 1.0);
       return VoiceCmdResult.ok('🔊 Громкость на максимум!');
     }
@@ -489,6 +494,20 @@ class VoiceCommandProcessor {
 
   // ── Открытие приложений ───────────────────────────────────────────────────
     Future<VoiceCmdResult?> _handleOpenApp(String t, String original) async {
+    // ФИКС: сначала проверяем кастомные команды пользователя из AppCommandsScreen
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawCustom = prefs.getString('app_voice_commands');
+      if (rawCustom != null && rawCustom.isNotEmpty) {
+        final Map<String, dynamic> customMap = json.decode(rawCustom);
+        for (final entry in customMap.entries) {
+          if (t.contains(entry.key.toLowerCase().trim()) && entry.key.toString().trim().isNotEmpty) {
+            await _launchPackage(entry.value.toString());
+            return VoiceCmdResult.ok('🚀 Открываю по твоей команде!');
+          }
+        }
+      }
+    } catch (_) {}
     // Делегируем ВСЁ в AppLauncherService — единая точка истины
     final result = await AppLauncherService.tryLaunch(original);
     if (result != null) {

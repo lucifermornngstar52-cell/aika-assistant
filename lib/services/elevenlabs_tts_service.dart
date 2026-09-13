@@ -38,6 +38,8 @@ class ElevenLabsTtsService {
   ];
 
   Future<void> initialize() async {
+    // ФИКС: метод существовал, но никогда не вызывался — кеш MP3 рос бесконечно
+    unawaited(cleanupOldFiles());
     if (_apiKey.isEmpty) {
       debugPrint('[ElevenLabs] ⚠️ Нет API ключа — сервис неактивен');
       return;
@@ -131,6 +133,9 @@ class ElevenLabsTtsService {
     if (_apiKey.isEmpty) {
       // Fallback на системный TTS
       debugPrint('[ElevenLabs] Нет ключа → системный TTS');
+      // ФИКС: без обработчиков завершения флаг _isSpeaking висел true навсегда
+      // и блокировал всю последующую озвучку
+      await _initSystemTts();
       _isSpeaking = true;
       await _systemTts.speak(text);
       return;

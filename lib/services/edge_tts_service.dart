@@ -36,6 +36,9 @@ class EdgeTtsService extends ChangeNotifier {
 
   WebSocket? _ws;
   bool _wsReady = false;
+  // ФИКС: активный стрим и файл — чтобы stop() мог их оборвать
+  StreamSubscription? _activeWsSub;
+  IOSink? _activeSink;
   Timer? _wsKeepalive;
   int _failCount = 0; // счётчик ошибок подряд
   static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
@@ -239,6 +242,12 @@ class EdgeTtsService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    // ФИКС: раньше stop() не отменял WebSocket-стрим и не закрывал файл —
+    // байты продолжали писаться и перебивали новую речь
+    await _activeWsSub?.cancel();
+    _activeWsSub = null;
+    try { await _activeSink?.close(); } catch (_) {}
+    _activeSink = null;
     try { await _player.stop(); } catch (_) {}
     try { await _systemTts.stop(); } catch (_) {}
     _isSpeaking = false;
@@ -282,6 +291,7 @@ class EdgeTtsService extends ChangeNotifier {
     final filePath = '${dir.path}/aika_tts_${reqId.substring(0, 8)}.mp3';
     final file = File(filePath);
     final sink = file.openWrite();
+    _activeSink = sink;
 
     StreamSubscription? sub;
     sub = _ws!.listen(
@@ -316,6 +326,7 @@ class EdgeTtsService extends ChangeNotifier {
       onError: (e) { if (!done.isCompleted) done.completeError(e); sub?.cancel(); },
       cancelOnError: true,
     );
+    _activeWsSub = sub;
 
     await done.future.timeout(const Duration(seconds: 15));
 
@@ -333,7 +344,12 @@ class EdgeTtsService extends ChangeNotifier {
         playSub.cancel();
       });
       final secs = (text.length / 8).ceil() + 5;
-      await playDone.future.timeout(Duration(seconds: secs), onTimeout: () {});
+      try {
+        await playDone.future.timeout(Duration(seconds: secs), onTimeout: () {});
+      } finally {
+        // ФИКС: при таймауте подписка оставалась висеть
+        unawaited(playSub.cancel());
+      }
     }
 
     _isSpeaking = false;

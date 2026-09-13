@@ -70,6 +70,7 @@ import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
 import '../services/edge_tts_service.dart';
 import '../services/elevenlabs_tts_service.dart';
+import '../services/openai_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
@@ -1060,6 +1061,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Останавливаем предыдущий TTS
     await _tts.stop();
     await _edgeTts.stop();
+    // ФИКС: другие движки не останавливались — звук накладывался друг на друга
+    await ElevenLabsTtsService().stop();
+    await OpenAiTtsService().stop();
     _ttsCompleter?.complete();
     _ttsCompleter = null;
 
