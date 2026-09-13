@@ -99,7 +99,8 @@ class OpenAiTtsService {
         final dir = await getTemporaryDirectory();
         final file = File('${dir.path}/jarvis_tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
         await file.writeAsBytes(bytes);
-        await _player.play(file.path);
+        // ФИКС: play() ждёт Source, а не строку — из-за этого падала вся сборка APK
+        await _player.play(DeviceFileSource(file.path));
       } else {
         _isSpeaking = false;
       }
