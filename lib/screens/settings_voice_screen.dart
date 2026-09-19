@@ -20,7 +20,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
   String? _elevenLabsVoice;
   String? _edgeVoiceId;
-  bool _liveDialog = false;
+  String _dialogMode = 'off'; // off | live | realtime
+  final _openaiKeyCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -33,7 +34,9 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
     _elevenLabsVoice = prefs.getString('elevenlabs_voice');
     _edgeVoiceId = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
-    _liveDialog = prefs.getBool('live_dialog_mode') ?? false;
+    _dialogMode = prefs.getString('voice_dialog_mode') ??
+        ((prefs.getBool('live_dialog_mode') ?? false) ? 'live' : 'off');
+    _openaiKeyCtrl.text = prefs.getString('openai_key') ?? '';
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -97,6 +100,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('tts_engine', _ttsEngine);
+    await prefs.setString('voice_dialog_mode', _dialogMode);
+    await prefs.setString('openai_key', _openaiKeyCtrl.text.trim());
     if (_elevenLabsVoice != null) {
       await prefs.setString('elevenlabs_voice', _elevenLabsVoice!);
       // ФИКС: применяем голос сразу в работающий сервис — без перезапуска
@@ -214,25 +219,41 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          _label('ЖИВОЙ ДИАЛОГ'),
+          _label('РЕЖИМ РАЗГОВОРА (ПОСЛЕ WAKE WORD)'),
           _card(Column(children: [
-            SwitchListTile(
-              value: _liveDialog,
-              activeColor: AikaTheme.neonBlue,
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Режим свободной беседы',
-                  style: TextStyle(color: Colors.white, fontSize: 14)),
-              subtitle: const Text(
-                  'После wake word — живой разговор: можно перебивать Айку, '
-                  'она слушает поверх своей речи. Сессия закрывается по тишине '
-                  'или слову «пока». Выключено — один вопрос-ответ, как раньше.',
-                  style: TextStyle(color: Colors.white38, fontSize: 11)),
-              onChanged: (v) async {
-                setState(() => _liveDialog = v);
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool('live_dialog_mode', v);
-              },
-            ),
+            _dialogTile('off', 'Один вопрос-ответ',
+                'Классика: сказал wake word → один вопрос → один ответ.'),
+            _dialogTile('live', 'Живой диалог (STT + TTS)',
+                'Свободная беседа на твоих движках. Можно перебивать Айку, '
+                'сессия закрывается по тишине или слову «пока». Без ключей OpenAI.'),
+            _dialogTile('realtime', '⚡ Realtime — OpenAI (мгновенный)',
+                'Непрерывный аудиоканал с OpenAI: отвечает с задержкой '
+                'в доли секунды, слышит тебя поверх своей речи. '
+                'Нужен ключ OpenAI ниже.'),
+            if (_dialogMode == 'realtime') ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _openaiKeyCtrl,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'sk-... (ключ OpenAI)',
+                  hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                  filled: true,
+                  fillColor: const Color(0xFF1C1C1E),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Оплата по минутам разговора. Ключ хранится только на телефоне.',
+                style: TextStyle(color: Colors.white24, fontSize: 10),
+              ),
+            ],
           ])),
           if (_ttsEngine == 'edge') ...[
             const SizedBox(height: 20),
@@ -290,6 +311,36 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
       ),
     );
   }
+
+  Widget _dialogTile(String mode, String title, String subtitle) =>
+      GestureDetector(
+        onTap: () async {
+          setState(() => _dialogMode = mode);
+          final p = await SharedPreferences.getInstance();
+          await p.setString('voice_dialog_mode', mode);
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: _dialogMode == mode
+                ? AikaTheme.neonBlue.withOpacity(0.15)
+                : const Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _dialogMode == mode ? AikaTheme.neonBlue : Colors.transparent,
+            ),
+          ),
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ])),
+            if (_dialogMode == mode)
+              Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
+          ]),
+        ),
+      );
 
   Widget _engineTile(String title, String engine, String emoji, String subtitle) =>
       GestureDetector(

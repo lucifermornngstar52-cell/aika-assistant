@@ -16,6 +16,7 @@ import '../services/memory_service.dart';
 import '../services/speech_service.dart';
 import '../services/wake_word_service.dart';
 import '../services/voice_session_service.dart';
+import '../services/openai_realtime_service.dart';
 import '../services/smart_notifications_service.dart';
 import '../services/habit_memory_service.dart';
 import '../services/relationship_service.dart';
@@ -101,8 +102,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final SpeechService _speechService = SpeechService();
   final WakeWordService _wakeWordService = WakeWordService();
   final VoiceSessionService _voiceSession = VoiceSessionService();
-  /// Живой диалог: wake word → свободная беседа с перебиванием TTS.
-  bool _liveDialogMode = false;
+  final OpenAiRealtimeService _realtime = OpenAiRealtimeService();
+  /// Режим разговора после wake word: off | live | realtime.
+  String _voiceDialogMode = 'off';
   final PeopleMemoryService _peopleMemory = PeopleMemoryService();
   final ReminderService _reminderService = ReminderService();
   final MoodService _moodService = MoodService();
@@ -315,6 +317,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Wake word работает постоянно, чат-STT подключается только после срабатывания.
     await _wakeWordService.initialize();
     _setupVoiceSession();
+    _setupRealtime();
     // Инициализируем мощный процессор голосовых команд
     _voiceProcessor.init();
     await _applyTtsSettings();
@@ -788,6 +791,81 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     };
   }
 
+  /// Подключаем OpenAI Realtime: тот же чат, оверлей и память,
+  /// но речь идёт напрямую через realtime-эндпоинт OpenAI.
+  void _setupRealtime() {
+    _realtime.onStateChanged = (st) {
+      if (!mounted) return;
+      setState(() {
+        _isListening = st == RealtimeState.listening;
+        _isThinking = st == RealtimeState.connecting || st == RealtimeState.thinking;
+      });
+      switch (st) {
+        case RealtimeState.listening:
+          OverlayService().asyncState('listening');
+          break;
+        case RealtimeState.connecting:
+        case RealtimeState.thinking:
+          OverlayService().asyncState('thinking');
+          break;
+        case RealtimeState.speaking:
+          OverlayService().asyncState('talking');
+          break;
+        case RealtimeState.idle:
+          OverlayService().asyncState('idle');
+          break;
+      }
+    };
+
+    // Твоя реплика (транскрипт с сервера) → в чат и память
+    _realtime.onUserTranscript = (text) {
+      if (!mounted) return;
+      _addMessage(ChatMessage(
+        id: 'u${DateTime.now().millisecondsSinceEpoch}',
+        role: MessageRole.user,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _memoryService.addMessage('user', text);
+      _resetIdleTimer();
+    };
+
+    // Финальный текст Айки → в чат и память
+    _realtime.onAssistantFinal = (text) {
+      if (!mounted) return;
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: text,
+        timestamp: DateTime.now(),
+      ));
+      _memoryService.addMessage('assistant', text);
+    };
+
+    _realtime.onError = (e) {
+      debugPrint('[Realtime] error: $e');
+      if (mounted) _showSnack(e);
+    };
+
+    _realtime.onSessionEnd = () async {
+      if (!mounted) return;
+      setState(() { _isListening = false; _isThinking = false; });
+      OverlayService().asyncState('idle');
+      if (_wakeWordEnabled) await _wakeWordService.rearm();
+    };
+  }
+
+  /// Инструкции для realtime-модели: личность Айки кратко.
+  String _realtimeInstructions() {
+    final persona = PersonalityService.current.name;
+    return 'Ты — $_assistantName, голосовой ассистент в телефоне пользователя'
+        ' (характер: $persona). Пользователь: $_userName. '
+        'Говори по-русски, коротко и живо, как в телефонном разговоре: '
+        '1-3 предложения. Используй имя пользователя, когда уместно. '
+        'Не упоминай, что ты ИИ, без нужды. Если пользователь прощается '
+        'и хочет закончить разговор — вызови функцию end_session.';
+  }
+
   /// Ответ AI на реплику в живой беседе. Возвращает текст — озвучит сессия.
   Future<String?> _liveDialogTurn(String text) async {
     try {
@@ -846,10 +924,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _onWakeWordDetected() async {
     _resetIdleTimer();
     // ── ЖИВОЙ ДИАЛОГ: wake word → сессия разговора → снова wake word ──
-    if (_liveDialogMode) {
+    if (_voiceDialogMode != 'off') {
       await OverlayService().show(state: 'listening');
       await _pingSound.pingStart();
-      await _voiceSession.start(greeting: 'Да?');
+      if (_voiceDialogMode == 'realtime') {
+        await _realtime.start(instructions: _realtimeInstructions());
+      } else {
+        await _voiceSession.start(greeting: 'Да?');
+      }
       return; // сессия сама рулит состоянием; wake word вернётся через onSessionEnd
     }
     // Wake word уже остановил свой STT при срабатывании (disarm).
@@ -897,7 +979,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
       _assistantName = savedName;
       _userName = prefs.getString('user_name') ?? '';
-      _liveDialogMode = prefs.getBool('live_dialog_mode') ?? false;
+      _voiceDialogMode = prefs.getString('voice_dialog_mode') ??
+          ((prefs.getBool('live_dialog_mode') ?? false) ? 'live' : 'off');
       _bgPresetId = prefs.getString('bg_preset_id') ?? 'none';
       _bgCustomImage = prefs.getString('bg_custom_image');
     });
@@ -2227,6 +2310,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     AikaFeelingsService.stopIdleTimers();
     _deviceService.dispose();
     _voiceSession.stop();
+    _realtime.stop(notify: false);
     _wakeWordService.stop();
     SmartAlarmService.dispose();
     super.dispose();
