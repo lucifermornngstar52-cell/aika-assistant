@@ -37,7 +37,6 @@ class MainActivity : FlutterActivity() {
     private var pcmThread: Thread? = null
     private var pcmMic: AudioRecord? = null
     private var micThread: Thread? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         private const val OVERLAY_CHANNEL       = "com.aika.assistant/overlay"
