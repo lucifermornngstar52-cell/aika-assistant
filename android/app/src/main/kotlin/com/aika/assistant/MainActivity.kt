@@ -5,7 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -16,10 +19,17 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import android.util.Log
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import android.telephony.TelephonyManager
 import android.telephony.PhoneStateListener
 
 class MainActivity : FlutterActivity() {
+
+    // ── PCM stream (OpenAI Realtime): AudioTrack MODE_STREAM ──
+    private var pcmTrack: AudioTrack? = null
+    private var pcmQueue: LinkedBlockingQueue<ByteArray>? = null
+    private var pcmThread: Thread? = null
 
     companion object {
         private const val OVERLAY_CHANNEL       = "com.aika.assistant/overlay"
@@ -28,6 +38,7 @@ class MainActivity : FlutterActivity() {
         private const val SCREEN_CHANNEL        = "com.aika.assistant/screen"
         private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
         private const val AUDIO_CHANNEL         = "aika/audio"
+        private const val PCM_STREAM_CHANNEL     = "com.aika.assistant/pcm_stream"
         private const val MESSENGER_CHANNEL     = "com.aika.assistant/messenger"
         private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
         private const val NOTIFICATION_EVENTS_CHANNEL  = "com.aika.assistant/notification_events"
@@ -970,6 +981,30 @@ override fun onResume() {
                 }
             }
 
+        // ── PCM stream channel — потоковое воспроизведение сырого PCM
+        // (OpenAI Realtime): AudioTrack MODE_STREAM + поток-писатель,
+        // чтобы write() не блокировал главный поток ──────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PCM_STREAM_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "pcmStart" -> {
+                        val sampleRate = call.argument<Int>("sampleRate") ?: 24000
+                        startPcmStream(sampleRate)
+                        result.success(true)
+                    }
+                    "pcmWrite" -> {
+                        val data = call.argument<ByteArray>("data") ?: ByteArray(0)
+                        pcmQueue?.offer(data)
+                        result.success(true)
+                    }
+                    "pcmStop" -> {
+                        stopPcmStream()
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -1088,5 +1123,51 @@ override fun onResume() {
             Log.e("AikaPhone", "Failed to setup phone state listener: ${e.message}")
         }
     }
+    private fun startPcmStream(sampleRate: Int) {
+        stopPcmStream()
+        val minBuf = AudioTrack.getMinBufferSize(
+            sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        pcmTrack = AudioTrack(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build(),
+            AudioFormat.Builder()
+                .setSampleRate(sampleRate)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build(),
+            maxOf(minBuf, sampleRate * 2 * 4),
+            AudioTrack.MODE_STREAM,
+            AudioManager.AUDIO_SESSION_ID_GENERATE
+        )
+        pcmTrack?.play()
+        val q = LinkedBlockingQueue<ByteArray>()
+        pcmQueue = q
+        pcmThread = Thread {
+            try {
+                while (pcmTrack != null) {
+                    val chunk = q.poll(100, TimeUnit.MILLISECONDS) ?: continue
+                    val t = pcmTrack ?: break
+                    t.write(chunk, 0, chunk.size)
+                }
+            } catch (e: InterruptedException) {
+                // стоп — нормальное завершение
+            } catch (e: Exception) {
+                Log.w("AikaPCM", "stream error: " + e.message)
+            }
+        }.also { it.start() }
+    }
+
+    private fun stopPcmStream() {
+        pcmQueue?.clear()
+        pcmQueue = null
+        try { pcmThread?.interrupt() } catch (e: Exception) { }
+        pcmThread = null
+        try { pcmTrack?.stop() } catch (e: Exception) { }
+        try { pcmTrack?.release() } catch (e: Exception) { }
+        pcmTrack = null
+    }
+
 }
 

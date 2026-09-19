@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:record/record.dart';
-import 'package:pcm_audio_stream/pcm_audio_stream.dart';
+import 'package:flutter/services.dart';
 
 /// ═════════════════════════════════════════════════════════════════════
 /// OpenAiRealtimeService — ПОСТОЯННЫЙ ЖИВОЙ РАЗГОВОР через OpenAI Realtime.
@@ -54,7 +54,8 @@ class OpenAiRealtimeService {
   StreamSubscription? _wsSub;
   StreamSubscription? _micSub;
   final AudioRecorder _recorder = AudioRecorder();
-  final PcmPlayer _player = PcmPlayer();
+  /// Нативный PCM-плеер (AudioTrack MODE_STREAM через платформ-канал).
+  static const MethodChannel _pcmCh = MethodChannel('com.aika.assistant/pcm_stream');
   Timer? _idleTimer;
   String _apiKey = '';
 
@@ -116,7 +117,7 @@ class OpenAiRealtimeService {
     try { await _micSub?.cancel(); } catch (_) {}
     _micSub = null;
     try { await _recorder.stop(); } catch (_) {}
-    try { await _player.stop(); } catch (_) {}
+    try { await _pcmCh.invokeMethod('pcmStop'); } catch (_) {}
     try { await _ws?.sink.close(); } catch (_) {}
     try { await _wsSub?.cancel(); } catch (_) {}
     _ws = null;
@@ -199,13 +200,12 @@ class OpenAiRealtimeService {
   // ═══ OPENAI → ДИНАМИК (стрим PCM) ════════════════════════════════════
 
   Future<void> _startPlayer() async {
-    await _player.init();
-    await _player.start(24000);
+    await _pcmCh.invokeMethod('pcmStart', {'sampleRate': 24000});
   }
 
   // ═══ СОБЫТИЯ СЕРВЕРА ═════════════════════════════════════════════════
 
-  void _onServerEvent(dynamic raw) {
+  Future<void> _onServerEvent(dynamic raw) async {
     if (!_active) return;
     Map<String, dynamic> ev;
     try {
@@ -228,7 +228,10 @@ class OpenAiRealtimeService {
         _armIdleTimer();
         _setState(RealtimeState.listening);
         // сброс локального буфера, чтобы Айка замолчала МГНОВЕННО
-        try { _player.stop(); _player.start(24000); } catch (_) {}
+        try {
+          await _pcmCh.invokeMethod('pcmStop');
+          await _pcmCh.invokeMethod('pcmStart', {'sampleRate': 24000});
+        } catch (_) {}
         break;
 
       case 'input_audio_buffer.speech_stopped':
@@ -246,7 +249,9 @@ class OpenAiRealtimeService {
       case 'response.audio.delta':
         final b64 = ev['delta'] as String?;
         if (b64 != null && b64.isNotEmpty) {
-          try { _player.feedUint8(base64Decode(b64)); } catch (_) {}
+          try {
+            await _pcmCh.invokeMethod('pcmWrite', {'data': base64Decode(b64)});
+          } catch (_) {}
         }
         _armIdleTimer();
         break;
