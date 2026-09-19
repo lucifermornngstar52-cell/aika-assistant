@@ -29,7 +29,7 @@ class OpenAiRealtimeService {
   OpenAiRealtimeService._();
 
   static const String _wsUrl =
-      'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview';
+      'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview';
 
   // ── Колбэки (поставляет main_screen) ────────────────────────────────
   void Function(RealtimeState state)? onStateChanged;
