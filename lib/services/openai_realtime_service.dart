@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:record/record.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:flutter/services.dart';
 
 /// ═════════════════════════════════════════════════════════════════════
@@ -52,9 +52,7 @@ class OpenAiRealtimeService {
 
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
-  StreamSubscription? _micSub;
-  final AudioRecorder _recorder = AudioRecorder();
-  /// Нативный PCM-плеер (AudioTrack MODE_STREAM через платформ-канал).
+  /// Нативный PCM-конвейер: AudioRecord (микрофон) + AudioTrack (динамик).
   static const MethodChannel _pcmCh = MethodChannel('com.aika.assistant/pcm_stream');
   Timer? _idleTimer;
   String _apiKey = '';
@@ -114,9 +112,7 @@ class OpenAiRealtimeService {
     if (!_active) return;
     _active = false;
     _idleTimer?.cancel();
-    try { await _micSub?.cancel(); } catch (_) {}
-    _micSub = null;
-    try { await _recorder.stop(); } catch (_) {}
+    try { await _pcmCh.invokeMethod('micStop'); } catch (_) {}
     try { await _pcmCh.invokeMethod('pcmStop'); } catch (_) {}
     try { await _ws?.sink.close(); } catch (_) {}
     try { await _wsSub?.cancel(); } catch (_) {}
@@ -168,25 +164,25 @@ class OpenAiRealtimeService {
 
   Future<void> _startMic() async {
     try {
-      if (!await _recorder.hasPermission()) {
+      // Чанки с нативного AudioRecord прилетают сюда
+      _pcmCh.setMethodCallHandler((call) async {
+        if (call.method == 'micData' && _active) {
+          final data = call.arguments['data'] as List<int>?;
+          if (data != null && data.isNotEmpty) {
+            _send({
+              'type': 'input_audio_buffer.append',
+              'audio': base64Encode(data),
+            });
+          }
+        }
+      });
+      final ok = await _pcmCh.invokeMethod(
+          'micStart', {'sampleRate': 24000}) as bool? ?? false;
+      if (!ok) {
         onError?.call('Нет доступа к микрофону');
         await stop(notify: false);
         return;
       }
-      final stream = await _recorder.startStream(
-        const RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: 24000,
-          numChannels: 1,
-        ),
-      );
-      _micSub = stream.listen((Uint8List chunk) {
-        if (!_active) return;
-        _send({
-          'type': 'input_audio_buffer.append',
-          'audio': base64Encode(chunk),
-        });
-      });
       debugPrint('[Realtime] 🎤 микрофон стримит PCM 24кГц');
       _setState(RealtimeState.listening);
     } catch (e) {
