@@ -21,6 +21,9 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   String? _elevenLabsVoice;
   String? _edgeVoiceId;
   String _dialogMode = 'off'; // off | live | realtime
+  /// Живые голоса из библиотеки ElevenLabs аккаунта (API /v1/voices)
+  List<Map<String, dynamic>> _elLiveVoices = [];
+  bool _elVoicesLoading = false;
   final _openaiKeyCtrl = TextEditingController();
 
   @override
@@ -37,6 +40,9 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     _dialogMode = prefs.getString('voice_dialog_mode') ??
         ((prefs.getBool('live_dialog_mode') ?? false) ? 'live' : 'off');
     _openaiKeyCtrl.text = prefs.getString('openai_key') ?? '';
+    if (_ttsEngine == 'elevenlabs') {
+      await _loadElevenVoices();
+    }
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -58,6 +64,23 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
       _voices = voices;
       _loading = false;
     });
+  }
+
+  /// Тянет голоса прямо из библиотеки ElevenLabs аккаунта —
+  /// если юзер добавлял/менял голоса на сайте, приложение увидит их сразу.
+  Future<void> _loadElevenVoices() async {
+    if (_elVoicesLoading) return;
+    setState(() => _elVoicesLoading = true);
+    try {
+      final svc = ElevenLabsTtsService();
+      await svc.initialize();
+      final live = await svc.fetchVoices();
+      if (live.isNotEmpty) {
+        // русские/английские ярлыки не нужны — берём имя и категорию как есть
+        setState(() => _elLiveVoices = live);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _elVoicesLoading = false);
   }
 
   /// UI-слайдер 0.25..1.5 (норма=0.5) → проценты EdgeTTS SSML (-50%..+150%, норма=0%)
@@ -170,28 +193,22 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           const SizedBox(height: 20),
 
           if (_ttsEngine == 'elevenlabs') ...[
-            _label('ГОЛОСА ELEVENLABS'),
-            ...ElevenLabsTtsService.voices.map((v) => GestureDetector(
-              onTap: () => setState(() => _elevenLabsVoice = v['id']),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: _elevenLabsVoice == v['id']
-                      ? AikaTheme.neonBlue.withOpacity(0.15)
-                      : const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _elevenLabsVoice == v['id'] ? AikaTheme.neonBlue : Colors.transparent,
-                  ),
-                ),
-                child: Row(children: [
-                  Expanded(child: Text(v['label']!, style: const TextStyle(color: Colors.white, fontSize: 13))),
-                  if (_elevenLabsVoice == v['id'])
-                    Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-                ]),
-              ),
-            )),
+            _label(_elLiveVoices.isNotEmpty
+                ? 'ГОЛОСА ELEVENLABS — ИЗ ТВОЕЙ БИБЛИОТЕКИ'
+                : 'ГОЛОСА ELEVENLABS'),
+            if (_elVoicesLoading)
+              Padding(padding: const EdgeInsets.only(bottom: 8),
+                child: Text('Загружаю голоса из библиотеки...',
+                    style: TextStyle(color: Colors.white54, fontSize: 12))),
+            if (_elLiveVoices.isEmpty && !_elVoicesLoading)
+              ...ElevenLabsTtsService.voices.map((v) => _elVoiceTile(
+                  v['id']!, v['label']!)),
+            if (_elLiveVoices.isNotEmpty)
+              ..._elLiveVoices.map((v) => _elVoiceTile(
+                  v['id'] as String,
+                  (v['name'] as String? ?? 'Голос') +
+                      ((v['category'] as String?)?.isNotEmpty == true
+                          ? ' (${v['category']})' : ''))),
             const SizedBox(height: 20),
           ],
 
@@ -342,9 +359,36 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
         ),
       );
 
+  Widget _elVoiceTile(String id, String label) => GestureDetector(
+    onTap: () => setState(() => _elevenLabsVoice = id),
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: _elevenLabsVoice == id
+            ? AikaTheme.neonBlue.withOpacity(0.15)
+            : const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _elevenLabsVoice == id ? AikaTheme.neonBlue : Colors.transparent,
+        ),
+      ),
+      child: Row(children: [
+        Expanded(child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 13))),
+        if (_elevenLabsVoice == id)
+          Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
+      ]),
+    ),
+  );
+
   Widget _engineTile(String title, String engine, String emoji, String subtitle) =>
       GestureDetector(
-        onTap: () => setState(() => _ttsEngine = engine),
+        onTap: () {
+          setState(() => _ttsEngine = engine);
+          if (engine == 'elevenlabs' && _elLiveVoices.isEmpty) {
+            _loadElevenVoices();
+          }
+        },
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
