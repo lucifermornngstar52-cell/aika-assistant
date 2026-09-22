@@ -68,7 +68,6 @@ import '../services/aika_self_learning_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
 import '../services/edge_tts_service.dart';
-import '../services/elevenlabs_tts_service.dart';
 import '../widgets/jarvis_hud.dart';
 import '../widgets/overlay_settings_widget.dart';
 import '../services/theme_switcher_service.dart';
@@ -849,21 +848,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _edgeTts.initialize();
     final savedVoice = prefs.getString('edge_voice');
     if (savedVoice != null) _edgeTts.setVoice(savedVoice);
-    // Движки: ElevenLabs (премиум), EdgeTTS (бесплатно) или системный Android TTS.
-    // ФИКС (баг «голоса не переключаются»): ветка elevenlabs была вырезана
-    // при «упрощении» стека — сохранённый движок молча становился EdgeTTS.
+    // Только бесплатные движки: EdgeTTS или системный Android TTS.
     var ttsEngine = prefs.getString('tts_engine') ?? 'edge';
-    if (ttsEngine != 'edge' && ttsEngine != 'elevenlabs' && ttsEngine != 'system') {
+    if (ttsEngine != 'edge' && ttsEngine != 'system') {
       ttsEngine = 'edge';
       await prefs.setString('tts_engine', 'edge');
     }
     _edgeTts.setTtsEngine(ttsEngine);
-    if (ttsEngine == 'elevenlabs') {
-      await ElevenLabsTtsService().initialize();
-      _useEdgeTts = true; // маршрутизация через EdgeTtsService.speak() → ElevenLabs
-    } else {
-      _useEdgeTts = ttsEngine == 'edge';
-    }
+    _useEdgeTts = ttsEngine == 'edge';
     await _tts.setPitch(prefs.getDouble('tts_pitch') ?? 1.0);
     await _tts.setVolume(prefs.getDouble('tts_volume') ?? 1.0);
     final voice = prefs.getString('tts_voice');
@@ -1070,10 +1062,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (clean.isEmpty) return;
     OverlayService().asyncState('talking');
 
-    // Останавливаем предыдущий TTS (все движки — иначе звук накладывается)
+    // Останавливаем предыдущий TTS
     await _tts.stop();
     await _edgeTts.stop();
-    try { await ElevenLabsTtsService().stop(); } catch (_) {}
     _ttsCompleter?.complete();
     _ttsCompleter = null;
 

@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'elevenlabs_tts_service.dart';
 
 /// Edge TTS — Microsoft Neural Voices (стриминг через WebSocket)
 /// Исправлено: _edgeEnabled не сбрасывается, автоматический реконнект.
@@ -26,7 +25,7 @@ class EdgeTtsService extends ChangeNotifier {
   bool _isSpeaking = false;
   // ФИКС: не отключаем EdgeTTS навсегда — при ошибке делаем реконнект и пробуем снова
   bool _edgeFailed = false;
-  String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
+  String _ttsEngine = 'edge'; // 'edge' | 'system'
   String get ttsEngine => _ttsEngine;
   void setTtsEngine(String engine) { _ttsEngine = engine; notifyListeners(); }
   String _voice = _defaultVoice;
@@ -60,6 +59,19 @@ class EdgeTtsService extends ChangeNotifier {
     {'id': 'zh-CN-XiaoxiaoNeural', 'label': '🐼 Xiaoxiao', 'description': 'Женский китайский, дружелюбный'},
     {'id': 'en-US-JennyNeural', 'label': '🇺🇸 Jenny', 'description': 'Женский английский, нейтральный'},
     {'id': 'ko-KR-SunHiNeural', 'label': '🇰🇷 SunHi', 'description': 'Женский корейский, мягкий'},
+    // ── Расширение (все бесплатные Edge-голоса) ──
+    {'id': 'uk-UA-PolinaNeural', 'label': '🇺🇦 Полина', 'description': 'Женский украинский'},
+    {'id': 'en-GB-SoniaNeural', 'label': '🇬🇧 Sonia', 'description': 'Женский британский'},
+    {'id': 'en-US-GuyNeural', 'label': '🇺🇸 Guy', 'description': 'Мужской английский, новостной'},
+    {'id': 'en-US-AriaNeural', 'label': '🇺🇸 Aria', 'description': 'Женский английский, выразительный'},
+    {'id': 'de-DE-KatjaNeural', 'label': '🇩🇪 Katja', 'description': 'Женский немецкий'},
+    {'id': 'de-DE-ConradNeural', 'label': '🇩🇪 Conrad', 'description': 'Мужской немецкий'},
+    {'id': 'fr-FR-DeniseNeural', 'label': '🇫🇷 Denise', 'description': 'Женский французский'},
+    {'id': 'es-ES-ElviraNeural', 'label': '🇪🇸 Elvira', 'description': 'Женский испанский'},
+    {'id': 'it-IT-ElsaNeural', 'label': '🇮🇹 Elsa', 'description': 'Женский итальянский'},
+    {'id': 'pt-BR-FranciscaNeural', 'label': '🇧🇷 Francisca', 'description': 'Женский португальский (БР)'},
+    {'id': 'pl-PL-ZofiaNeural', 'label': '🇵🇱 Zofia', 'description': 'Женский польский'},
+    {'id': 'tr-TR-EmelNeural', 'label': '🇹🇷 Emel', 'description': 'Женский турецкий'},
   ];
 
   Future<void> initialize() async {
@@ -90,7 +102,8 @@ class EdgeTtsService extends ChangeNotifier {
       _volume = prefs.getDouble('edge_tts_volume') ?? 1.0;
       final voice = prefs.getString('edge_voice');
       if (voice != null && voice.isNotEmpty) _voice = voice;
-      _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
+      final savedEngine = prefs.getString('tts_engine') ?? 'edge';
+      _ttsEngine = savedEngine == 'system' ? 'system' : 'edge';
     } catch (_) {}
   }
 
@@ -140,20 +153,7 @@ class EdgeTtsService extends ChangeNotifier {
     _isSpeaking = true;
     notifyListeners();
 
-    // ── Переключение TTS движка ─────────────────────────────────────
-    // ФИКС (баг «голоса не переключаются»): ветка ElevenLabs была удалена
-    // при «упрощении» стека — движок из настроек молча игнорировался.
-    if (_ttsEngine == 'elevenlabs') {
-      try {
-        await ElevenLabsTtsService().speak(text);
-        _failCount = 0;
-        return;
-      } catch (e) {
-        debugPrint('[ElevenLabs] ошибка, fallback на EdgeTTS: $e');
-        // Падаем на EdgeTTS если ElevenLabs не сработал
-      }
-    }
-
+    // Только бесплатные движки.
     // ФИКС: пробуем EdgeTTS если ошибок было меньше MAX
     final canUseEdge = _failCount < _maxFails;
 

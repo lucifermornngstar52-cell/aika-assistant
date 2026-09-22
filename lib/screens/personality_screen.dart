@@ -177,17 +177,19 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
         await PersonalityService.set(p);
         setState(() => _selected = p);
 
-        // Обновляем wake-word с учётом персонажа
-        // ФИКС (баг «голоса не переключаются»): выбор персонажа принудительно
-        // сносил движок на EdgeTTS — ElevenLabs молча отваливался.
-        // Теперь меняется только Edge-голос, а выбранный движок не трогаем.
+        // ФИКС (баг «голоса не переключаются»): при выборе персонажа движок
+        // принудительно сносился на 'edge', а голос — перезаписывался
+        // дефолтом персонажа. Теперь дефолт персонажа применяется ТОЛЬКО
+        // если юзер ни разу не выбирал голос в настройках.
         final prefs = await SharedPreferences.getInstance();
-        final characterVoice = PersonalityService.gender == 'male'
-            ? 'ru-RU-DmitryNeural'
-            : 'ru-RU-DariyaNeural';
-        final engine = prefs.getString('tts_engine') ?? 'edge';
-        if (engine != 'elevenlabs') {
+        final userVoice = prefs.getString('edge_voice');
+        if (userVoice == null || userVoice.isEmpty) {
+          final characterVoice = PersonalityService.gender == 'male'
+              ? 'ru-RU-DmitryNeural'
+              : 'ru-RU-DariyaNeural';
+          await prefs.setString('tts_engine', 'edge');
           await prefs.setString('edge_voice', characterVoice);
+          EdgeTtsService().setTtsEngine('edge');
           EdgeTtsService().setVoice(characterVoice);
         }
 
