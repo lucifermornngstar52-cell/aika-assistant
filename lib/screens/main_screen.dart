@@ -2083,8 +2083,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _musicTimer?.cancel();
     _idleTimer?.cancel();
     _deviceService.dispose();
-    _voiceSession.stop();
-    _realtime.stop(notify: false);
     _wakeWordService.stop();
     SmartAlarmService.dispose();
     super.dispose();
