@@ -513,6 +513,14 @@ class VoiceCommandProcessor {
     if (result != null) {
       return VoiceCmdResult.ok(result);
     }
+    // Было намерение открыть приложение, но не нашлось ни одного матча.
+    // Честно говорим об этом — не палим фальшивые действия и не молчим.
+    if (AppLauncherService.hasOpenIntent(original)) {
+      final app = AppLauncherService.extractAppName(original) ?? 'приложение';
+      return VoiceCmdResult.ok(
+        'Не нашла приложение «$app» на телефоне 🤔 Проверь, как оно называется, и попробуй ещё раз',
+      );
+    }
     return null;
   }
 

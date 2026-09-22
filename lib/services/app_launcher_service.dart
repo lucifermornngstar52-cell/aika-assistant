@@ -185,6 +185,23 @@ class AppLauncherService {
   //  INTENT DETECTION
   // ═══════════════════════════════════════════════════════════════════
 
+  /// Публично: есть ли в фразе намерение открыть приложение.
+  static bool hasOpenIntent(String text) => _hasOpenIntent(_normalize(text));
+
+  /// Публично: какое приложение пользователь просил открыть (для честного ответа).
+  static String? extractAppName(String phrase) {
+    final normalized = _normalize(phrase);
+    final stripped = _stripOpenPrefix(normalized);
+    if (stripped.isEmpty) return null;
+    final clean = stripped
+        .replaceAll(RegExp(r'^приложение\s+'), '')
+        .replaceAll(RegExp(r'\s+приложение$'), '')
+        .replaceAll(RegExp(r'^app\s+'), '')
+        .replaceAll(RegExp(r'\s+app$'), '')
+        .trim();
+    return clean.isEmpty ? null : clean;
+  }
+
   /// Проверяет есть ли в фразе намерение открыть приложение.
   static bool _hasOpenIntent(String text) {
     for (final prefix in openPrefixes) {
@@ -428,6 +445,34 @@ class AppLauncherService {
       'эксбокс': 'com.microsoft.xboxone.smartglass',
       'airbnb': 'com.airbnb.android',
       'whatsappbusiness': 'com.whatsapp.w4b',
+      // ── Расширение 2 (сентябрь 2026) ──
+      'chatgpt': 'com.openai.chatgpt',
+      'чатгпт': 'com.openai.chatgpt',
+      'гпт': 'com.openai.chatgpt',
+      'авито': 'com.avito.android',
+      'avito': 'com.avito.android',
+      'тинькофф': 'ru.tinkoff.mobilebank',
+      'тилькофф': 'ru.tinkoff.mobilebank',
+      'тбанк': 'ru.tinkoff.mobilebank',
+      'сбербанк': 'ru.sberbankmobile',
+      'сбер': 'ru.sberbankmobile',
+      'альфабанк': 'ru.alfabank.mobilebank',
+      'альфа': 'ru.alfabank.mobilebank',
+      'втб': 'ru.vtb24.mobilebank3',
+      'халык': 'kz.halyk.mobile',
+      'halyk': 'kz.halyk.mobile',
+      'жусан': 'kz.jusanbank.mobile',
+      'jusan': 'kz.jusanbank.mobile',
+      'билайн': 'ru.beeline',
+      'beeline': 'ru.beeline',
+      'егов': 'kz.egov.mobile',
+      'egov': 'kz.egov.mobile',
+      'яндексго': 'ru.yandex.yango',
+      'yandexport': 'ru.yandex.yango',
+      'дзен': 'ru.yandex.zen',
+      'юзенд': 'ru.yandex.zen',
+      'кинопоиск': 'ru.kinopoisk',
+      'мегого': 'com.megogo.net.app',
     };
     
     // Точное совпадение

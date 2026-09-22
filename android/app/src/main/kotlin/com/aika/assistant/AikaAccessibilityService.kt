@@ -174,7 +174,10 @@ class AikaAccessibilityService : AccessibilityService() {
                 try {
                     val buffer = screenshot.hardwareBuffer
                     if (buffer != null) {
-                        val bmp = Bitmap.wrapHardwareBuffer(buffer, null)?.copy(Bitmap.Config.ARGB_8888, false)
+                        // ФИКС: colorSpace обязателен — с null на части прошивок
+                        // (Xiaomi/EMUI) wrapHardwareBuffer возвращает null и «скрин не делается».
+                        val cs = screenshot.colorSpace
+                        val bmp = Bitmap.wrapHardwareBuffer(buffer, cs)?.copy(Bitmap.Config.ARGB_8888, false)
                         buffer.close()
                         if (bmp != null) {
                             val w = bmp.width
@@ -187,9 +190,14 @@ class AikaAccessibilityService : AccessibilityService() {
                             out = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
                             if (small !== bmp) small.recycle()
                             bmp.recycle()
+                        } else {
+                            lastCaptureError = "bmp не собрался из буфера (wrap=null)"
                         }
+                    } else {
+                        lastCaptureError = "hardwareBuffer пустой"
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    lastCaptureError = "исключение при сборке: " + (e.message ?: e.toString())
                 } finally {
                     latch.countDown()
                 }

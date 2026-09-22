@@ -109,19 +109,53 @@ class ReminderService {
       return 'Окей, напомню в ${hour.toString().padLeft(2,'0')}:${minute.toString().padLeft(2,'0')}${what.isNotEmpty ? ': "$label"' : ''} ⏰';
     }
 
-    // "таймер на N минут/часов"
+    // "таймер на N минут/часов/секунд" + "таймер через N ..."
     final timerRegex = RegExp(
-      r'таймер\s+(?:на\s+)?(\d+)\s*(минут|минуту|минуты|час|часа|часов)',
+      r'таймер\s+(?:через\s+|на\s+)?(\d+)\s*(секунд|секунды|секунду|сек|минут|минуту|минуты|час|часа|часов)',
       caseSensitive: false,
     );
     final timerMatch = timerRegex.firstMatch(t);
     if (timerMatch != null) {
       final amount = int.parse(timerMatch.group(1)!);
       final unit   = timerMatch.group(2)!;
-      final isHours = unit.startsWith('час');
-      final duration = isHours ? Duration(hours: amount) : Duration(minutes: amount);
+      final Duration duration;
+      final String unitStr;
+      if (unit.startsWith('сек')) {
+        duration = Duration(seconds: amount);
+        unitStr = _pluralSeconds(amount);
+      } else if (unit.startsWith('час')) {
+        duration = Duration(hours: amount);
+        unitStr = _pluralHours(amount);
+      } else {
+        duration = Duration(minutes: amount);
+        unitStr = _pluralMinutes(amount);
+      }
       await remindAfter(duration: duration, text: 'Таймер истёк!');
-      final unitStr = isHours ? _pluralHours(amount) : _pluralMinutes(amount);
+      return 'Таймер на $amount $unitStr запущен! ⏱';
+    }
+
+    // "через N минут/секунд" (без слова «напомни»)
+    final plainAfterRegex = RegExp(
+      r'^\s*(?:поставь\s+|заведи\s+|установи\s+)?таймер\s+через\s+(\d+)\s*(секунд|секунды|секунду|сек|минут|минуту|минуты|час|часа|часов)',
+      caseSensitive: false,
+    );
+    final plainAfterMatch = plainAfterRegex.firstMatch(t);
+    if (plainAfterMatch != null) {
+      final amount = int.parse(plainAfterMatch.group(1)!);
+      final unit   = plainAfterMatch.group(2)!;
+      final Duration duration;
+      final String unitStr;
+      if (unit.startsWith('сек')) {
+        duration = Duration(seconds: amount);
+        unitStr = _pluralSeconds(amount);
+      } else if (unit.startsWith('час')) {
+        duration = Duration(hours: amount);
+        unitStr = _pluralHours(amount);
+      } else {
+        duration = Duration(minutes: amount);
+        unitStr = _pluralMinutes(amount);
+      }
+      await remindAfter(duration: duration, text: 'Таймер истёк!');
       return 'Таймер на $amount $unitStr запущен! ⏱';
     }
 
@@ -260,6 +294,12 @@ class ReminderService {
     if (n % 10 == 1 && n % 100 != 11) return 'минуту';
     if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'минуты';
     return 'минут';
+  }
+
+  String _pluralSeconds(int n) {
+    if (n % 10 == 1 && n % 100 != 11) return 'секунду';
+    if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'секунды';
+    return 'секунд';
   }
 
   String _pluralHours(int n) {

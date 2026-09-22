@@ -38,10 +38,14 @@ class MinecraftPilotService {
 
   static String? _groqKey;
 
+  // Зашитый в сборку ключ — бэкап, если юзер не вводил свой в настройках.
+  static const String _envKey = String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
+
   static Future<void> _loadKey() async {
     if (_groqKey != null) return;
     final prefs = await SharedPreferences.getInstance();
-    _groqKey = prefs.getString('groq_key') ?? '';
+    final saved = prefs.getString('groq_key') ?? '';
+    _groqKey = saved.isNotEmpty ? saved : _envKey;
   }
 
   static void _addLog(String line) {

@@ -209,7 +209,6 @@ class AlarmService {
           importance: Importance.max,
           priority: Priority.max,
           fullScreenIntent: true,
-          sound: const RawResourceAndroidNotificationSound('alarm_sound'),
           playSound: true,
         ),
       ),

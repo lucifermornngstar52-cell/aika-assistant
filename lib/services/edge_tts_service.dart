@@ -74,6 +74,19 @@ class EdgeTtsService extends ChangeNotifier {
     {'id': 'tr-TR-EmelNeural', 'label': '🇹🇷 Emel', 'description': 'Женский турецкий'},
   ];
 
+  /// Пол голоса по id — для подбора голоса под персонажа.
+  static String genderOf(String? voiceId) {
+    if (voiceId == null || voiceId.isEmpty) return 'unknown';
+    final v = voices.firstWhere(
+      (v) => v['id'] == voiceId,
+      orElse: () => const {},
+    );
+    final d = (v['description'] ?? '').toLowerCase();
+    if (d.contains('мужской') || d.contains('male')) return 'male';
+    if (d.contains('женский') || d.contains('female')) return 'female';
+    return 'unknown';
+  }
+
   Future<void> initialize() async {
     await _initSystemTts();
     _player.onPlayerComplete.listen((_) { _isSpeaking = false; notifyListeners(); });

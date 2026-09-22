@@ -183,8 +183,12 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
         // если юзер ни разу не выбирал голос в настройках.
         final prefs = await SharedPreferences.getInstance();
         final userVoice = prefs.getString('edge_voice');
-        if (userVoice == null || userVoice.isEmpty) {
-          final characterVoice = PersonalityService.gender == 'male'
+        final charGender = PersonalityService.gender;
+        // Женским характерам — женский голос, мужским — мужской.
+        // Выбор юзера уважаем: если голос уже нужного пола — не трогаем.
+        final voiceGender = EdgeTtsService.genderOf(userVoice);
+        if (userVoice == null || userVoice.isEmpty || voiceGender != charGender) {
+          final characterVoice = charGender == 'male'
               ? 'ru-RU-DmitryNeural'
               : 'ru-RU-DariyaNeural';
           await prefs.setString('tts_engine', 'edge');

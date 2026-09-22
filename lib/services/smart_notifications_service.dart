@@ -31,6 +31,12 @@ class SmartNotificationsService {
   }) {
     final combined = '${title.toLowerCase()} ${text.toLowerCase()}';
 
+    // Стикеры и реакции не озвучиваем — это не сообщения со смыслом.
+    final bare = text.toLowerCase().replaceAll(RegExp(r'[^a-zа-яё0-9 ]'), ' ').trim();
+    if (bare.isEmpty) return false;
+    if (RegExp(r'^(стикер|sticker|voice message|голосовое сообщение|gif|video note|кружок)$')
+        .hasMatch(bare)) return false;
+
     // Всегда важно если есть ключевые слова
     if (_highPriorityWords.any((w) => combined.contains(w))) return true;
 

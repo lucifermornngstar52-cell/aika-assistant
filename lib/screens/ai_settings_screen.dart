@@ -90,6 +90,22 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     AiService.setMaxTokens(_maxTokens);
   }
 
+  /// Ввод ключа мгновенно переключает чат на выбранную модель.
+  /// Пишем prefs и применяем в AiService прямо при наборе —
+  /// не ждём нажатия «Сохранить».
+  Future<void> _instantApply() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('gemini_key',   _geminiCtrl.text.trim());
+    await prefs.setString('groq_key',      _groqCtrl.text.trim());
+    await prefs.setString('claude_key',    _claudeCtrl.text.trim());
+    await prefs.setString('deepseek_key',  _deepseekCtrl.text.trim());
+    await prefs.setString('perplexity_key', _perplexCtrl.text.trim());
+    await prefs.setString('local_url',     _localUrlCtrl.text.trim());
+    await prefs.setString('local_model',   _localModelCtrl.text.trim());
+    await prefs.setString('ai_model',      _selectedModel);
+    _applyKeys();
+  }
+
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('gemini_key',   _geminiCtrl.text.trim());
@@ -186,7 +202,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                 value: e.key,
                 child: Text(e.value, style: const TextStyle(color: Colors.white)),
               )).toList(),
-              onChanged: (v) => setState(() => _selectedModel = v!),
+              onChanged: (v) { setState(() => _selectedModel = v!); _instantApply(); },
             ),
           ),
 
@@ -346,10 +362,13 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               ),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste, color: Colors.white24, size: 16),
-                onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) { ctrl.text = data!.text!; if (modelId != null && ctrl.text.trim().isNotEmpty) _selectedModel = modelId; } setState(() {}); }
+                onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) { ctrl.text = data!.text!; if (modelId != null && ctrl.text.trim().isNotEmpty) _selectedModel = modelId; } setState(() {}); _instantApply(); }
               ),
             ),
-            onChanged: (value) => setState(() { if (modelId != null && value.trim().isNotEmpty) _selectedModel = modelId; }),
+            onChanged: (value) => setState(() {
+              if (modelId != null && value.trim().isNotEmpty) _selectedModel = modelId;
+              _instantApply();
+            }),
           ),
           if (ctrl.text.isNotEmpty)
             Padding(

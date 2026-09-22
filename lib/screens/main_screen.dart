@@ -1256,6 +1256,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // Таймеры и напоминания — своим сервисом ДО процессора команд:
+    // процессор гонит таймеры в Google Clock через Intent, которого
+    // на половине телефонов нет. Свой таймер звучит и говорит сам.
+    final directReminderResult = await _reminderService.tryParseReminder(text);
+    if (directReminderResult != null) {
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: directReminderResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(directReminderResult);
+      return;
+    }
+
     // ── Мощный процессор голосовых команд (150+ команд, без AI) ───────────
     final voiceResult = await _voiceProcessor.process(text);
     if (voiceResult != null) {

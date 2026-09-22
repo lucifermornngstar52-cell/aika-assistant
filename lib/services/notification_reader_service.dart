@@ -87,6 +87,12 @@ class NotificationReaderService {
 
     if (pkg.isEmpty || title.isEmpty || text.isEmpty) return;
 
+    // Стикеры и мусор: если в тексте и заголовке нет ни буквы, ни цифры —
+    // это эмодзи/тильды/символы. Читать вслух нечего, пропускаем целиком.
+    final hasLetters = RegExp(r'[A-Za-zА-Яа-яЁё0-9]').hasMatch(text) ||
+        RegExp(r'[A-Za-zА-Яа-яЁё0-9]').hasMatch(title);
+    if (!hasLetters) return;
+
     final enabledApps = await getEnabledApps();
     if (!enabledApps.contains(pkg)) return;
 
