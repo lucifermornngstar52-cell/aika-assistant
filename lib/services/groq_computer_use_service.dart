@@ -2,30 +2,30 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
-/// Сервис умных кликов через Gemini Vision.
-/// Получает скриншот → отправляет в Gemini → получает координаты/действие → выполняет.
+/// Сервис умных кликов через Groq Vision (бесплатный).
+/// Получает скриншот → отправляет в Groq → получает координаты/действие → выполняет.
 /// НЕ заменяет AccessibilityService — работает поверх него как "умный слой".
-class GeminiComputerUseService {
+/// ФИКС: раньше висел на Gemini (платные «мозги») — юзер просил чисто Groq.
+class GroqComputerUseService {
   static const _screenReaderChannel = MethodChannel('com.aika.assistant/screen_reader');
-  static const String _geminiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+  static const String _groqKey = String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
 
-  // Модель с vision — обычный flash умеет смотреть изображения
-  static const String _model = 'gemini-2.0-flash';
-  static const String _baseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
+  // Мультимодальная модель Groq — та же, что в AiService для фоток
+  static const String _model = 'qwen/qwen3.6-27b';
+  static const String _url = 'https://api.groq.com/openai/v1/chat/completions';
 
   /// Основной метод: получи скриншот и выполни задачу
   /// Возвращает текстовый результат что было сделано
   static Future<String> executeTask(String task) async {
-    if (_geminiKey.isEmpty) return 'Нет Gemini API ключа';
+    if (_groqKey.isEmpty) return 'Нет Groq API ключа';
 
     // Шаг 1 — делаем скриншот
     final b64 = await _captureScreen();
     if (b64 == null) return 'Не удалось сделать скриншот — нет разрешения AccessibilityService';
 
-    // Шаг 2 — спрашиваем Gemini что нажать
-    final action = await _askGeminiForAction(task, b64);
-    if (action == null) return 'Gemini не смог определить действие';
+    // Шаг 2 — спрашиваем Groq что нажать
+    final action = await _askGroqForAction(task, b64);
+    if (action == null) return 'Groq не смог определить действие';
 
     // Шаг 3 — выполняем действие
     return await _executeAction(action);
@@ -33,16 +33,16 @@ class GeminiComputerUseService {
 
   /// Анализ скриншота — найти координаты элемента без нажатия
   static Future<ScreenElement?> findElement(String description, String screenshotB64) async {
-    if (_geminiKey.isEmpty) return null;
-    return await _askGeminiForCoordinates(description, screenshotB64);
+    if (_groqKey.isEmpty) return null;
+    return await _askGroqForCoordinates(description, screenshotB64);
   }
 
   /// Просто анализируй экран и опиши что видишь
   static Future<String> describeScreen() async {
-    if (_geminiKey.isEmpty) return 'Нет Gemini API ключа';
+    if (_groqKey.isEmpty) return 'Нет Groq API ключа';
     final b64 = await _captureScreen();
     if (b64 == null) return 'Не удалось сделать скриншот';
-    return await _askGeminiDescribe(b64);
+    return await _askGroqDescribe(b64);
   }
 
   // ── Приватные методы ─────────────────────────────────────────────────
@@ -55,7 +55,57 @@ class GeminiComputerUseService {
     }
   }
 
-  static Future<ComputerUseAction?> _askGeminiForAction(String task, String imageB64) async {
+  static Map<String, String> get _headers => {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': 'Bearer $_groqKey',
+      };
+
+  static Future<String?> _chat(String prompt, String imageB64,
+      {int maxTokens = 256, int timeoutSec = 20}) async {
+    final body = {
+      'model': _model,
+      'messages': [
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'image_url',
+             'image_url': {'url': 'data:image/jpeg;base64,$imageB64'}},
+            {'type': 'text', 'text': prompt},
+          ],
+        }
+      ],
+      'temperature': 0.1,
+      'max_tokens': maxTokens,
+    };
+
+    final resp = await http.post(
+      Uri.parse(_url),
+      headers: _headers,
+      body: jsonEncode(body),
+    ).timeout(Duration(seconds: timeoutSec));
+
+    if (resp.statusCode != 200) return null;
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    // OpenAI-совместимый формат: choices[0].message.content
+    return data['choices']?[0]?['message']?['content'] as String?;
+  }
+
+  static Map<String, dynamic>? _parseJson(String raw) {
+    try {
+      final clean = raw
+          .replaceAll('```json', '')
+          .replaceAll('```', '')
+          .trim();
+      final start = clean.indexOf('{');
+      final end = clean.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        return jsonDecode(clean.substring(start, end + 1)) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<ComputerUseAction?> _askGroqForAction(String task, String imageB64) async {
     final prompt = '''
 Ты управляешь Android смартфоном. Смотришь на скриншот экрана.
 Задача: $task
@@ -75,48 +125,17 @@ class GeminiComputerUseService {
 ''';
 
     try {
-      final body = {
-        'contents': [
-          {
-            'parts': [
-              {'text': prompt},
-              {
-                'inline_data': {
-                  'mime_type': 'image/jpeg',
-                  'data': imageB64,
-                }
-              }
-            ]
-          }
-        ],
-        'generationConfig': {
-          'temperature': 0.1,
-          'maxOutputTokens': 256,
-        }
-      };
-
-      final resp = await http.post(
-        Uri.parse('$_baseUrl?key=$_geminiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 15));
-
-      if (resp.statusCode != 200) return null;
-
-      final data = jsonDecode(resp.body);
-      final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'] as String?;
+      final text = await _chat(prompt, imageB64, maxTokens: 300);
       if (text == null) return null;
-
-      // Вычищаем markdown если Gemini всё равно добавил
-      final clean = text.replaceAll('```json', '').replaceAll('```', '').trim();
-      final json = jsonDecode(clean) as Map<String, dynamic>;
+      final json = _parseJson(text);
+      if (json == null) return null;
       return ComputerUseAction.fromJson(json);
     } catch (_) {
       return null;
     }
   }
 
-  static Future<ScreenElement?> _askGeminiForCoordinates(String description, String imageB64) async {
+  static Future<ScreenElement?> _askGroqForCoordinates(String description, String imageB64) async {
     final prompt = '''
 На этом скриншоне найди элемент: "$description"
 Ответь ТОЛЬКО в JSON (без markdown):
@@ -125,34 +144,13 @@ class GeminiComputerUseService {
 ''';
 
     try {
-      final body = {
-        'contents': [
-          {
-            'parts': [
-              {'text': prompt},
-              {'inline_data': {'mime_type': 'image/jpeg', 'data': imageB64}}
-            ]
-          }
-        ],
-        'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 128}
-      };
-
-      final resp = await http.post(
-        Uri.parse('$_baseUrl?key=$_geminiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 12));
-
-      if (resp.statusCode != 200) return null;
-      final data = jsonDecode(resp.body);
-      final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'] as String?;
+      final text = await _chat(prompt, imageB64, maxTokens: 128);
       if (text == null) return null;
-      final clean = text.replaceAll('```json', '').replaceAll('```', '').trim();
-      final json = jsonDecode(clean) as Map<String, dynamic>;
-      if (json['found'] != true) return null;
+      final json = _parseJson(text);
+      if (json == null || json['found'] != true) return null;
       return ScreenElement(
-        x: (json['x'] as num).toDouble(),
-        y: (json['y'] as num).toDouble(),
+        x: (json['x'] as num?)?.toDouble() ?? 500,
+        y: (json['y'] as num?)?.toDouble() ?? 1000,
         label: json['label'] as String? ?? description,
       );
     } catch (_) {
@@ -160,32 +158,14 @@ class GeminiComputerUseService {
     }
   }
 
-  static Future<String> _askGeminiDescribe(String imageB64) async {
+  static Future<String> _askGroqDescribe(String imageB64) async {
     const prompt = 'Опиши коротко что сейчас на экране Android смартфона. '
         'На русском языке, 1-2 предложения.';
 
     try {
-      final body = {
-        'contents': [
-          {
-            'parts': [
-              {'text': prompt},
-              {'inline_data': {'mime_type': 'image/jpeg', 'data': imageB64}}
-            ]
-          }
-        ],
-        'generationConfig': {'temperature': 0.3, 'maxOutputTokens': 200}
-      };
-
-      final resp = await http.post(
-        Uri.parse('$_baseUrl?key=$_geminiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 12));
-
-      if (resp.statusCode != 200) return 'Ошибка Gemini Vision';
-      final data = jsonDecode(resp.body);
-      return data['candidates']?[0]?['content']?['parts']?[0]?['text'] as String? ?? 'Не удалось описать экран';
+      final text = await _chat(prompt, imageB64, maxTokens: 200, timeoutSec: 15);
+      if (text == null) return 'Ошибка Groq Vision';
+      return text.trim();
     } catch (e) {
       return 'Ошибка: $e';
     }

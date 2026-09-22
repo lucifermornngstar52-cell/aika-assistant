@@ -1,4 +1,4 @@
-import 'gemini_computer_use_service.dart';
+import 'groq_computer_use_service.dart';
 import 'notification_service.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
@@ -219,17 +219,17 @@ class DeviceService {
 
     // ── Gemini Vision: умный клик и описание экрана ────────────────────
     if (action == 'describe_screen') {
-      return await GeminiComputerUseService.describeScreen();
+      return await GroqComputerUseService.describeScreen();
     }
 
     if (action.startsWith('smart_tap:') || action.startsWith('smart_click:')) {
       final task = action.contains(':') ? action.split(':').skip(1).join(':').trim() : action;
-      return await GeminiComputerUseService.executeTask(task);
+      return await GroqComputerUseService.executeTask(task);
     }
 
     if (action.startsWith('smart_do:')) {
       final task = action.split(':').skip(1).join(':').trim();
-      return await GeminiComputerUseService.executeTask(task);
+      return await GroqComputerUseService.executeTask(task);
     }
 
     // ── Поиск в Google ───────────────────────────────────────────────────

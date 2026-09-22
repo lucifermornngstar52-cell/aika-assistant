@@ -140,10 +140,10 @@ class AiService {
   String _chooseModel(String message, bool hasImage) {
     final m = message.toLowerCase();
 
-    // Vision: Gemini основной, Groq и Claude — резерв.
+    // Vision: чисто на Groq (бесплатный), Gemini — резерв.
     if (hasImage) {
-      if (_geminiKey.isNotEmpty) return 'gemini_flash';
       if (_groqKey.isNotEmpty) return 'groq';
+      if (_geminiKey.isNotEmpty) return 'gemini_flash';
       return 'claude';
     }
 
@@ -156,12 +156,12 @@ class AiService {
       if (_deepseekKey.isNotEmpty) return 'deepseek';
     }
 
-    // Gemini — основной провайдер.
-    if (_geminiKey.isNotEmpty) return 'gemini_flash';
+    // Groq — основной провайдер (бесплатный).
     if (_groqKey.isNotEmpty) return 'groq';
+    if (_geminiKey.isNotEmpty) return 'gemini_flash';
     if (_claudeKey.isNotEmpty) return 'claude';
     if (_deepseekKey.isNotEmpty) return 'deepseek';
-    return 'gemini_flash'; // бесплатный fallback
+    return 'groq'; // бесплатный fallback
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -171,14 +171,14 @@ class AiService {
     final chain = <String>[];
 
     if (hasImage) {
-      for (final provider in ['gemini_flash', 'gemini_pro', 'groq', 'claude']) {
+      for (final provider in ['groq', 'gemini_flash', 'gemini_pro', 'claude']) {
         if (_isProviderAvailable(provider) && !chain.contains(provider)) chain.add(provider);
       }
       return chain;
     }
 
     if (_isProviderAvailable(preferred)) chain.add(preferred);
-    final fallbacks = ['gemini_flash', 'gemini_pro', 'groq', 'local', 'deepseek', 'claude', 'perplexity'];
+    final fallbacks = ['groq', 'gemini_flash', 'gemini_pro', 'local', 'deepseek', 'claude', 'perplexity'];
     for (final fb in fallbacks) {
       if (fb != preferred && _isProviderAvailable(fb)) chain.add(fb);
     }
