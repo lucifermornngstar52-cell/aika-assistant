@@ -41,7 +41,6 @@ import '../services/device_security_service.dart';
 import 'weather_screen.dart';
 import '../services/music_control_service.dart';
 import '../services/screen_watcher_service.dart';
-import '../services/aika_feelings_service.dart';
 import '../services/aika_automation_service.dart';
 import '../services/notification_service.dart';
 import '../services/people_memory_service.dart';
@@ -150,6 +149,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _screenCommentsEnabled = true;
   String? _pendingImagePath; // Фото ожидающее отправки
   String? _pendingImageBase64;
+  String _pendingImageMimeType = 'image/jpeg';
   String _bgPresetId = 'none';
   String? _bgCustomImage;
   bool _hasNotifPermission = false;
@@ -173,6 +173,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return AikaState.idle;
   }
 
+  String _detectImageMimeType(List<int> bytes, String path) {
+    if (bytes.length >= 12) {
+      if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return 'image/png';
+      if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) return 'image/gif';
+      if (bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+          bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) return 'image/webp';
+      if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return 'image/jpeg';
+    }
+    final ext = path.toLowerCase().split('.').last;
+    return switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      'heic' => 'image/heic',
+      'heif' => 'image/heif',
+      _ => 'image/jpeg',
+    };
+  }
+
   // Выбор фото из галереи для отправки в чат
   Future<void> _pickImage() async {
     try {
@@ -187,6 +206,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         setState(() {
           _pendingImagePath = path;
           _pendingImageBase64 = b64;
+          _pendingImageMimeType = _detectImageMimeType(bytes, path);
         });
       }
     } catch (e) {
@@ -211,6 +231,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         setState(() {
           _pendingImagePath = path;
           _pendingImageBase64 = b64;
+          _pendingImageMimeType = _detectImageMimeType(bytes, path);
         });
       }
     } catch (e) {
@@ -221,7 +242,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   // Отправка сообщения с прикреплённым изображением — через AiService vision
-  Future<void> _sendMessageWithImage(String text, String b64) async {
+  Future<void> _sendMessageWithImage(String text, String b64, String mimeType) async {
     final userText = text.isNotEmpty ? text : 'Посмотри на это фото и опиши что видишь';
     _addMessage(ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -244,7 +265,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
         memoryContext: await _memoryService.getLongMemory(),
         imageBase64: b64,
-        imageMimeType: 'image/jpeg',
+        imageMimeType: mimeType,
       );
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -254,11 +275,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       ));
       _speak(reply);
       OverlayService().asyncState('talking');
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('Vision error: $e\n$stack');
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
-        content: 'Не смогла обработать изображение 😔 Попробуй ещё раз',
+        content: 'Не смогла обработать изображение: ${e.toString().replaceFirst('Exception: ', '')}',
         timestamp: DateTime.now(),
       ));
       OverlayService().asyncState('idle');
@@ -442,12 +464,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     });
     // Автозапуск постоянного прослушивания wake word
     Future.delayed(const Duration(seconds: 1), _autoStartWakeWord);
-
-    // Загружаем состояние эмоций Айки и запускаем таймеры обиды
-    try { await AikaFeelingsService.load(); } catch (e) { debugPrint('[Init] AikaFeelingsService failed: $e'); }
     try { await AikaAutomationService.loadLearned(); } catch (e) { debugPrint('[Init] AikaAutomationService failed: $e'); }
     try { await AikaSelfLearningService.load(); } catch (e) { debugPrint('[Init] AikaSelfLearningService failed: $e'); }
-    try { _startFeelingsTimers(); } catch (e) { debugPrint('[Init] feelings timers failed: $e'); }
   }
 
   Future<void> _autoStartWakeWord() async {
@@ -1111,27 +1129,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       case 'vkontakte':  return 'ВКонтакте';
       default:           return app;
     }
-  }
-
-  void _startFeelingsTimers() {
-    final personality = PersonalityService.current.name;
-    AikaFeelingsService.startIdleTimers(
-      personality: personality,
-      onMessage: (msg) {
-        if (!mounted || _isListening || _isThinking) return;
-        _addMessage(ChatMessage(
-          id: 'feeling_${DateTime.now().millisecondsSinceEpoch}',
-          role: MessageRole.aika,
-          content: msg,
-          timestamp: DateTime.now(),
-        ));
-        _speak(msg);
-        OverlayService().asyncState('greeting');
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) OverlayService().asyncState('idle');
-        });
-      },
-    );
   }
 
   void _resetIdleTimer() {
@@ -1929,38 +1926,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // ── Реакция на возврат / комплимент (AikaFeelings) ─────────────────
-    final feelingReaction = await AikaFeelingsService.onUserMessage(
-        PersonalityService.current.name);
-    if (feelingReaction != null && mounted) {
-      _addMessage(ChatMessage(
-        id: 'feel_${DateTime.now().millisecondsSinceEpoch}',
-        role: MessageRole.aika,
-        content: feelingReaction,
-        timestamp: DateTime.now(),
-      ));
-      await _speak(feelingReaction);
-    }
-    // Перезапускаем таймеры обиды после каждого сообщения
-    _startFeelingsTimers();
-
-    // Проверяем комплимент
-    if (AikaFeelingsService.isCompliment(text)) {
-      final cReaction = await AikaFeelingsService.onCompliment(
-          PersonalityService.current.name);
-      if (cReaction != null && mounted) {
-        _addMessage(ChatMessage(
-          id: 'compl_${DateTime.now().millisecondsSinceEpoch}',
-          role: MessageRole.aika,
-          content: cReaction,
-          timestamp: DateTime.now(),
-        ));
-        await _speak(cReaction);
-        _moodService.onUserSpoke();
-        return;
-      }
-    }
-
     // ── Браузер: поиск, сайты, генерация текста/изображений ──────────────
     if (AikaBrowserService.isBrowserCommand(text)) {
       _addMessage(ChatMessage(
@@ -2307,7 +2272,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _tts.stop();
     _musicTimer?.cancel();
     _idleTimer?.cancel();
-    AikaFeelingsService.stopIdleTimers();
     _deviceService.dispose();
     _voiceSession.stop();
     _realtime.stop(notify: false);
@@ -2635,7 +2599,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                                     ),
                                     onSubmitted: (t) {
                                       if (_pendingImageBase64 != null) {
-                                        _sendMessageWithImage(t.trim(), _pendingImageBase64!);
+                                        _sendMessageWithImage(t.trim(), _pendingImageBase64!, _pendingImageMimeType);
                                       } else if (t.trim().isNotEmpty) {
                                         _sendMessage(t.trim());
                                       }
@@ -2682,7 +2646,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       onTap: () {
                         final t = _textController.text.trim();
                         if (_pendingImageBase64 != null) {
-                          _sendMessageWithImage(t, _pendingImageBase64!);
+                          _sendMessageWithImage(t, _pendingImageBase64!, _pendingImageMimeType);
                         } else if (t.isNotEmpty) {
                           _sendMessage(t);
                         }

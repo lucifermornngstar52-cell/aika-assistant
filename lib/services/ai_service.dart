@@ -1,4 +1,3 @@
-import 'aika_feelings_service.dart';
 import 'personality_service.dart';
 import 'habit_memory_service.dart';
 import 'assistant_mood_service.dart';
@@ -129,7 +128,7 @@ class AiService {
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
         // Продолжаем fallback при ошибках сети/лимитов
-        if (!_isFallbackError(e.toString())) rethrow;
+        if (imageBase64.isEmpty && !_isFallbackError(e.toString())) rethrow;
       }
     }
     throw lastError ?? Exception('Все AI-сервисы недоступны');
@@ -141,9 +140,11 @@ class AiService {
   String _chooseModel(String message, bool hasImage) {
     final m = message.toLowerCase();
 
-    // Vision — Groq qwen3.6-27b (multimodal). gpt-oss-120b не видит картинки.
+    // Vision: Gemini основной, Groq и Claude — резерв.
     if (hasImage) {
-      return 'groq';
+      if (_geminiKey.isNotEmpty) return 'gemini_flash';
+      if (_groqKey.isNotEmpty) return 'groq';
+      return 'claude';
     }
 
     // Актуальные данные + поиск → Perplexity если есть
@@ -155,12 +156,9 @@ class AiService {
       if (_deepseekKey.isNotEmpty) return 'deepseek';
     }
 
-    // Groq — основной (бесплатно, ультра-быстро, gpt-oss-120b)
+    // Gemini — основной провайдер.
+    if (_geminiKey.isNotEmpty) return 'gemini_flash';
     if (_groqKey.isNotEmpty) return 'groq';
-
-    // Fallback на другие если Groq недоступен
-    
-    if (_geminiKey.isNotEmpty) return 'gemini_pro';
     if (_claudeKey.isNotEmpty) return 'claude';
     if (_deepseekKey.isNotEmpty) return 'deepseek';
     return 'gemini_flash'; // бесплатный fallback
@@ -172,23 +170,17 @@ class AiService {
   List<String> _buildFallbackChain(String preferred, bool hasImage) {
     final chain = <String>[];
 
-    // Начинаем с выбранной модели
-    if (_isProviderAvailable(preferred) && !(hasImage && preferred == 'local')) {
-      chain.add(preferred);
-    }
-
-    // Fallback цепочка (local — своё, приоритетно)
-    final fallbacks = ['local', 'groq', 'gemini_pro', 'gemini_flash', 'deepseek', 'claude', 'perplexity'];
-    for (final fb in fallbacks) {
-      if (fb != preferred && _isProviderAvailable(fb)) {
-        if (hasImage && (fb == 'deepseek' || fb == 'perplexity' || fb == 'local')) continue;
-        chain.add(fb);
+    if (hasImage) {
+      for (final provider in ['gemini_flash', 'gemini_pro', 'groq', 'claude']) {
+        if (_isProviderAvailable(provider) && !chain.contains(provider)) chain.add(provider);
       }
+      return chain;
     }
 
-    // Gemini Flash — последний бесплатный fallback (только если есть ключ)
-    if (_isProviderAvailable('gemini_flash') && !chain.contains('gemini_flash')) {
-      chain.add('gemini_flash');
+    if (_isProviderAvailable(preferred)) chain.add(preferred);
+    final fallbacks = ['gemini_flash', 'gemini_pro', 'groq', 'local', 'deepseek', 'claude', 'perplexity'];
+    for (final fb in fallbacks) {
+      if (fb != preferred && _isProviderAvailable(fb)) chain.add(fb);
     }
 
     return chain;
@@ -423,7 +415,6 @@ class AiService {
     final habitContext = HabitMemoryService.getContextForAI();
     final relationshipMod = RelationshipService.getPromptModifier(PersonalityService.current.name);
     final internalMoodMod = AssistantMoodService.getPromptModifier();
-    final feelingsMod = AikaFeelingsService.getPromptHint();
     final memPart = longMemory.isNotEmpty ? '\n\n== ЧТО ТЫ ЗНАЕШЬ О ПОЛЬЗОВАТЕЛЕ ==\n$longMemory' : '';
     final webPart = webContext.isNotEmpty ? '\n\n== АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА ==\n$webContext' : '';
     final genderWord = PersonalityService.gender == 'male' ? 'живой аниме-персонаж' : 'живая аниме-девушка';
@@ -454,7 +445,7 @@ class AiService {
 - Ты видишь экран телефона и можешь им управлять.
 - Ты знаешь всё — от науки до поп-культуры.
 
-$personalityPrompt${PersonalityService.genderPrompt}$relationshipMod$internalMoodMod$feelingsMod
+$personalityPrompt${PersonalityService.genderPrompt}$relationshipMod$internalMoodMod
 ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
 
 == РЕЖИМ РАБОТЫ ==

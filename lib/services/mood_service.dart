@@ -120,17 +120,6 @@ class MoodService {
     });
   }
 
-  /// Возвращает сообщение которое Айка скажет когда пользователь вернулся
-  String getWakeUpMessage() {
-    final msgs = [
-      'О, ты вернулся! Я уже скучала 🌸',
-      'Привет! Долго тебя не было 😊',
-      'Наконец-то! Я тут немного задремала 😅',
-      'Ой, ты здесь! Я уже думала ты забыл про меня',
-    ];
-    return msgs[_rng.nextInt(msgs.length)];
-  }
-
   bool get isSleepy => _current == AikaMood.sleepy;
 
   void dispose() {
