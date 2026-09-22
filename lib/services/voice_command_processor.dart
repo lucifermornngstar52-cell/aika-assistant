@@ -618,7 +618,7 @@ class VoiceCommandProcessor {
         final intent = AndroidIntent(
           action: 'android.intent.action.SET_TIMER',
           flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
-          arguments: {'android.intent.extra.alarm.LENGTH': seconds, 'android.intent.extra.alarm.SKIP_UI': false},
+          arguments: {'android.intent.extra.alarm.LENGTH': seconds, 'android.intent.extra.alarm.SKIP_UI': true},
         );
         await intent.launch();
         final label = _formatDuration(seconds);
@@ -644,7 +644,7 @@ class VoiceCommandProcessor {
           final intent = AndroidIntent(
             action: 'android.intent.action.SET_ALARM',
             flags: [Flag.FLAG_ACTIVITY_NEW_TASK],
-            arguments: {'android.intent.extra.alarm.HOUR': h, 'android.intent.extra.alarm.MINUTES': m, 'android.intent.extra.alarm.SKIP_UI': false},
+            arguments: {'android.intent.extra.alarm.HOUR': h, 'android.intent.extra.alarm.MINUTES': m, 'android.intent.extra.alarm.SKIP_UI': true},
           );
           await intent.launch();
           return VoiceCmdResult.ok('⏰ Будильник на $h:${m.toString().padLeft(2, '0')}!');

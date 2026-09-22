@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live2d_widget.dart';
 import '../services/overlay_service.dart';
@@ -31,9 +29,7 @@ class ModelPickerScreen extends StatefulWidget {
 
 class _ModelPickerScreenState extends State<ModelPickerScreen> {
   String _selectedId = 'natori';
-  String? _customModelPath;
   String _previewState = 'idle';
-  bool _loading = false;
   final _overlaySvc = OverlayService();
 
   final _states = ['idle', 'listening', 'thinking', 'greeting', 'dance'];
@@ -48,7 +44,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _selectedId = prefs.getString('live2d_model_id') ?? 'natori';
-      _customModelPath = prefs.getString('custom_model_path');
     });
   }
 
@@ -56,56 +51,15 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('overlay_mode', 'live2d');
     await prefs.setString('live2d_model_id', _selectedId);
-    if (_customModelPath != null && _selectedId == 'custom') {
-      await prefs.setString('custom_model_path', _customModelPath!);
-    }
-  }
-
-  Future<void> _pickCustomModel() async {
-    setState(() => _loading = true);
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        dialogTitle: 'Выбери .model3.json файл',
-      );
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
-        if (path.endsWith('model3.json') || path.endsWith('model.json')) {
-          setState(() { _customModelPath = path; _selectedId = 'custom'; });
-          await _save();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text("Модель загружена: ${path.split("/").last}"),
-              backgroundColor: Colors.green.withOpacity(0.8),
-              behavior: SnackBarBehavior.floating,
-            ));
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Нужен файл .model3.json'),
-              backgroundColor: Colors.red,
-            ));
-          }
-        }
-      }
-    } catch (e) { debugPrint("FilePicker error: $e"); }
-    setState(() => _loading = false);
   }
 
   Future<void> _applyAndClose() async {
     await _save();
-    String path;
-    if (_selectedId == 'custom' && _customModelPath != null) {
-      path = _customModelPath!;
-    } else {
-      final model = _builtinLive2D.firstWhere(
-        (m) => m.id == _selectedId,
-        orElse: () => _builtinLive2D.first,
-      );
-      path = model.assetPath;
-    }
+    final model = _builtinLive2D.firstWhere(
+      (m) => m.id == _selectedId,
+      orElse: () => _builtinLive2D.first,
+    );
+    final path = model.assetPath;
     await _overlaySvc.switchModel(path);
     if (mounted) Navigator.pop(context);
   }
@@ -176,17 +130,15 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
   }
 
   Widget _buildPreview() {
-    final path = _selectedId == 'custom' && _customModelPath != null
-        ? _customModelPath! : (_builtinLive2D.firstWhere(
-            (m) => m.id == _selectedId,
-            orElse: () => _builtinLive2D.first,
-          )).assetPath;
+    final path = _builtinLive2D.firstWhere(
+      (m) => m.id == _selectedId,
+      orElse: () => _builtinLive2D.first,
+    ).assetPath;
     return Live2DWidget(
       width: double.infinity,
       height: 260,
       state: _previewState,
-      builtinModelAsset: _selectedId == 'custom' ? null : path,
-      customModelPath: _selectedId == 'custom' ? path : null,
+      builtinModelAsset: path,
     );
   }
 
@@ -202,19 +154,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
         id: m.id, name: m.name, emoji: m.emoji, desc: 'Live2D • встроенная',
         onTap: () async { setState(() => _selectedId = m.id); await _save(); },
       )),
-      const SizedBox(height: 8),
-      Divider(color: Colors.white12),
-      const SizedBox(height: 8),
-      _buildAddCard('Добавить .model3.json', Icons.face, _pickCustomModel),
-      if (_customModelPath != null) ...[
-        const SizedBox(height: 8),
-        _buildModelCard(
-          id: 'custom',
-          name: _customModelPath!.split('/').last.replaceAll('.model3.json', ''),
-          emoji: '📦', desc: 'Live2D • пользовательская',
-          onTap: () async { setState(() => _selectedId = 'custom'); await _save(); },
-        ),
-      ],
       const SizedBox(height: 80),
     ];
   }
@@ -267,41 +206,6 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
     );
   }
 
-  Widget _buildAddCard(String label, IconData icon, VoidCallback onTap) {
-    if (_loading) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AikaTheme.surface.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white12),
-        ),
-        child: const Center(child: SizedBox(
-          width: 20, height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
-        )),
-      );
-    }
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white12, width: 1),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white54, size: 20),
-            const SizedBox(width: 12),
-            Text(label, style: TextStyle(color: Colors.white54, fontSize: 14)),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showHelpDialog() {
     showDialog(
       context: context,
@@ -310,7 +214,7 @@ class _ModelPickerScreenState extends State<ModelPickerScreen> {
         title: Text('Справка', style: TextStyle(color: AikaTheme.accent)),
         content: const Text(
           'Live2D — 2D аниме-модели с мимикой и физикой.\n\n'
-          'Можно загружать свои модели (.model3.json).',
+          'Доступны только встроенные модели, для которых полностью настроен просмотр.',
           style: TextStyle(color: Colors.white70, fontSize: 13),
         ),
         actions: [

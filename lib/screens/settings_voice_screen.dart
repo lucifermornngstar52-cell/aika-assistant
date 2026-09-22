@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/edge_tts_service.dart';
-import '../services/elevenlabs_tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 
@@ -17,14 +16,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   List<Map<String, String>> _voices = [];
   String? _selectedVoice;
   bool _loading = true;
-  String _ttsEngine = 'edge'; // 'edge' | 'elevenlabs' | 'system'
-  String? _elevenLabsVoice;
+  String _ttsEngine = 'edge'; // 'edge' | 'system'
   String? _edgeVoiceId;
-  String _dialogMode = 'off'; // off | live | realtime
-  /// Живые голоса из библиотеки ElevenLabs аккаунта (API /v1/voices)
-  List<Map<String, dynamic>> _elLiveVoices = [];
-  bool _elVoicesLoading = false;
-  final _openaiKeyCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -34,15 +27,9 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    _ttsEngine = prefs.getString('tts_engine') ?? 'edge';
-    _elevenLabsVoice = prefs.getString('elevenlabs_voice');
+    final savedEngine = prefs.getString('tts_engine') ?? 'edge';
+    _ttsEngine = savedEngine == 'system' ? 'system' : 'edge';
     _edgeVoiceId = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
-    _dialogMode = prefs.getString('voice_dialog_mode') ??
-        ((prefs.getBool('live_dialog_mode') ?? false) ? 'live' : 'off');
-    _openaiKeyCtrl.text = prefs.getString('openai_key') ?? '';
-    if (_ttsEngine == 'elevenlabs') {
-      await _loadElevenVoices();
-    }
     final rawVoices = await _tts.getVoices;
     final voices = <Map<String, String>>[];
     if (rawVoices is List) {
@@ -66,22 +53,6 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     });
   }
 
-  /// Тянет голоса прямо из библиотеки ElevenLabs аккаунта —
-  /// если юзер добавлял/менял голоса на сайте, приложение увидит их сразу.
-  Future<void> _loadElevenVoices() async {
-    if (_elVoicesLoading) return;
-    setState(() => _elVoicesLoading = true);
-    try {
-      final svc = ElevenLabsTtsService();
-      await svc.initialize();
-      final live = await svc.fetchVoices();
-      if (live.isNotEmpty) {
-        // русские/английские ярлыки не нужны — берём имя и категорию как есть
-        setState(() => _elLiveVoices = live);
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _elVoicesLoading = false);
-  }
 
   /// UI-слайдер 0.25..1.5 (норма=0.5) → проценты EdgeTTS SSML (-50%..+150%, норма=0%)
   double _toEdgeRate(double r) => (((r - 0.5) / 0.5) * 100).clamp(-50.0, 150.0);
@@ -103,8 +74,6 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           await _tts.setVoice({'name': _selectedVoice!, 'locale': 'ru-RU'});
         }
         await _tts.speak(sample);
-      } else if (_ttsEngine == 'elevenlabs') {
-        await ElevenLabsTtsService().speak(sample);
       } else {
         await EdgeTtsService().previewSpeak(
           sample,
@@ -123,13 +92,6 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('tts_engine', _ttsEngine);
-    await prefs.setString('voice_dialog_mode', _dialogMode);
-    await prefs.setString('openai_key', _openaiKeyCtrl.text.trim());
-    if (_elevenLabsVoice != null) {
-      await prefs.setString('elevenlabs_voice', _elevenLabsVoice!);
-      // ФИКС: применяем голос сразу в работающий сервис — без перезапуска
-      ElevenLabsTtsService().setVoice(_elevenLabsVoice!);
-    }
     await prefs.setDouble('tts_rate', _rate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
@@ -187,30 +149,10 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           _label('ДВИЖОК TTS'),
           _card(Column(children: [
             _engineTile('EdgeTTS (бесплатно)', 'edge', '⚡', 'Microsoft Neural, мгновенный стриминг'),
-            _engineTile('ElevenLabs (премиум)', 'elevenlabs', '🎭', 'Лучшее качество, естественные голоса'),
             _engineTile('Системный TTS', 'system', '📱', 'Встроенный Android TTS, офлайн'),
           ])),
           const SizedBox(height: 20),
 
-          if (_ttsEngine == 'elevenlabs') ...[
-            _label(_elLiveVoices.isNotEmpty
-                ? 'ГОЛОСА ELEVENLABS — ИЗ ТВОЕЙ БИБЛИОТЕКИ'
-                : 'ГОЛОСА ELEVENLABS'),
-            if (_elVoicesLoading)
-              Padding(padding: const EdgeInsets.only(bottom: 8),
-                child: Text('Загружаю голоса из библиотеки...',
-                    style: TextStyle(color: Colors.white54, fontSize: 12))),
-            if (_elLiveVoices.isEmpty && !_elVoicesLoading)
-              ...ElevenLabsTtsService.voices.map((v) => _elVoiceTile(
-                  v['id']!, v['label']!)),
-            if (_elLiveVoices.isNotEmpty)
-              ..._elLiveVoices.map((v) => _elVoiceTile(
-                  v['id'] as String,
-                  (v['name'] as String? ?? 'Голос') +
-                      ((v['category'] as String?)?.isNotEmpty == true
-                          ? ' (${v['category']})' : ''))),
-            const SizedBox(height: 20),
-          ],
 
           _label('ПАРАМЕТРЫ ГОЛОСА'),
           _card(Column(children: [
@@ -236,47 +178,17 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          _label('РЕЖИМ РАЗГОВОРА (ПОСЛЕ WAKE WORD)'),
-          _card(Column(children: [
-            _dialogTile('off', 'Один вопрос-ответ',
-                'Классика: сказал wake word → один вопрос → один ответ.'),
-            _dialogTile('live', 'Живой диалог (STT + TTS)',
-                'Свободная беседа на твоих движках. Можно перебивать Айку, '
-                'сессия закрывается по тишине или слову «пока». Без ключей OpenAI.'),
-            _dialogTile('realtime', '⚡ Realtime — OpenAI (мгновенный)',
-                'Непрерывный аудиоканал с OpenAI: отвечает с задержкой '
-                'в доли секунды, слышит тебя поверх своей речи. '
-                'Нужен ключ OpenAI ниже.'),
-            if (_dialogMode == 'realtime') ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _openaiKeyCtrl,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'sk-... (ключ OpenAI)',
-                  hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
-                  filled: true,
-                  fillColor: const Color(0xFF1C1C1E),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Оплата по минутам разговора. Ключ хранится только на телефоне.',
-                style: TextStyle(color: Colors.white24, fontSize: 10),
-              ),
-            ],
-          ])),
           if (_ttsEngine == 'edge') ...[
             const SizedBox(height: 20),
             _label('НЕЙРОННЫЙ ГОЛОС (EdgeTTS)'),
             ...EdgeTtsService.voices.map((v) => GestureDetector(
-              onTap: () => setState(() => _edgeVoiceId = v['id']),
+              onTap: () async {
+                final id = v['id']!;
+                setState(() => _edgeVoiceId = id);
+                EdgeTtsService().setVoice(id);
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('edge_voice', id);
+              },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -290,7 +202,10 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
                   ),
                 ),
                 child: Row(children: [
-                  Expanded(child: Text(v['label']!, style: const TextStyle(color: Colors.white, fontSize: 13))),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(v['label']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(v['description'] ?? 'Бесплатный нейронный голос', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                  ])),
                   if (_edgeVoiceId == v['id'])
                     Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
                 ]),
@@ -300,7 +215,14 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
             const SizedBox(height: 20),
             _label('СИСТЕМНЫЙ ГОЛОС'),
             ..._voices.map((v) => GestureDetector(
-              onTap: () => setState(() => _selectedVoice = v['name']),
+              onTap: () async {
+                final name = v['name'];
+                if (name == null) return;
+                setState(() => _selectedVoice = name);
+                await _tts.setVoice({'name': name, 'locale': v['locale'] ?? 'ru-RU'});
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('tts_voice', name);
+              },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -329,65 +251,13 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     );
   }
 
-  Widget _dialogTile(String mode, String title, String subtitle) =>
-      GestureDetector(
-        onTap: () async {
-          setState(() => _dialogMode = mode);
-          final p = await SharedPreferences.getInstance();
-          await p.setString('voice_dialog_mode', mode);
-        },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: _dialogMode == mode
-                ? AikaTheme.neonBlue.withOpacity(0.15)
-                : const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _dialogMode == mode ? AikaTheme.neonBlue : Colors.transparent,
-            ),
-          ),
-          child: Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            ])),
-            if (_dialogMode == mode)
-              Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-          ]),
-        ),
-      );
-
-  Widget _elVoiceTile(String id, String label) => GestureDetector(
-    onTap: () => setState(() => _elevenLabsVoice = id),
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: _elevenLabsVoice == id
-            ? AikaTheme.neonBlue.withOpacity(0.15)
-            : const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _elevenLabsVoice == id ? AikaTheme.neonBlue : Colors.transparent,
-        ),
-      ),
-      child: Row(children: [
-        Expanded(child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 13))),
-        if (_elevenLabsVoice == id)
-          Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-      ]),
-    ),
-  );
-
   Widget _engineTile(String title, String engine, String emoji, String subtitle) =>
       GestureDetector(
-        onTap: () {
+        onTap: () async {
           setState(() => _ttsEngine = engine);
-          if (engine == 'elevenlabs' && _elLiveVoices.isEmpty) {
-            _loadElevenVoices();
-          }
+          EdgeTtsService().setTtsEngine(engine);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('tts_engine', engine);
         },
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),

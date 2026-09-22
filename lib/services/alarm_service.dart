@@ -153,11 +153,12 @@ class AlarmService {
     if (!fire.isAfter(now)) fire = fire.add(const Duration(days: 1));
 
     try {
-      await _channel.invokeMethod('scheduleAlarm', {
+      final scheduled = await _channel.invokeMethod<bool>('scheduleAlarm', {
         'id': alarm.id,
         'triggerMillis': fire.millisecondsSinceEpoch,
         'label': alarm.label,
-      });
+      }) ?? false;
+      if (!scheduled) _startFallbackTicker();
     } catch (e) {
       // Native channel not available — fallback to periodic check timer
       _startFallbackTicker();

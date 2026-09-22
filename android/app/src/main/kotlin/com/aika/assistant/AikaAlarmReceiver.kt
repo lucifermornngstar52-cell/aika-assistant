@@ -59,21 +59,30 @@ class AikaAlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        fun schedule(context: Context, alarmId: String, triggerMillis: Long, label: String) {
-            val intent = Intent(context, AikaAlarmReceiver::class.java).apply {
-                action = "com.aika.ALARM_FIRED"
-                putExtra("alarm_id", alarmId)
-                putExtra("alarm_label", label)
-            }
-            val pi = PendingIntent.getBroadcast(
-                context, alarmId.hashCode(), intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
-            } else {
-                am.setExact(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
+        fun schedule(context: Context, alarmId: String, triggerMillis: Long, label: String): Boolean {
+            return try {
+                val intent = Intent(context, AikaAlarmReceiver::class.java).apply {
+                    action = "com.aika.ALARM_FIRED"
+                    putExtra("alarm_id", alarmId)
+                    putExtra("alarm_label", label)
+                }
+                val pi = PendingIntent.getBroadcast(
+                    context, alarmId.hashCode(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
+                } else {
+                    am.setExact(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
+                }
+                true
+            } catch (_: SecurityException) {
+                false
+            } catch (_: Exception) {
+                false
             }
         }
 

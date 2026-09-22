@@ -14,14 +14,22 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   // ФИКС: контроллеры не освобождались — утечка памяти при каждом открытии
   @override
   void dispose() {
+    _geminiCtrl.dispose();
     _groqCtrl.dispose();
+    _claudeCtrl.dispose();
+    _deepseekCtrl.dispose();
+    _perplexCtrl.dispose();
     _braveCtrl.dispose();
     _localUrlCtrl.dispose();
     _localModelCtrl.dispose();
     super.dispose();
   }
 
+  final _geminiCtrl   = TextEditingController();
   final _groqCtrl     = TextEditingController();
+  final _claudeCtrl   = TextEditingController();
+  final _deepseekCtrl = TextEditingController();
+  final _perplexCtrl  = TextEditingController();
   final _braveCtrl    = TextEditingController();
   final _localUrlCtrl = TextEditingController();
   final _localModelCtrl = TextEditingController();
@@ -51,7 +59,11 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
+      _geminiCtrl.text   = prefs.getString('gemini_key')   ?? '';
       _groqCtrl.text     = prefs.getString('groq_key')      ?? '';
+      _claudeCtrl.text   = prefs.getString('claude_key')    ?? '';
+      _deepseekCtrl.text = prefs.getString('deepseek_key')  ?? '';
+      _perplexCtrl.text  = prefs.getString('perplexity_key') ?? '';
       _braveCtrl.text    = prefs.getString('brave_key')     ?? '';
       _localUrlCtrl.text   = prefs.getString('local_url')   ?? 'http://192.168.0.100:11434/v1/chat/completions';
       _localModelCtrl.text = prefs.getString('local_model') ?? 'llama3.2:1b';
@@ -66,7 +78,11 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   void _applyKeys() {
+    AiService.setGeminiKey(_geminiCtrl.text.trim());
     AiService.setGroqKey(_groqCtrl.text.trim());
+    AiService.setClaudeKey(_claudeCtrl.text.trim());
+    AiService.setDeepseekKey(_deepseekCtrl.text.trim());
+    AiService.setPerplexityKey(_perplexCtrl.text.trim());
     AiService.setLocalUrl(_localUrlCtrl.text.trim());
     AiService.setLocalModel(_localModelCtrl.text.trim());
     AiService.setPreferredModel(_selectedModel);
@@ -76,7 +92,11 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('gemini_key',   _geminiCtrl.text.trim());
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
+    await prefs.setString('claude_key',    _claudeCtrl.text.trim());
+    await prefs.setString('deepseek_key',  _deepseekCtrl.text.trim());
+    await prefs.setString('perplexity_key', _perplexCtrl.text.trim());
     await prefs.setString('brave_key',     _braveCtrl.text.trim());
     await prefs.setString('local_url',   _localUrlCtrl.text.trim());
     await prefs.setString('local_model', _localModelCtrl.text.trim());
@@ -233,7 +253,16 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               '💡 Ollama на твоём компьютере. На ноуте: ollama serve\nIP ноута в той же Wi-Fi сети, порт 11434\nПолное «своё» — без ключей и чужих облаков'),
           _keyCard('🏠 Имя модели на сервере', _localModelCtrl, 'llama3.2:1b',
               '💡 Скачай на ноуте: ollama pull llama3.2:1b\nДля слабого ноута также: qwen2.5:0.5b, smollm2:360m'),
-          _keyCard('Groq (gpt-oss-120b)', _groqCtrl, 'gsk_...', '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com'),
+          _keyCard('Gemini', _geminiCtrl, 'AIza...',
+              '🟢 Бесплатный тариф Google AI Studio', modelId: 'gemini_flash'),
+          _keyCard('Groq (gpt-oss-120b)', _groqCtrl, 'gsk_...',
+              '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com', modelId: 'groq'),
+          _keyCard('Claude', _claudeCtrl, 'sk-ant-...',
+              'Anthropic API', modelId: 'claude'),
+          _keyCard('DeepSeek', _deepseekCtrl, 'sk-...',
+              'DeepSeek API', modelId: 'deepseek'),
+          _keyCard('Perplexity', _perplexCtrl, 'pplx-...',
+              'AI с веб-поиском', modelId: 'perplexity'),
           _keyCard('Brave Search', _braveCtrl, 'BSA...', '🟢 бесплатно: 2000 запросов/месяц\napi.search.brave.com'),
 
           const SizedBox(height: 24),
@@ -281,7 +310,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     ),
   );
 
-  Widget _keyCard(String label, TextEditingController ctrl, String hint, String info) {
+  Widget _keyCard(String label, TextEditingController ctrl, String hint, String info, {String? modelId}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -317,10 +346,10 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               ),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste, color: Colors.white24, size: 16),
-                onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) ctrl.text = data!.text!; setState(() {}); }
+                onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) { ctrl.text = data!.text!; if (modelId != null && ctrl.text.trim().isNotEmpty) _selectedModel = modelId; } setState(() {}); }
               ),
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: (value) => setState(() { if (modelId != null && value.trim().isNotEmpty) _selectedModel = modelId; }),
           ),
           if (ctrl.text.isNotEmpty)
             Padding(

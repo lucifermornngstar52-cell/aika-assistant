@@ -1051,8 +1051,7 @@ override fun onResume() {
                             val id = call.argument<String>("id") ?: ""
                             val triggerMillis = call.argument<Long>("triggerMillis") ?: 0L
                             val label = call.argument<String>("label") ?: ""
-                            AikaAlarmReceiver.schedule(this, id, triggerMillis, label)
-                            result.success(true)
+                            result.success(AikaAlarmReceiver.schedule(this, id, triggerMillis, label))
                         } catch (e: Exception) { result.success(false) }
                     }
                     "cancelAlarm" -> {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/personality_service.dart';
+import '../services/edge_tts_service.dart';
 import '../theme/app_theme.dart';
 
 class PersonalityScreen extends StatefulWidget {
@@ -178,6 +179,13 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
 
         // Обновляем wake-word с учётом персонажа
         final prefs = await SharedPreferences.getInstance();
+        final characterVoice = PersonalityService.gender == 'male'
+            ? 'ru-RU-DmitryNeural'
+            : 'ru-RU-DariyaNeural';
+        await prefs.setString('tts_engine', 'edge');
+        await prefs.setString('edge_voice', characterVoice);
+        EdgeTtsService().setTtsEngine('edge');
+        EdgeTtsService().setVoice(characterVoice);
 
         // Ставим авто-имя если текущее имя — дефолтное
         final currentName = prefs.getString('assistant_name') ?? '';

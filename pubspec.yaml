@@ -57,7 +57,6 @@ dependencies:
 
   # Realtime voice (OpenAI Realtime API): WebSocket к realtime-эндпоинту.
   # Захват микрофона и воспроизведение PCM — нативные AudioRecord/AudioTrack.
-  web_socket_channel: ^3.0.1
 
   # Notifications & Reminders
   flutter_local_notifications: ^18.0.0
