@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Сервис умных кликов через Groq Vision (бесплатный).
 /// Получает скриншот → отправляет в Groq → получает координаты/действие → выполняет.
@@ -8,16 +9,30 @@ import 'package:http/http.dart' as http;
 /// ФИКС: раньше висел на Gemini (платные «мозги») — юзер просил чисто Groq.
 class GroqComputerUseService {
   static const _screenReaderChannel = MethodChannel('com.aika.assistant/screen_reader');
-  static const String _groqKey = String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
+  static const String _envKey = String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
 
-  // Мультимодальная модель Groq — та же, что в AiService для фоток
-  static const String _model = 'qwen/qwen3.6-27b';
+  /// Ключ: сначала из настроек (если юзер вводил), иначе зашитый в сборку.
+  static Future<String> _groqKey() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('groq_key') ?? '';
+      if (saved.isNotEmpty) return saved;
+    } catch (_) {}
+    return _envKey;
+  }
+
+  // Мультимодальные модели Groq — основная + резервные (авто-фолбэк)
+  static const List<String> _models = [
+    'qwen/qwen3.6-27b',
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+  ];
   static const String _url = 'https://api.groq.com/openai/v1/chat/completions';
 
   /// Основной метод: получи скриншот и выполни задачу
   /// Возвращает текстовый результат что было сделано
   static Future<String> executeTask(String task) async {
-    if (_groqKey.isEmpty) return 'Нет Groq API ключа';
+    if ((await _groqKey()).isEmpty) return 'Нет Groq API ключа';
 
     // Шаг 1 — делаем скриншот
     final b64 = await _captureScreen();
@@ -33,13 +48,13 @@ class GroqComputerUseService {
 
   /// Анализ скриншота — найти координаты элемента без нажатия
   static Future<ScreenElement?> findElement(String description, String screenshotB64) async {
-    if (_groqKey.isEmpty) return null;
+    if ((await _groqKey()).isEmpty) return null;
     return await _askGroqForCoordinates(description, screenshotB64);
   }
 
   /// Просто анализируй экран и опиши что видишь
   static Future<String> describeScreen() async {
-    if (_groqKey.isEmpty) return 'Нет Groq API ключа';
+    if ((await _groqKey()).isEmpty) return 'Нет Groq API ключа';
     final b64 = await _captureScreen();
     if (b64 == null) return 'Не удалось сделать скриншот';
     return await _askGroqDescribe(b64);
@@ -55,39 +70,46 @@ class GroqComputerUseService {
     }
   }
 
-  static Map<String, String> get _headers => {
+  static Future<Map<String, String>> _headers() async => {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer $_groqKey',
+        'Authorization': 'Bearer ${await _groqKey()}',
       };
 
   static Future<String?> _chat(String prompt, String imageB64,
       {int maxTokens = 256, int timeoutSec = 20}) async {
-    final body = {
-      'model': _model,
-      'messages': [
-        {
-          'role': 'user',
-          'content': [
-            {'type': 'image_url',
-             'image_url': {'url': 'data:image/jpeg;base64,$imageB64'}},
-            {'type': 'text', 'text': prompt},
-          ],
-        }
-      ],
-      'temperature': 0.1,
-      'max_tokens': maxTokens,
-    };
+    for (final model in _models) {
+      final body = {
+        'model': model,
+        'messages': [
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'image_url',
+               'image_url': {'url': 'data:image/jpeg;base64,$imageB64'}},
+              {'type': 'text', 'text': prompt},
+            ],
+          }
+        ],
+        'temperature': 0.1,
+        'max_tokens': maxTokens,
+      };
 
-    final resp = await http.post(
-      Uri.parse(_url),
-      headers: _headers,
-      body: jsonEncode(body),
-    ).timeout(Duration(seconds: timeoutSec));
+      try {
+        final resp = await http.post(
+          Uri.parse(_url),
+          headers: await _headers(),
+          body: jsonEncode(body),
+        ).timeout(Duration(seconds: timeoutSec));
 
-    if (resp.statusCode != 200) return null;
-    final data = jsonDecode(utf8.decode(resp.bodyBytes));
-    // OpenAI-совместимый формат: choices[0].message.content
-    return data['choices']?[0]?['message']?['content'] as String?;
+        if (resp.statusCode != 200) continue; // модель недоступна — следующая
+        final data = jsonDecode(utf8.decode(resp.bodyBytes));
+        // OpenAI-совместимый формат: choices[0].message.content
+        return data['choices']?[0]?['message']?['content'] as String?;
+      } catch (_) {
+        continue; // таймаут/сеть — пробуем следующую модель
+      }
+    }
+    return null;
   }
 
   static Map<String, dynamic>? _parseJson(String raw) {

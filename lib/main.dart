@@ -36,8 +36,15 @@ void main() async {
     await WardrobeService.load();
 
     final prefs = await SharedPreferences.getInstance();
-  AiService.setGeminiKey(prefs.getString('gemini_key') ?? '');
-  AiService.setGroqKey(prefs.getString('groq_key') ?? '');
+  // ФИКС (баг «Все AI-сервисы недоступны»): пустые prefs затирали ключи,
+  // зашитые в сборку через dart-define. Теперь ключ из настроек важен
+  // только если он реально введён, иначе остаётся ключ из сборки.
+  final geminiSaved = prefs.getString('gemini_key') ?? '';
+  AiService.setGeminiKey(geminiSaved.isNotEmpty ? geminiSaved
+      : const String.fromEnvironment('GEMINI_API_KEY', defaultValue: ''));
+  final groqSaved = prefs.getString('groq_key') ?? '';
+  AiService.setGroqKey(groqSaved.isNotEmpty ? groqSaved
+      : const String.fromEnvironment('GROQ_API_KEY', defaultValue: ''));
   AiService.setClaudeKey(prefs.getString('claude_key') ?? '');
   AiService.setDeepseekKey(prefs.getString('deepseek_key') ?? '');
   AiService.setPerplexityKey(prefs.getString('perplexity_key') ?? '');

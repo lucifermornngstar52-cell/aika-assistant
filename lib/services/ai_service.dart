@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'personality_service.dart';
 import 'habit_memory_service.dart';
 import 'assistant_mood_service.dart';
@@ -689,28 +690,57 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
       messages.add({'role': 'user', 'content': message});
     }
 
-    final body = {
-      'model': imageBase64.isNotEmpty ? 'qwen/qwen3.6-27b' : 'openai/gpt-oss-120b',
-      'messages': messages,
-      'temperature': 0.85,
-      'max_tokens': _maxTokens,
-    };
+    // Vision-модели Groq: основная + резервные (если основной нет на ключе —
+    // автоматически пробуем следующую, юзер ошибки не увидит)
+    const visionModels = [
+      'qwen/qwen3.6-27b',
+      'meta-llama/llama-4-scout-17b-16e-instruct',
+      'meta-llama/llama-4-maverick-17b-128e-instruct',
+    ];
+    final models = imageBase64.isNotEmpty
+        ? visionModels
+        : ['openai/gpt-oss-120b'];
 
-    final response = await http.post(
-      Uri.parse(_groqUrl),
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer $_groqKey',
-      },
-      body: jsonEncode(body),
-    ).timeout(const Duration(seconds: 30));
+    Object? lastErr;
+    for (final model in models) {
+      final body = {
+        'model': model,
+        'messages': messages,
+        'temperature': 0.85,
+        'max_tokens': _maxTokens,
+      };
 
-    if (response.statusCode != 200) {
-      throw Exception('Groq ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
+      try {
+        final response = await http.post(
+          Uri.parse(_groqUrl),
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Authorization': 'Bearer $_groqKey',
+          },
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 30));
+
+        if (response.statusCode != 200) {
+          final err = Exception('Groq ${response.statusCode}: ${utf8.decode(response.bodyBytes)}');
+          // 404/400 — модель недоступна: пробуем следующую vision-модель
+          if (imageBase64.isNotEmpty &&
+              (response.statusCode == 404 || response.statusCode == 400) &&
+              model != models.last) {
+            lastErr = err;
+            continue;
+          }
+          throw err;
+        }
+
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return _extractContent(data);
+      } on TimeoutException {
+        lastErr = Exception('Groq: таймаут ответа');
+        if (model != models.last) continue;
+        rethrow;
+      }
     }
-
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return _extractContent(data);
+    throw lastErr ?? Exception('Groq: пустой ответ');
   }
 
   // ══════════════════════════════════════════════════════════════════
