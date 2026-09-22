@@ -467,7 +467,8 @@ ${habitContext.isNotEmpty ? habitContext + '\n\n' : ''}$memPart$webPart
 [ACTION:open_sber] [ACTION:open_tinkoff] [ACTION:open_avito] [ACTION:open_ozon]
 [ACTION:open_wildberries] [ACTION:open_ok] [ACTION:open_gosuslugi]
 [ACTION:open_yandex_music] [ACTION:open_yandex_browser] [ACTION:open_signal]
-Любое другое: [ACTION:launch_app_PACKAGE_NAME]
+Любое другое приложение: [ACTION:launch_app_НАЗВАНИЕ] — например [ACTION:launch_app_kaspi] или [ACTION:launch_app_steam].
+ВАЖНО: если не уверена в названии приложения — НЕ выдумывай его и не подставляй случайный package. Просто ответь текстом, что приложение не нашла на телефоне.
 
 🎵 МУЗЫКА:
 [ACTION:spotify_play] [ACTION:music_next] [ACTION:music_prev] [ACTION:music_pause] [ACTION:music_play]

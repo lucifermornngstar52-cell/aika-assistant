@@ -126,8 +126,16 @@ class DeviceService {
   Future<String?> executeAction(String action) async {
     // ── Запуск по package name ────────────────────────────────────────
     if (action.startsWith('launch_app_')) {
-      final pkg = action.substring('launch_app_'.length);
-      return await _launchPackage(pkg);
+      final raw = action.substring('launch_app_'.length);
+      // LLM может прислать как настоящий package (com.x.y), так и просто
+      // название (kaspi). Сначала пробуем как package, потом ищем по label.
+      final viaPkg = await _launchPackage(raw, quiet: true);
+      if (viaPkg == null) {
+        final smart = await AppLauncherService.smartLaunch(raw.replaceAll('_', ' '));
+        if (smart != null) return smart;
+        return 'Не нашла приложение «$raw» на телефоне 🤷';
+      }
+      return viaPkg;
     }
 
     // ── Запуск по названию (open_NAME) ────────────────────────────────
@@ -158,9 +166,14 @@ class DeviceService {
       }
       // Ищем в таблице известных приложений
       final pkg = knownApps[name] ?? knownApps[name.replaceAll('_', ' ')];
-      if (pkg != null) return await _launchPackage(pkg);
-      // Если не нашли — ищем по имени
-      return await _launchByName(name);
+      if (pkg != null) {
+        final res = await _launchPackage(pkg, quiet: true);
+        if (res != null) return res;
+      }
+      // Не нашли в таблице — умный поиск среди установленных по label
+      final smart = await AppLauncherService.smartLaunch(name.replaceAll('_', ' '));
+      if (smart != null) return smart;
+      return 'Не нашла приложение «$name» на телефоне 🤷';
     }
 
     // ── Музыка + Spotify ──────────────────────────────────────────────
@@ -435,36 +448,38 @@ class DeviceService {
   }
 
   // ─── Запуск приложения (ИСПРАВЛЕННЫЙ) ────────────────────────────────
-  Future<String> _launchPackage(String packageName) async {
+  /// Запуск приложения через нативный канал.
+  ///
+  /// ФИКС (баг «настройки вызовов»): раньше запускали через
+  /// AndroidIntent(action: MAIN, package: pkg) — БЕЗ категории LAUNCHER.
+  /// Android в этом случае открывает любую попавшуюся activity пакета
+  /// (у звонилки это как раз экран «Настройки вызовов»).
+  /// Теперь идём через нативный getLaunchIntentForPackage — он всегда
+  /// открывает главный экран приложения, а не внутренние activity.
+  ///
+  /// [quiet] = true → вернуть null вместо текста-ошибки (для вызывающих,
+  /// которые сами решают, что ответить пользователю).
+  Future<String?> _launchPackage(String packageName, {bool quiet = false}) async {
     try {
-      // ПРАВИЛЬНЫЙ способ — без componentName (он ломал запуск!)
-      final intent = AndroidIntent(
-        action: 'android.intent.action.MAIN',
-        package: packageName,
-        flags: [
-          Flag.FLAG_ACTIVITY_NEW_TASK,
-          Flag.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
-        ],
-      );
-      await intent.launch();
-      return 'Открываю';
-    } catch (_) {
-      // Fallback через URL scheme
-      try {
-        await _launchUrl('market://details?id=$packageName');
-        return 'Приложение не установлено, открываю Play Store';
-      } catch (_) {
-        return 'Не удалось открыть приложение ($packageName)';
-      }
-    }
+      final ok = await const MethodChannel('com.aika.assistant/launcher')
+          .invokeMethod<bool>('launchApp', {'package': packageName}) ?? false;
+      if (ok) return 'Открываю';
+    } catch (_) {}
+    // НИКАКОГО Play Store и «настройки вызовов» — просто честный отказ
+    return quiet ? null : 'Не нашла приложение — проверь, что оно установлено';
   }
 
-  /// Запуск по человеческому названию — ищем в таблице
+  /// Запуск по человеческому названию — ищем в таблице, потом по label
   Future<String> _launchByName(String name) async {
     final normalized = name.toLowerCase().trim();
     final pkg = knownApps[normalized];
-    if (pkg != null) return await _launchPackage(pkg);
-    return 'Не знаю такое приложение: "$name". Скажи: открой [название]';
+    if (pkg != null) {
+      final res = await _launchPackage(pkg, quiet: true);
+      if (res != null) return res;
+    }
+    final smart = await AppLauncherService.smartLaunch(normalized);
+    if (smart != null) return smart;
+    return 'Не нашла приложение «$name» на телефоне 🤷';
   }
 
   Future<void> _launchUrl(String url) async {

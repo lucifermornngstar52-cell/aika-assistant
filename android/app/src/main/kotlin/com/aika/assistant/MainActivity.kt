@@ -554,9 +554,14 @@ override fun onResume() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     screenEventSink = events
+                    // ФИКС: раньше sink просто лежал мёртвым — события смены
+                    // приложений никто не отправлял (заглушка «pull-only»).
+                    // Теперь AccessibilityService шлёт TYPE_WINDOW_STATE_CHANGED.
+                    AikaAccessibilityService.screenEventSink = events
                 }
                 override fun onCancel(arguments: Any?) {
                     screenEventSink = null
+                    AikaAccessibilityService.screenEventSink = null
                 }
             })
 
@@ -822,7 +827,8 @@ override fun onResume() {
                             val b64 = try { svc.captureScreenJpeg(maxWidth, quality) } catch (e: Exception) { null }
                             mainHandler.post {
                                 if (b64 != null) result.success(b64)
-                                else result.error("CAPTURE_FAILED", "Не удалось захватить экран", null)
+                                else result.error("CAPTURE_FAILED",
+                                    AikaAccessibilityService.lastCaptureError ?: "Не удалось захватить экран", null)
                             }
                         }.start()
                     }
@@ -895,9 +901,19 @@ override fun onResume() {
                     }
 
                     "captureScreenBase64" -> {
+                        // ФИКС: было (а) всегда null — стаб-заглушка в сервисе,
+                        // (б) вызов на main-потоке — latch.await(4с) вешал UI.
+                        // Теперь реальный захват и только с фонового потока.
                         val quality = call.argument<Int>("quality") ?: 60
-                        val b64 = svc.captureScreenBase64(quality)
-                        result.success(b64)
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                            AikaAccessibilityService.lastCaptureError = "нужен Android 11+"
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            val b64 = try { svc.captureScreenBase64(quality) } catch (e: Exception) { null }
+                            mainHandler.post { result.success(b64) }
+                        }.start()
                     }
 
                     "typeInSearch" -> {

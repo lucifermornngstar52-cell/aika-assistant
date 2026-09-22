@@ -41,7 +41,17 @@ class AikaAccessibilityService : AccessibilityService() {
         @Volatile var instance: AikaAccessibilityService? = null
         fun isRunning() = instance != null
         fun get() = instance
+
+        // Шина «смены приложения» для Flutter (ScreenWatcherService).
+        // MainActivity подписывает сюда EventChannel sink.
+        @Volatile var screenEventSink: io.flutter.plugin.common.EventChannel.EventSink? = null
+
+        // Диагностика последнего неудачного захвата экрана (для лога пилота)
+        @Volatile var lastCaptureError: String? = null
     }
+
+    // Дебаунс трекинга: шлём только когда пакет реально сменился
+    private var _lastSentPkg: String? = null
 
     // ─── Lifecycle ───────────────────────────────────────────────────
     override fun onServiceConnected() {
@@ -52,7 +62,27 @@ class AikaAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: android.content.Intent?): Boolean { instance = null; return super.onUnbind(intent) }
     override fun onDestroy() { instance = null; super.onDestroy() }
     override fun onInterrupt() {}
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* pull-only, нет авто-действий */ }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Трекинг смены приложений: TYPE_WINDOW_STATE_CHANGED → Flutter.
+        // Раньше здесь была пустышка («pull-only»), и ScreenWatcherService
+        // вечно ждал события, которое никто не отправлял.
+        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        // Свои окна, системную шторку и клавиатуры не считаем сменой приложения
+        if (pkg == "com.aika.assistant" || pkg == "com.android.systemui") return
+        // Пропускаем всё, у чего нет иконки запуска: клавиатуры, IME-панели,
+        // оверлеи — иначе трекер спамил бы «сменой приложения» на каждый ввод.
+        try {
+            if (packageManager.getLaunchIntentForPackage(pkg) == null) return
+        } catch (_: Exception) { return }
+        if (pkg == _lastSentPkg) return
+        _lastSentPkg = pkg
+        val label = try {
+            val pm = packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0))?.toString() ?: pkg
+        } catch (_: Exception) { pkg }
+        screenEventSink?.success(mapOf("package" to pkg, "label" to label))
+    }
 
     // ════════════════════════════════════════════════════════════════
     // ГЛОБАЛЬНАЯ НАВИГАЦИЯ
@@ -166,6 +196,12 @@ class AikaAccessibilityService : AccessibilityService() {
             }
 
             override fun onFailure(errorCode: Int) {
+                lastCaptureError = when (errorCode) {
+                    AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR -> "внутренняя ошибка ($errorCode)"
+                    AccessibilityService.ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY -> "неверный дисплей ($errorCode)"
+                    AccessibilityService.ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS -> "нет доступа Accessibility ($errorCode) — переустанови сервис после обновления APK"
+                    else -> "код $errorCode"
+                }
                 latch.countDown()
             }
         }
@@ -564,9 +600,20 @@ class AikaAccessibilityService : AccessibilityService() {
     }
 
     fun captureScreenBase64(quality: Int = 60): String? {
-        if (Build.VERSION.SDK_INT < 28) return null
-        takeScreenshot()
-        return null // реальный скриншот требует MediaProjection
+        // БЫЛО: возвращали null с комментарием «требует MediaProjection» —
+        // describe_screen и zone watcher из-за этого никогда не работали.
+        // Реальный захват есть через Accessibility takeScreenshot (API 30+).
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            lastCaptureError = "нужен Android 11+ (сейчас SDK ${Build.VERSION.SDK_INT})"
+            return null
+        }
+        // Один ретрай: на некоторых прошивках первый захват после разблокировки падает
+        var out = captureScreenJpeg(1080, quality)
+        if (out == null) {
+            Thread.sleep(400)
+            out = captureScreenJpeg(1080, quality)
+        }
+        return out
     }
     // ════════════════════════════════════════════════════════════════
     // МЕТОДЫ ОБРАТНОЙ СОВМЕСТИМОСТИ (используются в MainActivity)

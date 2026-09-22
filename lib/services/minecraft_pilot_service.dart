@@ -418,7 +418,13 @@ class MinecraftPilotService {
         'quality': 55,
       });
       return b64 as String?;
-    } catch (_) {
+    } on PlatformException catch (e) {
+      // ФИКС: раньше молча возвращали null — непонятно, почему сломано.
+      // Теперь в логе видно точную причину (Accessibility, версия, код ошибки).
+      _addLog('📷 Захват не удался: ${e.message ?? e.code}');
+      return null;
+    } catch (e) {
+      _addLog('📷 Захват не удался: $e');
       return null;
     }
   }
@@ -429,7 +435,9 @@ class MinecraftPilotService {
     try {
       final size = await _getScreenSize();
       if (size == null) {
-        return 'AccessibilityService не запущен — включи его в настройках';
+        return 'AccessibilityService не запущен — включи его в настройках. '
+            'Важно: после каждого обновления APK Android молча выключает '
+            'accessibility-сервис — переподключи его заново';
       }
       return null;
     } on PlatformException catch (e) {
