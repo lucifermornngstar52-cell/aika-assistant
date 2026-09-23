@@ -62,34 +62,32 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           flutter build apk --release \
-            --dart-define=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-            --dart-define=GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
             --dart-define=GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
             --dart-define=ELEVENLABS_API_KEY="${{ secrets.ELEVENLABS_API_KEY }}"
 
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/aika-release.apk
+             build/app/outputs/flutter-apk/aivora-release.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aika-release-apk
-          path: build/app/outputs/flutter-apk/aika-release.apk
+          name: aivora-release-apk
+          path: build/app/outputs/flutter-apk/aivora-release.apk
           retention-days: 30
 
       - name: Prepare release asset (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          cp build/app/outputs/flutter-apk/aika-release.apk              "aika-assistant-${{ github.ref_name }}.apk"
+          cp build/app/outputs/flutter-apk/aivora-release.apk "aivora-${{ github.ref_name }}.apk"
 
       - name: Create Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          name: "Aika Assistant — ${{ github.ref_name }}"
-          files: "aika-assistant-${{ github.ref_name }}.apk"
+          name: "Aivora — ${{ github.ref_name }}"
+          files: "aivora-${{ github.ref_name }}.apk"
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

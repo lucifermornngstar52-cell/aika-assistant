@@ -1,11 +1,10 @@
-import 'dart:convert';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'screen_reader_service.dart';
+
+import 'ai_service.dart';
 import 'app_launcher_service.dart';
+import 'screen_reader_service.dart';
 
 class AikaBrowserService {
-  static const _geminiKey = String.fromEnvironment('GEMINI_API_KEY');
   static const _launcher = MethodChannel('com.aika.assistant/launcher');
 
   static bool isBrowserCommand(String text) {
@@ -99,69 +98,21 @@ class AikaBrowserService {
   }
 
   static Future<String> _generateText(String prompt) async {
-    if (_geminiKey.isEmpty) {
-      return 'Генерирую через основной AI...';
-    }
     try {
-      final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$_geminiKey',
+      final text = await AiService().sendMessage(
+        'Напиши текст на русском: $prompt. Дай только готовый текст без пояснений.',
       );
-      final body = jsonEncode({
-        'contents': [
-          {
-            'parts': [
-              {'text': 'Напиши текст на русском: $prompt. Дай только текст без пояснений.'}
-            ]
-          }
-        ]
-      });
-      final resp = await http
-          .post(url, headers: {'Content-Type': 'application/json'}, body: body)
-          .timeout(const Duration(seconds: 15));
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final result =
-            (data['candidates'] as List?)?.firstOrNull?['content']?['parts']
-                    ?.firstOrNull?['text'] as String? ??
-                '';
-        if (result.isNotEmpty) return '\u270D\uFE0F Вот текст:\n\n$result';
-      }
-      return 'Ошибка генерации текста';
-    } catch (e) {
-      return 'Ошибка соединения: $e';
+      return '✍️ Вот текст:\n\n$text';
+    } catch (_) {
+      return 'Не удалось сгенерировать текст через Groq. Проверь соединение и ключ.';
     }
   }
 
   static Future<String> _generateImage(String prompt) async {
-    if (_geminiKey.isEmpty) {
-      await _searchInBrowser('$prompt картинка');
-      return 'Открываю поиск картинок 🎨';
-    }
-    try {
-      final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=$_geminiKey',
-      );
-      final body = jsonEncode({
-        'instances': [
-          {'prompt': '$prompt, anime style, high quality'}
-        ],
-        'parameters': {'sampleCount': 1, 'aspectRatio': '1:1'}
-      });
-      final resp = await http
-          .post(url, headers: {'Content-Type': 'application/json'}, body: body)
-          .timeout(const Duration(seconds: 30));
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final b64 = (data['predictions'] as List?)?.firstOrNull?['bytesBase64Encoded'] as String?;
-        if (b64 != null && b64.isNotEmpty) {
-          return '[IMAGE_GENERATED]$b64';
-        }
-      }
-      await _searchInBrowser('$prompt картинка');
-      return 'Генерация недоступна, ищу в браузере 🎨';
-    } catch (e) {
-      return 'Ошибка генерации: $e';
-    }
+    // Groq Vision понимает изображения, но не генерирует их. Не выдаём
+    // результаты поиска за созданную моделью картинку.
+    await _searchInBrowser('$prompt картинка');
+    return 'Groq не генерирует картинки. Открываю поиск изображений 🎨';
   }
 
   static String _extractAfter(String text, List<String> keywords) {
