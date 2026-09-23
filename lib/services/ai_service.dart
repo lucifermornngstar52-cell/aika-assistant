@@ -69,14 +69,16 @@ class AiService {
       if (role != 'user' && role != 'assistant' && role != 'aika') continue;
       final content = _clean(entry.substring(index + 2));
       if (content.isEmpty) continue;
+      // Исключаем текущий запрос до лимита, иначе в окно попадут лишь 19
+      // предыдущих сообщений вместо 20.
+      if (result.isEmpty && role == 'user' &&
+          (content == current.trim() || content == '📷 ${current.trim()}')) {
+        continue;
+      }
       result.add({'role': role == 'user' ? 'user' : 'assistant', 'content': content});
       if (result.length >= 20) break;
     }
-    final ordered = result.reversed.toList();
-    if (ordered.isNotEmpty && ordered.last['role'] == 'user' &&
-        (ordered.last['content'] == current.trim() ||
-        ordered.last['content'] == '📷 ${current.trim()}')) ordered.removeLast();
-    return ordered;
+    return result.reversed.toList();
   }
 
   /// Парсинг ответов не зависит от сети: проверяется регрессионными тестами.
