@@ -93,9 +93,9 @@ void main() {
       expect(request.url.host, 'api.groq.com');
       expect(jsonDecode(request.body)['model'], 'openai/gpt-oss-120b');
       if (attempts == 1) throw http.ClientException('offline');
-      return http.Response(jsonEncode({'choices': [
+      return http.Response.bytes(utf8.encode(jsonEncode({'choices': [
         {'message': {'content': 'Готово'}}
-      ]}), 200);
+      ]})), 200);
     }));
     try {
       expect(await service.sendMessage('привет'), 'Готово');
@@ -114,9 +114,9 @@ void main() {
     final service = AiService(clientFactory: () => MockClient((request) {
       calls++;
       if (calls == 1) return firstResponse.future;
-      return Future.value(http.Response(jsonEncode({'choices': [
+      return Future.value(http.Response.bytes(utf8.encode(jsonEncode({'choices': [
         {'message': {'content': 'Второй ответ'}}
-      ]}), 200));
+      ]})), 200));
     }));
     try {
       final first = service.sendMessage('первый');
@@ -124,9 +124,9 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       final second = service.sendMessage('второй');
       expect(await second, 'Второй ответ');
-      firstResponse.complete(http.Response(jsonEncode({'choices': [
+      firstResponse.complete(http.Response.bytes(utf8.encode(jsonEncode({'choices': [
         {'message': {'content': 'Устаревший ответ'}}
-      ]}), 200));
+      ]})), 200));
       await firstCheck;
     } finally {
       AiService.setGroqKey('');
@@ -141,16 +141,16 @@ void main() {
     final chat = AiService(clientFactory: () => MockClient((request) =>
         pendingChat.future));
     final background = AiService(clientFactory: () => MockClient((request) async =>
-        http.Response(jsonEncode({'choices': [
+        http.Response.bytes(utf8.encode(jsonEncode({'choices': [
           {'message': {'content': 'Фон готов'}}
-        ]}), 200)));
+        ]})), 200)));
     try {
       final foreground = chat.sendMessage('длинный запрос');
       await Future<void>.delayed(Duration.zero);
       expect(await background.sendMessage('фоновый запрос'), 'Фон готов');
-      pendingChat.complete(http.Response(jsonEncode({'choices': [
+      pendingChat.complete(http.Response.bytes(utf8.encode(jsonEncode({'choices': [
         {'message': {'content': 'Основной ответ'}}
-      ]}), 200));
+      ]})), 200));
       expect(await foreground, 'Основной ответ');
     } finally {
       AiService.setGroqKey('');
