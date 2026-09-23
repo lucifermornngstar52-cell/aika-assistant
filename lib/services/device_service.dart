@@ -206,7 +206,7 @@ class DeviceService {
       }
     }
 
-    // ── Gemini Vision: умный клик и описание экрана ────────────────────
+    // ── Groq Vision: умный клик и описание экрана ────────────────────
     if (action == 'describe_screen') {
       return await GroqComputerUseService.describeScreen();
     }

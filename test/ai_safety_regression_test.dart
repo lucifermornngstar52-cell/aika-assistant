@@ -47,4 +47,24 @@ void main() {
         throwsFormatException);
   });
 
+  test('current message appears once, latest history retained, aika is assistant', () {
+    final history = <String>[];
+    for (var i = 1; i <= 26; i++) {
+      history.add('user: вопрос $i');
+      history.add('aika: ответ $i');
+    }
+    history.add('user: вопрос 27');
+    final recent = AiService.recentHistory(history, 'вопрос 27');
+    expect(recent.length, 20);
+    expect(recent.first, {'role': 'user', 'content': 'вопрос 17'});
+    expect(recent.last, {'role': 'assistant', 'content': 'ответ 26'});
+    expect(recent.where((m) => m['content'] == 'вопрос 27'), isEmpty);
+  });
+
+  test('web search year rolls forward without hardcoded 2025 or 2026', () {
+    expect(AiService.shouldSearchWeb('события 2027 года', year: 2027), isTrue);
+    expect(AiService.shouldSearchWeb('события 2028 года', year: 2028), isTrue);
+    expect(AiService.shouldSearchWeb('события 2025 года', year: 2027), isFalse);
+  });
+
 }

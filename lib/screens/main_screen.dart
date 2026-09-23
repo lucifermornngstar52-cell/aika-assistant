@@ -1,87 +1,89 @@
 import 'dart:async';
-import 'package:http/http.dart' as http;
-import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:io';
-import '../services/app_launcher_service.dart';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:lottie/lottie.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
-import '../services/device_service.dart';
-import '../services/memory_service.dart';
-import '../services/speech_service.dart';
-import '../services/wake_word_service.dart';
-import '../services/smart_notifications_service.dart';
-import '../services/habit_memory_service.dart';
-import '../services/relationship_service.dart';
-import '../services/personality_service.dart';
-import '../services/assistant_mood_service.dart';
-import '../services/overlay_service.dart';
-import '../theme/app_theme.dart';
-import '../widgets/chat_bubble.dart';
-import '../widgets/voice_button.dart';
-import '../widgets/aika_avatar.dart';
-import '../widgets/live2d_widget.dart';
-import 'settings_screen.dart';
-import 'personality_screen.dart';
-import 'model_picker_screen.dart';
-import 'currency_screen.dart';
-import '../services/music_detector_service.dart';
-import '../services/message_sender_service.dart';
-import '../services/media_control_service.dart';
-import '../services/url_launcher_service.dart';
-import '../services/weather_service.dart';
-import '../services/device_security_service.dart';
-import 'weather_screen.dart';
-import '../services/music_control_service.dart';
-import '../services/screen_watcher_service.dart';
 import '../services/aika_automation_service.dart';
-import '../services/notification_service.dart';
-import '../services/people_memory_service.dart';
-import '../services/reminder_service.dart';
-import '../services/mood_service.dart';
-import '../services/game_service.dart';
-import '../services/alarm_service.dart';
-import '../services/briefing_service.dart';
-import '../services/news_service.dart';
-import '../services/mood_diary_service.dart';
-import '../services/focus_mode_service.dart';
-import '../services/custom_shortcuts_service.dart';
-import '../services/notification_reply_service.dart';
-import '../services/telegram_bot_service.dart';
-import 'mood_diary_screen.dart';
-import 'telegram_bot_screen.dart';
-import 'app_commands_screen.dart';
-import '../services/game_music_service.dart';
-import '../services/notification_reader_service.dart';
-import '../services/smart_alarm_service.dart';
-import '../services/schedule_service.dart';
-import 'schedule_screen.dart';
-import 'package:lottie/lottie.dart';
-import '../services/emotion_service.dart';
-import '../services/screen_reader_service.dart';
-import '../services/aika_self_learning_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
-import '../services/edge_tts_service.dart';
-import '../widgets/jarvis_hud.dart';
-import '../widgets/overlay_settings_widget.dart';
-import '../services/theme_switcher_service.dart';
-import '../services/phone_control_service.dart';
-import '../services/screen_command_service.dart';
-import '../services/conversation_history_service.dart';
-import '../services/suggestion_chips_service.dart';
-import '../services/ping_sound_service.dart';
+import '../services/aika_self_learning_service.dart';
+import '../services/alarm_service.dart';
+import '../services/app_launcher_service.dart';
+import '../services/assistant_mood_service.dart';
+import '../services/briefing_service.dart';
+import '../services/calendar_service.dart';
 import '../services/clipboard_service.dart';
 import '../services/contacts_service.dart';
-import '../services/calendar_service.dart';
+import '../services/conversation_history_service.dart';
+import '../services/custom_shortcuts_service.dart';
+import '../services/device_security_service.dart';
+import '../services/device_service.dart';
+import '../services/edge_tts_service.dart';
+import '../services/emotion_service.dart';
+import '../services/focus_mode_service.dart';
+import '../services/game_music_service.dart';
+import '../services/game_service.dart';
+import '../services/habit_memory_service.dart';
+import '../services/media_control_service.dart';
+import '../services/memory_service.dart';
+import '../services/message_sender_service.dart';
+import '../services/mood_diary_service.dart';
+import '../services/mood_service.dart';
+import '../services/music_control_service.dart';
+import '../services/music_detector_service.dart';
+import '../services/news_service.dart';
+import '../services/notification_reader_service.dart';
+import '../services/notification_reply_service.dart';
+import '../services/notification_service.dart';
+import '../services/overlay_service.dart';
+import '../services/people_memory_service.dart';
+import '../services/personality_service.dart';
+import '../services/phone_control_service.dart';
+import '../services/ping_sound_service.dart';
+import '../services/relationship_service.dart';
+import '../services/reminder_service.dart';
+import '../services/schedule_service.dart';
+import '../services/screen_command_service.dart';
+import '../services/screen_reader_service.dart';
+import '../services/screen_watcher_service.dart';
 import '../services/shoplist_service.dart';
+import '../services/smart_alarm_service.dart';
+import '../services/smart_notifications_service.dart';
+import '../services/speech_service.dart';
 import '../services/step_counter_service.dart';
+import '../services/suggestion_chips_service.dart';
+import '../services/telegram_bot_service.dart';
+import '../services/theme_switcher_service.dart';
+import '../services/url_launcher_service.dart';
 import '../services/voice_command_processor.dart';
+import '../services/wake_word_service.dart';
+import '../services/weather_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/aika_avatar.dart';
+import '../widgets/chat_bubble.dart';
+import '../widgets/jarvis_hud.dart';
+import '../widgets/live2d_widget.dart';
+import '../widgets/overlay_settings_widget.dart';
+import '../widgets/voice_button.dart';
+import 'app_commands_screen.dart';
+import 'currency_screen.dart';
+import 'model_picker_screen.dart';
+import 'mood_diary_screen.dart';
+import 'personality_screen.dart';
+import 'schedule_screen.dart';
+import 'settings_screen.dart';
+import 'telegram_bot_screen.dart';
+import 'weather_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -262,7 +264,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         userText,
         userName: _userName,
         assistantName: _assistantName,
-        history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
+        history: _currentAiHistory(),
         memoryContext: await _memoryService.getLongMemory(),
         imageBase64: b64,
         imageMimeType: mimeType,
@@ -1017,13 +1019,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  List<String> _currentAiHistory() => _messages
+      .where((m) => m.role == MessageRole.user || m.role == MessageRole.aika)
+      .map((m) => '${m.role.name}: ${m.content}').toList();
+
   void _addMessage(ChatMessage msg) {
     setState(() {
       _messages.add(msg);
       if (msg.role == MessageRole.aika) {
         _currentChips = _suggestionsService.getSuggestionsForResponse(msg.content);
         _convHistory.addAssistant(msg.content);
-      } else {
+      } else if (msg.role == MessageRole.user) {
         _convHistory.addUser(msg.content);
         _currentChips = [];
       }
@@ -1592,7 +1598,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           text,
           userName: _userName,
           assistantName: _assistantName,
-          history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
+          history: _currentAiHistory(),
         );
         if (turnId != _aiTurn || !mounted) return;
         _addMessage(ChatMessage(
@@ -1969,7 +1975,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           text,
           userName: _userName,
           assistantName: _assistantName,
-          history: await _memoryService.getHistory(),
+          history: _currentAiHistory(),
           screenContext: formatted,
         );
         final clean = aiReply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
@@ -1987,7 +1993,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     try {
       _moodService.onThinking();
       final context = await _memoryService.getUserContext();
-      final history = await _memoryService.getHistory();
+      final history = _currentAiHistory();
       final memoryCtx   = await _peopleMemory.buildMemoryContext();
       final longMemory  = context['longMemory'] ?? '';
       final screenCtx   = ScreenWatcherService.currentLabel.isNotEmpty
