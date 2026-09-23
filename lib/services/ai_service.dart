@@ -18,8 +18,14 @@ class AiService {
   static String _groqKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
   static bool _webSearchEnabled = true;
   static int _maxTokens = 1024;
-  static int _generation = 0;
-  static http.Client? _activeClient;
+  // Отмена относится к конкретному диалогу. Фоновые вызовы AiService не
+  // должны прерывать ответ в главном чате.
+  int _generation = 0;
+  http.Client? _activeClient;
+  final http.Client Function() _clientFactory;
+
+  AiService({http.Client Function()? clientFactory})
+      : _clientFactory = clientFactory ?? http.Client.new;
 
   static void setGroqKey(String value) => _groqKey = value.trim();
   static void setWebSearch(bool value) => _webSearchEnabled = value;
@@ -151,7 +157,7 @@ class AiService {
     if (imageBase64.isNotEmpty) _validatedMime(imageBase64, imageMimeType);
     final turn = ++_generation;
     _activeClient?.close();
-    final client = http.Client();
+    final client = _clientFactory();
     _activeClient = client;
     try {
       var webContext = '';
