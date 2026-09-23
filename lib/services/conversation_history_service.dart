@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Вдохновлено Google Assistant Desktop Client (history/historyHead паттерн).
 /// 
 /// Фичи:
-///   - Хранит последние 100 сообщений
+///   - Показывает последние 100 сообщений из единого chat_history
 ///   - navigatePrev/navigateNext — листать историю как в терминале (↑↓)
 ///   - getContext(n) — возвращает последние N пар user+assistant для промпта
 ///   - forceNewConversation — флаг сброса контекста (как в GA Client)
@@ -15,7 +15,7 @@ class ConversationHistoryService {
   factory ConversationHistoryService() => _i;
   ConversationHistoryService._();
 
-  static const _key = 'aivora_conv_history_v1';
+  static const _key = 'chat_history';
   static const _maxItems = 100;
 
   List<Map<String, String>> _history = []; // [{role: 'user'|'assistant', text: '...'}]
@@ -28,14 +28,28 @@ class ConversationHistoryService {
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
+    _history = [];
     final raw = prefs.getString(_key);
     if (raw != null) {
       try {
-        final list = jsonDecode(raw) as List;
-        _history = list.map<Map<String, String>>((e) =>
-          Map<String, String>.from(e as Map)).toList();
+        final records = jsonDecode(raw);
+        if (records is List) {
+          for (final record in records.whereType<Map>()) {
+            final role = record['role'];
+            final text = record['content'];
+            if (text is! String || text.isEmpty) continue;
+            if (role == 'user' || role == 'aika' || role == 'assistant') {
+              _history.add({'role': role == 'user' ? 'user' : 'assistant',
+                'text': text});
+            }
+          }
+          _trim();
+        }
       } catch (_) { _history = []; }
     }
+    // Старый независимый кэш навигации больше не используется.
+    await prefs.remove('aivora_conv_history_v1');
+    _head = -1;
     debugPrint('[ConvHistory] загружено ${_history.length} сообщений');
   }
 
@@ -45,13 +59,11 @@ class ConversationHistoryService {
     _history.add({'role': 'user', 'text': text});
     _trim();
     _head = -1; // сбрасываем навигацию
-    _save();
   }
 
   void addAssistant(String text) {
     _history.add({'role': 'assistant', 'text': text});
     _trim();
-    _save();
   }
 
   // ──────────────── НАВИГАЦИЯ ↑↓ (как в терминале) ────────────────
@@ -128,7 +140,6 @@ class ConversationHistoryService {
   void clear() {
     _history.clear();
     _head = -1;
-    _save();
   }
 
   int get length => _history.length;
@@ -139,8 +150,4 @@ class ConversationHistoryService {
     }
   }
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(_history));
-  }
 }

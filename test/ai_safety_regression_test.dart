@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aika_assistant/services/memory_service.dart';
+import 'package:aika_assistant/services/conversation_history_service.dart';
 import 'package:aika_assistant/services/ai_service.dart';
 
 void main() {
@@ -19,6 +20,11 @@ void main() {
     });
     final history = await MemoryService().getHistory();
     expect(history, ['user: первый', 'assistant: ответ', 'user: последний']);
+    final navigation = ConversationHistoryService();
+    await navigation.initialize();
+    expect(navigation.navigatePrev(''), 'последний');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('aivora_conv_history_v1'), isFalse);
     await MemoryService().clearHistory();
     expect(await MemoryService().getHistory(), isEmpty);
   });
