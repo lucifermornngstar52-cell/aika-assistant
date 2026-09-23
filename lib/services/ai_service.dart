@@ -62,6 +62,7 @@ class AiService {
   /// Последние 20 реплик в хронологическом порядке, без текущего запроса.
   static List<Map<String, dynamic>> recentHistory(List<String> history, String current) {
     final result = <Map<String, dynamic>>[];
+    var skippedCurrent = false;
     for (final entry in history.reversed) {
       final index = entry.indexOf(': ');
       if (index < 0) continue;
@@ -71,8 +72,9 @@ class AiService {
       if (content.isEmpty) continue;
       // Исключаем текущий запрос до лимита, иначе в окно попадут лишь 19
       // предыдущих сообщений вместо 20.
-      if (result.isEmpty && role == 'user' &&
+      if (!skippedCurrent && result.isEmpty && role == 'user' &&
           (content == current.trim() || content == '📷 ${current.trim()}')) {
+        skippedCurrent = true;
         continue;
       }
       result.add({'role': role == 'user' ? 'user' : 'assistant', 'content': content});

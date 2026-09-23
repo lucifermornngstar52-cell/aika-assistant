@@ -59,6 +59,8 @@ void main() {
     expect(recent.first, {'role': 'user', 'content': 'вопрос 17'});
     expect(recent.last, {'role': 'assistant', 'content': 'ответ 26'});
     expect(recent.where((m) => m['content'] == 'вопрос 27'), isEmpty);
+    expect(AiService.recentHistory(['user: повтор', 'user: повтор'], 'повтор'),
+        [{'role': 'user', 'content': 'повтор'}]);
   });
 
   test('web search year rolls forward without hardcoded 2025 or 2026', () {
