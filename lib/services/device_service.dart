@@ -110,7 +110,7 @@ class DeviceService {
 
   // Legacy model-generated ACTION tags are not an authorization channel.
   // Device actions must be invoked from an explicitly parsed user command.
-  Future<String?> parseAndExecute(String aiResponse) async => null;
+  static Future<String?> parseAndExecute(String aiResponse) async => null;
 
   Future<String?> executeAction(String action) async {
     // ── Запуск по package name ────────────────────────────────────────
