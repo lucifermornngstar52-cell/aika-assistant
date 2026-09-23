@@ -76,18 +76,27 @@ class AiService {
     return ordered;
   }
 
-  static String _extractContent(dynamic decoded) {
-    if (decoded is! Map || decoded['choices'] is! List || (decoded['choices'] as List).isEmpty) {
+  /// Парсинг ответов не зависит от сети: проверяется регрессионными тестами.
+  static String extractGroqContent(dynamic decoded) {
+    if (decoded is! Map || decoded['choices'] is! List) {
       throw const FormatException('Ответ Groq не содержит choices');
     }
-    final choice = (decoded['choices'] as List).first;
-    final message = choice is Map ? choice['message'] : null;
-    final content = message is Map ? message['content'] : null;
-    if (content is String && content.trim().isNotEmpty) return _clean(content);
-    if (content is List) {
-      final texts = content.whereType<Map>().map((part) => part['text'])
-          .whereType<String>().where((part) => part.trim().isNotEmpty).toList();
-      if (texts.isNotEmpty) return _clean(texts.join('\n'));
+    for (final choice in decoded['choices'] as List) {
+      if (choice is! Map || choice['message'] is! Map) continue;
+      final content = (choice['message'] as Map)['content'];
+      if (content is String) {
+        final text = _clean(content);
+        if (text.isNotEmpty) return text;
+      } else if (content is List) {
+        final texts = <String>[];
+        for (final part in content) {
+          if (part is! Map ||
+              (part['type'] != 'text' && part['type'] != 'output_text')) continue;
+          final text = part['text'];
+          if (text is String && _clean(text).isNotEmpty) texts.add(_clean(text));
+        }
+        if (texts.isNotEmpty) return texts.join('\n');
+      }
     }
     throw const FormatException('Groq вернул пустой текст');
   }
@@ -180,7 +189,7 @@ class AiService {
             })).timeout(const Duration(seconds: 16));
             if (turn != _generation) throw StateError('Запрос отменён новым сообщением');
             if (response.statusCode == 200) {
-              final content = _extractContent(jsonDecode(utf8.decode(response.bodyBytes)));
+              final content = extractGroqContent(jsonDecode(utf8.decode(response.bodyBytes)));
               if (content.isEmpty) throw const FormatException('Пустой текст');
               return content;
             }
