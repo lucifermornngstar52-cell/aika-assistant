@@ -1586,7 +1586,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // ── РЕЖИМ ОБЩЕНИЯ: в режиме чата пропускаем все команды → чистый AI ──
     if (_chatMode) {
-      final turn = turnId;
       setState(() { _isThinking = true; });
       try {
         final resp = await _aiService.sendMessage(
@@ -1595,7 +1594,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           assistantName: _assistantName,
           history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
         );
-        if (turn != _aiTurn || !mounted) return;
+        if (turnId != _aiTurn || !mounted) return;
         _addMessage(ChatMessage(
           id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
           role: MessageRole.aika,
@@ -1605,7 +1604,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await _speak(resp.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim());
         _moodService.onUserSpoke();
       } catch (e) {
-        if (turn == _aiTurn && mounted) {
+        if (turnId == _aiTurn && mounted) {
           _addMessage(ChatMessage(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             role: MessageRole.aika,
@@ -1614,7 +1613,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ));
         }
       } finally {
-        if (turn == _aiTurn && mounted) setState(() { _isThinking = false; });
+        if (turnId == _aiTurn && mounted) setState(() { _isThinking = false; });
       }
       return;
     }
@@ -1634,7 +1633,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await _speak(briefing);
         _moodService.onUserSpoke();
       } catch (e) {
-        if (turn == _aiTurn && mounted) {
+        if (turnId == _aiTurn && mounted) {
           _addMessage(ChatMessage(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             role: MessageRole.aika,
@@ -1643,7 +1642,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ));
         }
       } finally {
-        if (turn == _aiTurn && mounted) setState(() { _isThinking = false; });
+        if (turnId == _aiTurn && mounted) setState(() { _isThinking = false; });
       }
       return;
     }
@@ -1985,8 +1984,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
     }
 
-    final turn = turnId;
-
     try {
       _moodService.onThinking();
       final context = await _memoryService.getUserContext();
@@ -2037,7 +2034,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         memoryContext: memoryCtx,
         screenContext: screenCtx,
       );
-      if (turn != _aiTurn || !mounted) return;
+      if (turnId != _aiTurn || !mounted) return;
       // Model text is untrusted: never execute ACTION tags from generated text.
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
       final finalMsg = display;
@@ -2050,7 +2047,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       await _speak(finalMsg);
       _moodService.onUserSpoke();
     } catch (e) {
-      if (turn != _aiTurn || !mounted) return;
+      if (turnId != _aiTurn || !mounted) return;
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -2058,7 +2055,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
     } finally {
-      if (turn == _aiTurn && mounted) {
+      if (turnId == _aiTurn && mounted) {
         setState(() => _isThinking = false);
         OverlayService().asyncState('idle');
       }

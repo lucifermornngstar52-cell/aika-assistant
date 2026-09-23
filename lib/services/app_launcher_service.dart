@@ -387,7 +387,6 @@ class AppLauncherService {
       'яндексдиск': 'ru.yandex.disk',
       'яндекспереводчик': 'ru.yandex.translator',
       'перевод': 'com.google.android.apps.translate',
-      'дзен': 'com.yandex.zen',
       // ── Google ──
       'плеймаркет': 'com.android.vending',
       'плей маркет': 'com.android.vending',
