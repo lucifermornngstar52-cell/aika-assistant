@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 class MemoryService {
   static const String _keyUserName       = 'user_name';
   static const String _keyAssistantName  = 'assistant_name';
-  static const String _keyConversation   = 'conversation_history';
+  static const String _keyConversation   = 'chat_history';
   static const String _keyUserMemory     = 'user_long_memory';
   static const int    _maxHistory        = 30;
 
@@ -36,19 +36,24 @@ class MemoryService {
   // ─── История чата ──────────────────────────────────────────────────────────
   Future<List<String>> getHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_keyConversation) ?? [];
+    final raw = prefs.getString(_keyConversation);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final entries = jsonDecode(raw);
+      if (entries is! List) return [];
+      return entries.whereType<Map>().map((entry) {
+        final role = entry['role'];
+        final content = entry['content'];
+        if (content is! String || content.isEmpty) return '';
+        if (role == 'user') return 'user: $content';
+        if (role == 'aika' || role == 'assistant') return 'assistant: $content';
+        return '';
+      }).where((entry) => entry.isNotEmpty).toList();
+    } catch (_) { return []; }
   }
 
-  Future<void> addMessage(String role, String content) async {
-    final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList(_keyConversation) ?? [];
-    history.add('$role: $content');
-    if (history.length > _maxHistory) {
-      history.removeRange(0, history.length - _maxHistory);
-    }
-    await prefs.setStringList(_keyConversation, history);
-  }
-
+  // The UI owns chat_history. Never write a second, incompatible string-list
+  // representation to the same key; UI messages persist via _addMessage.
   Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyConversation);

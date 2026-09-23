@@ -132,6 +132,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   List<ChatMessage> _messages = [];
   bool _isListening = false;
   bool _isThinking = false;
+  int _aiTurn = 0;
   Completer<void>? _ttsCompleter;
   bool _wakeWordEnabled = false;
   Key _live2dKey = UniqueKey(); // ФИКС: пересоздаём виджет модели после смены в ModelPickerScreen
@@ -193,6 +194,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
+        if (await File(path).length() > 6 * 1024 * 1024) {
+          throw const FormatException('Изображение больше 6 МБ');
+        }
         final bytes = await File(path).readAsBytes();
         final b64 = base64Encode(bytes);
         setState(() {
@@ -218,6 +222,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
       if (xFile != null) {
         final path = xFile.path;
+        if (await File(path).length() > 6 * 1024 * 1024) {
+          throw const FormatException('Изображение больше 6 МБ');
+        }
         final bytes = await File(path).readAsBytes();
         final b64 = base64Encode(bytes);
         setState(() {
@@ -242,6 +249,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       content: '📷 $userText',
       timestamp: DateTime.now(),
     ));
+    final turn = ++_aiTurn;
     setState(() {
       _pendingImagePath = null;
       _pendingImageBase64 = null;
@@ -259,16 +267,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         imageBase64: b64,
         imageMimeType: mimeType,
       );
+      if (turn != _aiTurn || !mounted) return;
+      final cleanReply = reply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
-        content: reply,
+        content: cleanReply,
         timestamp: DateTime.now(),
       ));
-      _speak(reply);
+      _speak(cleanReply);
       OverlayService().asyncState('talking');
-    } catch (e, stack) {
-      debugPrint('Vision error: $e\n$stack');
+    } catch (e) {
+      debugPrint('Vision error: ${e.runtimeType}');
+      if (turn != _aiTurn || !mounted) return;
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -1221,6 +1232,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+    final turnId = ++_aiTurn;
     _textController.clear();
     _resetIdleTimer();
     // Показываем сообщение пользователя немедленно
@@ -1574,6 +1586,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // ── РЕЖИМ ОБЩЕНИЯ: в режиме чата пропускаем все команды → чистый AI ──
     if (_chatMode) {
+      final turn = turnId;
       setState(() { _isThinking = true; });
       try {
         final resp = await _aiService.sendMessage(
@@ -1582,16 +1595,26 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           assistantName: _assistantName,
           history: _messages.map((m) => '${m.role.name}: ${m.content}').toList(),
         );
+        if (turn != _aiTurn || !mounted) return;
         _addMessage(ChatMessage(
           id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
           role: MessageRole.aika,
-          content: resp,
+          content: resp.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim(),
           timestamp: DateTime.now(),
         ));
-        await _speak(resp);
+        await _speak(resp.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim());
         _moodService.onUserSpoke();
+      } catch (e) {
+        if (turn == _aiTurn && mounted) {
+          _addMessage(ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            role: MessageRole.aika,
+            content: 'AI сейчас недоступен. Проверь сеть и ключ Groq.',
+            timestamp: DateTime.now(),
+          ));
+        }
       } finally {
-        setState(() { _isThinking = false; });
+        if (turn == _aiTurn && mounted) setState(() { _isThinking = false; });
       }
       return;
     }
@@ -1610,8 +1633,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ));
         await _speak(briefing);
         _moodService.onUserSpoke();
+      } catch (e) {
+        if (turn == _aiTurn && mounted) {
+          _addMessage(ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            role: MessageRole.aika,
+            content: 'AI сейчас недоступен. Проверь сеть и ключ Groq.',
+            timestamp: DateTime.now(),
+          ));
+        }
       } finally {
-        setState(() { _isThinking = false; });
+        if (turn == _aiTurn && mounted) setState(() { _isThinking = false; });
       }
       return;
     }
@@ -1953,7 +1985,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
     }
 
-    await _memoryService.addMessage('user', text);
+    final turn = turnId;
 
     try {
       _moodService.onThinking();
@@ -2005,10 +2037,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         memoryContext: memoryCtx,
         screenContext: screenCtx,
       );
-      final actionResult = await _deviceService.parseAndExecute(response);
+      if (turn != _aiTurn || !mounted) return;
+      // Model text is untrusted: never execute ACTION tags from generated text.
       final display = response.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
-      final finalMsg = actionResult != null ? '$display\n$actionResult' : display;
-      await _memoryService.addMessage('assistant', display);
+      final finalMsg = display;
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -2018,6 +2050,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       await _speak(finalMsg);
       _moodService.onUserSpoke();
     } catch (e) {
+      if (turn != _aiTurn || !mounted) return;
       _addMessage(ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         role: MessageRole.aika,
@@ -2025,8 +2058,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         timestamp: DateTime.now(),
       ));
     } finally {
-      setState(() => _isThinking = false);
-      OverlayService().asyncState('idle');
+      if (turn == _aiTurn && mounted) {
+        setState(() => _isThinking = false);
+        OverlayService().asyncState('idle');
+      }
     }
   }
 

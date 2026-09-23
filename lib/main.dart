@@ -39,18 +39,10 @@ void main() async {
   // ФИКС (баг «Все AI-сервисы недоступны»): пустые prefs затирали ключи,
   // зашитые в сборку через dart-define. Теперь ключ из настроек важен
   // только если он реально введён, иначе остаётся ключ из сборки.
-  final geminiSaved = prefs.getString('gemini_key') ?? '';
-  AiService.setGeminiKey(geminiSaved.isNotEmpty ? geminiSaved
-      : const String.fromEnvironment('GEMINI_API_KEY', defaultValue: ''));
   final groqSaved = prefs.getString('groq_key') ?? '';
   AiService.setGroqKey(groqSaved.isNotEmpty ? groqSaved
       : const String.fromEnvironment('GROQ_API_KEY', defaultValue: ''));
-  AiService.setClaudeKey(prefs.getString('claude_key') ?? '');
-  AiService.setDeepseekKey(prefs.getString('deepseek_key') ?? '');
-  AiService.setPerplexityKey(prefs.getString('perplexity_key') ?? '');
-  AiService.setLocalUrl(prefs.getString('local_url') ?? 'http://192.168.0.100:11434/v1/chat/completions');
-  AiService.setLocalModel(prefs.getString('local_model') ?? 'llama3.2:1b');
-  AiService.setPreferredModel(prefs.getString('ai_model') ?? 'auto');
+  AiService.setPreferredModel('groq');
   AiService.setWebSearch(prefs.getBool('ai_web_search') ?? true);
   AiService.setMaxTokens(prefs.getInt('ai_max_tokens') ?? 1024);
   WebSearchService.setBraveKey(prefs.getString('brave_key') ?? '');

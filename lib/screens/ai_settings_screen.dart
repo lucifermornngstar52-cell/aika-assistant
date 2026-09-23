@@ -14,41 +14,20 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   // ФИКС: контроллеры не освобождались — утечка памяти при каждом открытии
   @override
   void dispose() {
-    _geminiCtrl.dispose();
     _groqCtrl.dispose();
-    _claudeCtrl.dispose();
-    _deepseekCtrl.dispose();
-    _perplexCtrl.dispose();
     _braveCtrl.dispose();
-    _localUrlCtrl.dispose();
-    _localModelCtrl.dispose();
     super.dispose();
   }
 
-  final _geminiCtrl   = TextEditingController();
   final _groqCtrl     = TextEditingController();
-  final _claudeCtrl   = TextEditingController();
-  final _deepseekCtrl = TextEditingController();
-  final _perplexCtrl  = TextEditingController();
   final _braveCtrl    = TextEditingController();
-  final _localUrlCtrl = TextEditingController();
-  final _localModelCtrl = TextEditingController();
 
   String _selectedModel = 'auto';
   bool _webSearch = true;
   bool _loading = true;
   int _maxTokens = 1024;
 
-  final _models = {
-    'auto':        '🧠 Авто (умный роутинг)',
-    'gemini_pro':  '✨ Gemini 2.5 Flash Pro',
-    'gemini_flash':'🚀 Gemini 2.0 Flash (быстрый)',
-    'local':       '🏠 Своя модель (Ollama — свой сервер)',
-    'groq':        '⚡ Groq gpt-oss-120b (бесплатно)',
-    'claude':      '🤖 Claude Haiku (Anthropic)',
-    'deepseek':    '🧬 Deepseek Chat (дёшево)',
-    'perplexity':  '🌐 Perplexity (AI + веб)',
-  };
+  final _models = {'auto': '⚡ Groq (авто)', 'groq': '⚡ Groq gpt-oss-120b'};
 
   @override
   void initState() {
@@ -59,15 +38,9 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _geminiCtrl.text   = prefs.getString('gemini_key')   ?? '';
       _groqCtrl.text     = prefs.getString('groq_key')      ?? '';
-      _claudeCtrl.text   = prefs.getString('claude_key')    ?? '';
-      _deepseekCtrl.text = prefs.getString('deepseek_key')  ?? '';
-      _perplexCtrl.text  = prefs.getString('perplexity_key') ?? '';
       _braveCtrl.text    = prefs.getString('brave_key')     ?? '';
-      _localUrlCtrl.text   = prefs.getString('local_url')   ?? 'http://192.168.0.100:11434/v1/chat/completions';
-      _localModelCtrl.text = prefs.getString('local_model') ?? 'llama3.2:1b';
-      _selectedModel     = prefs.getString('ai_model')      ?? 'auto';
+      _selectedModel     = 'groq';
       _webSearch         = prefs.getBool('ai_web_search')   ?? true;
       _maxTokens         = prefs.getInt('ai_max_tokens')    ?? 1024;
       _loading = false;
@@ -78,13 +51,9 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   void _applyKeys() {
-    AiService.setGeminiKey(_geminiCtrl.text.trim());
-    AiService.setGroqKey(_groqCtrl.text.trim());
-    AiService.setClaudeKey(_claudeCtrl.text.trim());
-    AiService.setDeepseekKey(_deepseekCtrl.text.trim());
-    AiService.setPerplexityKey(_perplexCtrl.text.trim());
-    AiService.setLocalUrl(_localUrlCtrl.text.trim());
-    AiService.setLocalModel(_localModelCtrl.text.trim());
+    AiService.setGroqKey(_groqCtrl.text.trim().isNotEmpty
+        ? _groqCtrl.text.trim()
+        : const String.fromEnvironment('GROQ_API_KEY', defaultValue: ''));
     AiService.setPreferredModel(_selectedModel);
     AiService.setWebSearch(_webSearch);
     AiService.setMaxTokens(_maxTokens);
@@ -95,27 +64,15 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   /// не ждём нажатия «Сохранить».
   Future<void> _instantApply() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('gemini_key',   _geminiCtrl.text.trim());
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
-    await prefs.setString('claude_key',    _claudeCtrl.text.trim());
-    await prefs.setString('deepseek_key',  _deepseekCtrl.text.trim());
-    await prefs.setString('perplexity_key', _perplexCtrl.text.trim());
-    await prefs.setString('local_url',     _localUrlCtrl.text.trim());
-    await prefs.setString('local_model',   _localModelCtrl.text.trim());
     await prefs.setString('ai_model',      _selectedModel);
     _applyKeys();
   }
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('gemini_key',   _geminiCtrl.text.trim());
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
-    await prefs.setString('claude_key',    _claudeCtrl.text.trim());
-    await prefs.setString('deepseek_key',  _deepseekCtrl.text.trim());
-    await prefs.setString('perplexity_key', _perplexCtrl.text.trim());
     await prefs.setString('brave_key',     _braveCtrl.text.trim());
-    await prefs.setString('local_url',   _localUrlCtrl.text.trim());
-    await prefs.setString('local_model', _localModelCtrl.text.trim());
     await prefs.setString('ai_model',      _selectedModel);
     await prefs.setBool('ai_web_search',   _webSearch);
     await prefs.setInt('ai_max_tokens',    _maxTokens);
@@ -207,14 +164,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           ),
 
           const SizedBox(height: 8),
-          _infoCard(
-            '🧠 Авто-роутинг',
-            'Умный выбор модели:\n'
-            '• Быстрые команды → Groq (мгновенно)\n'
-            '• Сложные вопросы → Gemini\n'
-            '• Актуальные данные → Perplexity\n'
-            '• Творчество → Claude',
-          ),
+          _infoCard('⚡ Groq', 'Единый AI-двигатель. Веб-поиск добавляет актуальные данные без смены модели.'),
 
           const SizedBox(height: 16),
 
@@ -264,21 +214,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           // ── API Ключи ─────────────────────────────────────────────
           _sectionHeader('🔑 API КЛЮЧИ'),
 
-          _keyCard('🏠 Адрес своего сервера (Ollama)', _localUrlCtrl,
-              'http://192.168.0.100:11434/v1/chat/completions',
-              '💡 Ollama на твоём компьютере. На ноуте: ollama serve\nIP ноута в той же Wi-Fi сети, порт 11434\nПолное «своё» — без ключей и чужих облаков'),
-          _keyCard('🏠 Имя модели на сервере', _localModelCtrl, 'llama3.2:1b',
-              '💡 Скачай на ноуте: ollama pull llama3.2:1b\nДля слабого ноута также: qwen2.5:0.5b, smollm2:360m'),
-          _keyCard('Gemini', _geminiCtrl, 'AIza...',
-              '🟢 Бесплатный тариф Google AI Studio', modelId: 'gemini_flash'),
           _keyCard('Groq (gpt-oss-120b)', _groqCtrl, 'gsk_...',
-              '🟢 БЕСПЛАТНО: 30 req/мин, нет лимита/день\nconsole.groq.com', modelId: 'groq'),
-          _keyCard('Claude', _claudeCtrl, 'sk-ant-...',
-              'Anthropic API', modelId: 'claude'),
-          _keyCard('DeepSeek', _deepseekCtrl, 'sk-...',
-              'DeepSeek API', modelId: 'deepseek'),
-          _keyCard('Perplexity', _perplexCtrl, 'pplx-...',
-              'AI с веб-поиском', modelId: 'perplexity'),
+              'Лимиты зависят от текущего тарифа Groq. console.groq.com', modelId: 'groq'),
           _keyCard('Brave Search', _braveCtrl, 'BSA...', '🟢 бесплатно: 2000 запросов/месяц\napi.search.brave.com'),
 
           const SizedBox(height: 24),
@@ -286,7 +223,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           _infoCard('💡 Рекомендация',
             'Для максимального результата:\n'
             '1. Groq — получить бесплатно (console.groq.com)\n'
-            '2. Gemini — бесплатно в Google AI Studio\n\n'
+            '2. Веб-поиск — по необходимости\n\n'
             'Groq — основная модель (бесплатно, быстро, gpt-oss-120b)'),
 
           const SizedBox(height: 32),

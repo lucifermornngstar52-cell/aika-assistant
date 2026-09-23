@@ -108,20 +108,9 @@ class DeviceService {
     VolumeController().removeListener();
   }
 
-  // ─── Парсинг ВСЕХ ACTION тегов из ответа AI ───────────────────────
-  Future<String?> parseAndExecute(String aiResponse) async {
-    final regex = RegExp(r'\[ACTION:([^\]]+)\]');
-    final matches = regex.allMatches(aiResponse);
-    if (matches.isEmpty) return null;
-
-    final results = <String>[];
-    for (final m in matches) {
-      final action = m.group(1)?.toLowerCase().trim() ?? '';
-      final result = await executeAction(action);
-      if (result != null && result.isNotEmpty) results.add(result);
-    }
-    return results.isNotEmpty ? results.join('\n') : null;
-  }
+  // Legacy model-generated ACTION tags are not an authorization channel.
+  // Device actions must be invoked from an explicitly parsed user command.
+  Future<String?> parseAndExecute(String aiResponse) async => null;
 
   Future<String?> executeAction(String action) async {
     // ── Запуск по package name ────────────────────────────────────────
