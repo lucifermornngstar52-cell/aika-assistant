@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'groq_model_catalog.dart';
+import 'openai_vision_service.dart';
 import 'personality_service.dart';
 import 'web_search_service.dart';
 
@@ -243,6 +244,15 @@ class AiService {
         break;
       }
       if (turn != _generation) throw StateError('Запрос отменён новым сообщением');
+      // Фото — единственное исключение из Groq-only: если все vision-модели
+      // Groq недоступны, пробуем запасной GPT-4o (нужен ключ OpenAI, без
+      // него остаёмся на Groq и показываем его ошибку).
+      if (imageBase64.isNotEmpty) {
+        final fallback = await OpenAiVisionService.describeImage(
+            message, imageBase64, imageMimeType,
+            client: client, maxTokens: maxTokens);
+        if (fallback != null && fallback.isNotEmpty) return fallback;
+      }
       throw StateError('Groq недоступен: ${last is HttpException ? last.message : 'ошибка сети или таймаут'}');
     } finally {
       client.close();

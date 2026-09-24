@@ -244,4 +244,77 @@ void main() {
     }
   });
 
+  test('photo falls back to OpenAI GPT-4o when Groq vision is unavailable', () async {
+    SharedPreferences.setMockInitialValues({'openai_key': 'sk-test'});
+    GroqModelCatalog.invalidate();
+    AiService.setGroqKey('test-only-key');
+    AiService.setWebSearch(false);
+    const tinyJpeg =
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNCwsLDBkSEw8UHRofHh0a'
+        'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAQAB'
+        'AAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==';
+    final hosts = <String>[];
+    final service = AiService(clientFactory: () => MockClient((request) async {
+      hosts.add(request.url.host);
+      if (request.url.host == 'api.openai.com') {
+        return http.Response.bytes(utf8.encode(jsonEncode({'choices': [
+          {'message': {'content': 'Вижу кота, GPT-4o'}}
+        ]})), 200);
+      }
+      // Groq: живой список без vision-моделей, чат — 404.
+      if (request.url.path.endsWith('/models')) {
+        return http.Response.bytes(utf8.encode(jsonEncode({'data': [
+          {'id': 'openai/gpt-oss-120b'},
+        ]})), 200);
+      }
+      return http.Response.bytes(utf8.encode(jsonEncode({'error': {
+        'message': 'model_not_found'
+      }})), 404);
+    }));
+    try {
+      final answer =
+          await service.sendMessage('что на фото', imageBase64: tinyJpeg);
+      expect(answer, 'Вижу кота, GPT-4o');
+      expect(hosts, contains('api.openai.com'));
+      // Текст остаётся строго на Groq: OpenAI не вызывается без фото.
+      hosts.clear();
+      try { await service.sendMessage('привет'); } catch (_) {}
+      expect(hosts.where((h) => h == 'api.openai.com'), isEmpty);
+    } finally {
+      AiService.setGroqKey('');
+      AiService.setWebSearch(true);
+      GroqModelCatalog.invalidate();
+    }
+  });
+
+  test('photo stays Groq-only when no OpenAI key is saved', () async {
+    SharedPreferences.setMockInitialValues({});
+    GroqModelCatalog.invalidate();
+    AiService.setGroqKey('test-only-key');
+    AiService.setWebSearch(false);
+    const tinyJpeg =
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNCwsLDBkSEw8UHRofHh0a'
+        'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAQAB'
+        'AAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==';
+    final service = AiService(clientFactory: () => MockClient((request) async {
+      if (request.url.path.endsWith('/models')) {
+        return http.Response.bytes(utf8.encode(jsonEncode({'data': [
+          {'id': 'openai/gpt-oss-120b'},
+        ]})), 200);
+      }
+      return http.Response.bytes(utf8.encode(jsonEncode({'error': {
+        'message': 'model_not_found'
+      }})), 404);
+    }));
+    try {
+      await expectLater(
+          service.sendMessage('что на фото', imageBase64: tinyJpeg),
+          throwsStateError);
+    } finally {
+      AiService.setGroqKey('');
+      AiService.setWebSearch(true);
+      GroqModelCatalog.invalidate();
+    }
+  });
+
 }

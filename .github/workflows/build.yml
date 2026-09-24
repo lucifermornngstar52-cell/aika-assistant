@@ -63,6 +63,7 @@ jobs:
         run: |
           flutter build apk --release \
             --dart-define=GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+            --dart-define=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
             --dart-define=ELEVENLABS_API_KEY="${{ secrets.ELEVENLABS_API_KEY }}"
 
       - name: Rename APK

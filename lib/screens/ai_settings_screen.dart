@@ -15,11 +15,13 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   @override
   void dispose() {
     _groqCtrl.dispose();
+    _openAiCtrl.dispose();
     _braveCtrl.dispose();
     super.dispose();
   }
 
   final _groqCtrl     = TextEditingController();
+  final _openAiCtrl    = TextEditingController();
   final _braveCtrl    = TextEditingController();
 
   String _selectedModel = 'auto';
@@ -39,6 +41,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _groqCtrl.text     = prefs.getString('groq_key')      ?? '';
+      _openAiCtrl.text   = prefs.getString('openai_key')    ?? '';
       _braveCtrl.text    = prefs.getString('brave_key')     ?? '';
       _selectedModel     = 'groq';
       _webSearch         = prefs.getBool('ai_web_search')   ?? true;
@@ -65,6 +68,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   Future<void> _instantApply() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
+    await prefs.setString('openai_key',    _openAiCtrl.text.trim());
     await prefs.setString('ai_model',      _selectedModel);
     _applyKeys();
   }
@@ -72,6 +76,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('groq_key',      _groqCtrl.text.trim());
+    await prefs.setString('openai_key',    _openAiCtrl.text.trim());
     await prefs.setString('brave_key',     _braveCtrl.text.trim());
     await prefs.setString('ai_model',      _selectedModel);
     await prefs.setBool('ai_web_search',   _webSearch);
@@ -216,6 +221,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
           _keyCard('Groq (gpt-oss-120b)', _groqCtrl, 'gsk_...',
               'Лимиты зависят от текущего тарифа Groq. console.groq.com', modelId: 'groq'),
+          _keyCard('OpenAI (запасной для фото)', _openAiCtrl, 'sk-...',
+              'Необязательно. Если у Groq закончатся vision-модели, фото уйдёт в GPT-4o\nplatform.openai.com/api-keys'),
           _keyCard('Brave Search', _braveCtrl, 'BSA...', '🟢 бесплатно: 2000 запросов/месяц\napi.search.brave.com'),
 
           const SizedBox(height: 24),
