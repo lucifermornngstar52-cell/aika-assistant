@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -156,6 +157,34 @@ void main() {
       AiService.setGroqKey('');
       AiService.setWebSearch(true);
     }
+  });
+
+  test('no deprecated Groq model is referenced in app sources', () {
+    // https://console.groq.com/docs/deprecations — модели выключены Groq
+    // и возвращают HTTP 404, поэтому их не должно быть ни в одном сервисе.
+    const dead = [
+      'llama-4-scout-17b-16e-instruct',
+      'llama-4-maverick-17b-128e-instruct',
+      'qwen/qwen3.6-27b',
+      'qwen/qwen3-32b',
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'groq/compound',
+    ];
+    final sources = [
+      'lib/services/ai_service.dart',
+      'lib/services/groq_computer_use_service.dart',
+      'lib/services/minecraft_pilot_service.dart',
+    ];
+    for (final path in sources) {
+      final text = File(path).readAsStringSync();
+      for (final model in dead) {
+        expect(text.contains(model), isFalse,
+            reason: '$path still references deprecated $model');
+      }
+    }
+    // Фото-обработка требует живой мультимодальной модели.
+    expect(AiService.visionModels, contains('qwen/qwen3.8-27b'));
   });
 
 }

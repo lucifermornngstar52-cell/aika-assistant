@@ -15,7 +15,7 @@ class MinecraftPilotService {
 
   // Groq vision (бесплатно) — та же мультимодальная модель, что и в AiService
   static const _groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
-  static const _visionModel = 'qwen/qwen3.6-27b';
+  static const _visionModel = 'qwen/qwen3.8-27b';
 
   // ── Состояние ─────────────────────────────────────────────────────
   static bool _running = false;
@@ -222,7 +222,7 @@ class MinecraftPilotService {
         // (модель, с reasoning_effort или без)
         (_visionModel, true),
         (_visionModel, false),
-        ('meta-llama/llama-4-scout-17b-16e-instruct', false), // запасная vision-модель Groq
+        ('qwen/qwen3.8-27b', false), // запасная vision-модель Groq
       ];
 
       http.Response? resp;

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:crypto/crypto.dart';
 
 /// Edge TTS — Microsoft Neural Voices (стриминг через WebSocket)
 /// Исправлено: _edgeEnabled не сбрасывается, автоматический реконнект.
@@ -136,12 +137,17 @@ class EdgeTtsService extends ChangeNotifier {
     _wsKeepalive?.cancel();
 
     final connId = _genUuid();
-    final uri = Uri.parse('$_wsUrl?TrustedClientToken=$_trustedToken&ConnectionId=$connId');
+    // ФИКС: Microsoft закрыл анонимный доступ (403). Нужен анти-абьюз
+    // токен Sec-MS-GEC, версия Chromium 143 и cookie muid, как в edge-tts.
+    final gec = _secMsGec();
+    final uri = Uri.parse('$_wsUrl?TrustedClientToken=$_trustedToken&ConnectionId=$connId'
+        '&Sec-MS-GEC=$gec&Sec-MS-GEC-Version=1-143.0.3650.75');
 
     _ws = await WebSocket.connect(uri.toString(), headers: {
       'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-          'Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+          '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
+      'Cookie': 'muid=${_genUuid().toUpperCase()}',
     }).timeout(const Duration(seconds: 8));
 
     _wsReady = true;
@@ -387,6 +393,16 @@ class EdgeTtsService extends ChangeNotifier {
 
     // Прогреваем следующее соединение
     Future.delayed(const Duration(milliseconds: 500), _warmupConnection);
+  }
+
+  /// Токен анти-абьюза EdgeTTS: SHA256 от тиков Windows-эпохи,
+  /// округлённых вниз до 5 минут, + доверенный токен.
+  String _secMsGec() {
+    // Целочисленная арифметика: без потери точности double на больших тиках.
+    final seconds = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 + 11644473600;
+    final ticks = (seconds ~/ 300) * 300 * 10000000;
+    final str = '$ticks$_trustedToken';
+    return sha256.convert(str.codeUnits).toString().toUpperCase();
   }
 
   String _genUuid() {

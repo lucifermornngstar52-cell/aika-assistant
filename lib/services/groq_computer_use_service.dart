@@ -21,12 +21,8 @@ class GroqComputerUseService {
     return _envKey;
   }
 
-  // Мультимодальные модели Groq — основная + резервные (авто-фолбэк)
-  static const List<String> _models = [
-    'qwen/qwen3.6-27b',
-    'meta-llama/llama-4-scout-17b-16e-instruct',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-  ];
+  // Единственная актуальная мультимодальная модель Groq.
+  static const List<String> _models = ['qwen/qwen3.8-27b'];
   static const String _url = 'https://api.groq.com/openai/v1/chat/completions';
 
   /// Основной метод: получи скриншот и выполни задачу

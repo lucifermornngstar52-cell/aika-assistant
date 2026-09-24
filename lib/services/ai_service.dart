@@ -11,10 +11,9 @@ import 'web_search_service.dart';
 class AiService {
   static const _url = 'https://api.groq.com/openai/v1/chat/completions';
   static const _model = 'openai/gpt-oss-120b';
-  static const _visionModels = [
-    'meta-llama/llama-4-scout-17b-16e-instruct',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-  ];
+  // Единственная актуальная мультимодальная модель Groq (llama-4 отключены
+  // в 2026, замена по https://console.groq.com/docs/deprecations).
+  static const visionModels = ['qwen/qwen3.8-27b'];
   static String _groqKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
   static bool _webSearchEnabled = true;
   static int _maxTokens = 1024;
@@ -188,7 +187,7 @@ class AiService {
           {'type': 'image_url', 'image_url': {'url': 'data:$imageMimeType;base64,$imageBase64'}},
         ]},
       ];
-      final models = imageBase64.isEmpty ? [_model] : _visionModels;
+      final models = imageBase64.isEmpty ? [_model] : visionModels;
       Object? last;
       for (final model in models) {
         for (var attempt = 0; attempt < 2; attempt++) {
