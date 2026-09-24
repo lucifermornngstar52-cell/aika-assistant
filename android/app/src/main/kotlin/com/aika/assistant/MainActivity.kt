@@ -621,6 +621,16 @@ override fun onResume() {
                         result.success(svc.getAllScreenText())
                     }
 
+                    // Диагностика: отличаем «Accessibility выключен» от
+                    // «скриншот не снялся» — раньше любое падение выглядело
+                    // как «дай разрешение Accessibility», хотя оно выдано.
+                    "isServiceConnected" -> {
+                        result.success(true)
+                    }
+                    "getCaptureError" -> {
+                        result.success(AikaAccessibilityService.lastCaptureError)
+                    }
+
                     "getClickableElements" -> {
                         val list = svc.getClickableElements()
                         result.success(list)

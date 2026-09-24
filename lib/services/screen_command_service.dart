@@ -23,8 +23,7 @@ class ScreenCommandService {
            t.contains('домой') || t.contains('недавние') ||
            t.contains('шторка') || t.contains('уведомлени') ||
            t.contains('быстрые настройки') || t.contains('скриншот') ||
-           t.contains('что на экране') || t.contains('прочитай экран') ||
-           t.contains('что написано') || t.contains('что можно нажать') ||
+           t.contains('что можно нажать') ||
            t.contains('введи текст') || t.contains('напечатай') || t.contains('напиши') ||
            t.contains('заблокируй') || t.contains('потяни') || t.contains('проведи') ||
            t.contains('зажми') || t.contains('долгое нажатие') || t.contains('зажать') ||
@@ -98,12 +97,10 @@ class ScreenCommandService {
     }
 
     // ── Чтение экрана ─────────────────────────────────────────────
-    if (_is(t, ['что на экране', 'прочитай экран', 'read screen', 'что написано', 'что открыто'])) {
-      final text = await _reader.invokeMethod<String>('getScreenText') ?? '';
-      if (text.isEmpty) return 'Экран пуст или нет доступа к Accessibility';
-      final lines = text.split('\n').where((l) => l.trim().length > 1).toSet().take(30).join('\n');
-      return 'На экране:\n$lines';
-    }
+    // «Что на экране» и «прочитай экран» больше НЕ обрабатываем здесь:
+    // эти фразы уходят в vision-ветку main_screen (скриншот в мультимодальную
+    // модель + текст Accessibility), иначе текстовый канал без содержимого
+    // ложно просил включить Accessibility при выданном разрешении.
     if (_is(t, ['структуру экрана', 'детальный экран', 'все элементы'])) {
       final struct = await _reader.invokeMethod<Map>('getScreenStructure');
       if (struct == null) return 'Нет данных';

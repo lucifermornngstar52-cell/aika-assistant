@@ -60,6 +60,23 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   double _toEdgePitch(double p) => ((p - 1.0) * 50).clamp(-50.0, 50.0);
 
   bool _previewing = false;
+  bool _diagRunning = false;
+  String _diagResult = '';
+
+  /// Живая проверка EdgeTTS — показывает, почему голос может не меняться
+  /// (Edge молча падает и всё читает один и тот же системный голос).
+  Future<void> _runDiag() async {
+    if (_diagRunning) return;
+    setState(() { _diagRunning = true; _diagResult = 'Проверяю...'; });
+    try {
+      final res = await EdgeTtsService().diagnose();
+      if (mounted) setState(() => _diagResult = res);
+    } catch (e) {
+      if (mounted) setState(() => _diagResult = '❌ $e');
+    } finally {
+      if (mounted) setState(() => _diagRunning = false);
+    }
+  }
 
   Future<void> _preview() async {
     if (_previewing) return;
@@ -153,6 +170,24 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           ])),
           const SizedBox(height: 20),
 
+
+          const SizedBox(height: 12),
+          _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text('Диагностика EdgeTTS',
+                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
+              TextButton(
+                onPressed: _diagRunning ? null : _runDiag,
+                child: Text(_diagRunning ? '...' : 'Проверить',
+                    style: TextStyle(color: AikaTheme.neonBlue)),
+              ),
+            ]),
+            if (_diagResult.isNotEmpty)
+              Text(_diagResult, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            Text('Если EdgeTTS недоступен, Айка молча читает системным голосом — голоса не меняются.',
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          ])),
+          const SizedBox(height: 20),
 
           _label('ПАРАМЕТРЫ ГОЛОСА'),
           _card(Column(children: [

@@ -13,6 +13,22 @@ class ScreenReaderService {
     } catch (_) { return null; }
   }
 
+  /// Сервис Accessibility живой? Отличает «разрешение не выдано»
+  /// от «скриншот не снялся».
+  static Future<bool> isServiceConnected() async {
+    try {
+      return await _channel.invokeMethod<bool>('isServiceConnected') ?? false;
+    } catch (_) { return false; }
+  }
+
+  /// Последняя причина неудачи скриншота — с родной стороны.
+  static Future<String?> captureError() async {
+    try {
+      final err = await _channel.invokeMethod<String>('getCaptureError');
+      return (err != null && err.isNotEmpty) ? err : null;
+    } catch (_) { return null; }
+  }
+
   static Future<Map<String, dynamic>?> getScreenStructure() async {
     try {
       final result = await _channel.invokeMethod<Map>('getScreenStructure');

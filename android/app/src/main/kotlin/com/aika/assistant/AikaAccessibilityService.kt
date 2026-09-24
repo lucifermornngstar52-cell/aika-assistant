@@ -48,6 +48,9 @@ class AikaAccessibilityService : AccessibilityService() {
 
         // Диагностика последнего неудачного захвата экрана (для лога пилота)
         @Volatile var lastCaptureError: String? = null
+        // Момент последнего УДАЧНОГО скриншота — Accessibility троттлит
+        // повторные takeScreenshot (интервал ~1 сек), отдавая ошибку.
+        @Volatile var lastCaptureOkAt: Long = 0L
     }
 
     // Дебаунс трекинга: шлём только когда пакет реально сменился
@@ -615,13 +618,23 @@ class AikaAccessibilityService : AccessibilityService() {
             lastCaptureError = "нужен Android 11+ (сейчас SDK ${Build.VERSION.SDK_INT})"
             return null
         }
-        // Один ретрай: на некоторых прошивках первый захват после разблокировки падает
-        var out = captureScreenJpeg(1080, quality)
-        if (out == null) {
-            Thread.sleep(400)
-            out = captureScreenJpeg(1080, quality)
+        // ФИКС: Accessibility троттлит повторные takeScreenshot («один раз
+        // сработало, дальше просит Accessibility» — это он). Ждём остаток
+        // интервала и делаем несколько попыток с растущим ожиданием.
+        val sinceOk = System.currentTimeMillis() - lastCaptureOkAt
+        if (lastCaptureOkAt > 0 && sinceOk < 1200) {
+            try { Thread.sleep(1200 - sinceOk) } catch (_: InterruptedException) {}
         }
-        return out
+        repeat(3) { attempt ->
+            val out = captureScreenJpeg(1080, quality)
+            if (out != null) {
+                lastCaptureOkAt = System.currentTimeMillis()
+                return out
+            }
+            // Ошибка троттлинга/прошивки — небольшая пауза и ещё раз.
+            try { Thread.sleep(500L * (attempt + 1)) } catch (_: InterruptedException) { return null }
+        }
+        return null
     }
     // ════════════════════════════════════════════════════════════════
     // МЕТОДЫ ОБРАТНОЙ СОВМЕСТИМОСТИ (используются в MainActivity)

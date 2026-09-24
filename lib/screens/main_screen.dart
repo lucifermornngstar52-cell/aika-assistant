@@ -2026,9 +2026,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await _speak(clean);
         return;
       }
-      const noScreen =
-          'Не могу увидеть экран. Включи разрешение Accessibility '
-          '(Спец. возможности) для Айки в настройках Android.';
+      // Точная причина вместо общего «включи Accessibility» при
+      // уже выданном разрешении.
+      final connected = await ScreenReaderService.isServiceConnected();
+      final captureErr = await ScreenReaderService.captureError();
+      final String noScreen;
+      if (!connected) {
+        noScreen = 'Не вижу экран: включи разрешение Accessibility '
+            '(Спец. возможности) для Айки в настройках Android.';
+      } else if (captureErr != null) {
+        noScreen = 'Скриншот не снялся ($captureErr). '
+            'Подожди пару секунд и спроси снова.';
+      } else {
+        noScreen = 'На экране нет читаемого текста, и скриншот сейчас '
+            'недоступен. Подожди пару секунд и спроси снова.';
+      }
       _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: noScreen, timestamp: DateTime.now()));
       await _speak(noScreen);
       return;

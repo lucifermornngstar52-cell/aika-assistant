@@ -47,6 +47,11 @@ class EdgeTtsService extends ChangeNotifier {
   Timer? _wsKeepalive;
   int _failCount = 0; // счётчик ошибок подряд
   static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
+  // Диагностика: каким движком реально озвучили последнюю реплику.
+  String _lastEngineUsed = 'edge';
+  String get lastEngineUsed => _lastEngineUsed;
+  String? _lastEdgeError;
+  String? get lastEdgeError => _lastEdgeError;
 
   bool get isSpeaking => _isSpeaking;
   String get voice => _voice;
@@ -180,9 +185,13 @@ class EdgeTtsService extends ChangeNotifier {
       try {
         await _speakEdgeStreaming(text);
         _failCount = 0; // успех — сбрасываем счётчик
+        _lastEngineUsed = 'edge';
+        _lastEdgeError = null;
         return;
       } catch (e) {
         _failCount++;
+        _lastEngineUsed = 'system';
+        _lastEdgeError = e.toString();
         debugPrint('[EdgeTTS] ошибка $_failCount/$_maxFails: $e');
         if (_failCount >= _maxFails) {
           debugPrint('[EdgeTTS] переключаемся на системный TTS на 30 сек');
@@ -200,6 +209,7 @@ class EdgeTtsService extends ChangeNotifier {
     }
 
     // Системный TTS fallback
+    _lastEngineUsed = 'system';
     await _speakSystem(text);
   }
 
@@ -254,17 +264,79 @@ class EdgeTtsService extends ChangeNotifier {
       if (_failCount < _maxFails) {
         try {
           await _speakEdgeStreaming(text);
+          _lastEngineUsed = 'edge';
+          _lastEdgeError = null;
         } catch (e) {
           debugPrint('[EdgeTTS] preview ошибка, fallback system: $e');
+          _lastEngineUsed = 'system';
+          _lastEdgeError = e.toString();
           await _speakSystem(text);
         }
       } else {
+        _lastEngineUsed = 'system';
         await _speakSystem(text);
       }
     } finally {
       _rate = oldRate; _pitch = oldPitch; _volume = oldVolume; _voice = oldVoice;
       _isSpeaking = false; notifyListeners();
     }
+  }
+
+  /// Живая диагностика EdgeTTS: соединяемся, шлём пробную фразу,
+  /// считаем аудио-байты. Возвращает человекочитаемый результат —
+  /// «почему голос не меняется» становится видно на экране.
+  Future<String> diagnose() async {
+    try {
+      if (!_wsReady || _ws == null || _ws!.readyState != WebSocket.open) {
+        await _connectWs();
+      }
+    } catch (e) {
+      _lastEdgeError = e.toString();
+      return '❌ Соединение не установлено: $e';
+    }
+    final reqId = _genUuid();
+    final ts = _timestamp();
+    const probe = 'Проверка связи.';
+    final ssml =
+        '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
+        '<voice name="$_voice"><prosody rate="+0%" pitch="+0Hz">${_escapeXml(probe)}</prosody>'
+        '</voice></speak>';
+    final bytes = <int>[];
+    String? failure;
+    try {
+      // WebSocket — single-subscription stream: освобождаем прошлый слушатель.
+      try { await _activeWsSub?.cancel(); } catch (_) {}
+      _activeWsSub = null;
+      _ws!.add(
+        'X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n'
+        '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false",'
+        '"wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}');
+      _ws!.add(
+        'X-RequestId:$reqId\r\nContent-Type:application/ssml+xml\r\n'
+        'X-Timestamp:$ts\r\nPath:ssml\r\n\r\n$ssml');
+      final done = Completer<void>();
+      _activeWsSub = _ws!.listen((data) {
+        if (data is List<int>) {
+          bytes.addAll(data);
+          if (bytes.length > 2048 && !done.isCompleted) done.complete();
+        } else if (data is String && data.contains('turn.end') &&
+            !done.isCompleted) {
+          done.complete();
+        }
+      }, onDone: () { if (!done.isCompleted) done.complete(); },
+         onError: (Object e) { failure = e.toString(); if (!done.isCompleted) done.complete(); });
+      await done.future.timeout(const Duration(seconds: 10));
+      try { await _activeWsSub?.cancel(); } catch (_) {}
+    } catch (e) {
+      failure = e.toString();
+    }
+    if (bytes.length > 2048) {
+      _lastEdgeError = null;
+      return '✅ EdgeTTS работает: получено ${bytes.length} байт аудио, голос $_voice';
+    }
+    _lastEdgeError = failure ?? 'аудио не пришло';
+    return '❌ Соединение есть, но аудио не пришло (${failure ?? 'пустой ответ'}). '
+        'Айка говорит системным голосом — поэтому и не меняется.';
   }
 
   Future<void> stop() async {
