@@ -185,7 +185,7 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
         // EdgeTTS мёртв: голоса персонажей — системные Google TTS.
         // Мужским характерам — Дмитрий, женским — Астра.
         // Выбор юзера уважаем: если голос уже нужного пола — не трогаем.
-        const maleVoice = 'ru-ru-xruf-local';
+        const maleVoice = 'ru-ru-x-ruf-network';
         const femaleVoice = 'ru-ru-x-ruc-local';
         const femaleSet = {
           'ru-ru-x-ruc-local',   // Astra

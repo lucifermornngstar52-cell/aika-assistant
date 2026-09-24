@@ -8,9 +8,9 @@ import '../theme/app_theme.dart';
 /// бесплатный доступ), поэтому только системные голоса Android.
 /// Только эти шесть, имя карточки — чистое имя голоса.
 const _curatedVoices = <Map<String, String>>[
-  {'name': 'ru-ru-xruf-local',    'label': 'Дмитрий', 'locale': 'ru-RU'},
+  {'name': 'ru-ru-x-ruf-network', 'label': 'Дмитрий', 'locale': 'ru-RU'},
   {'name': 'en-gb-x-gbs-network', 'label': 'Ella',    'locale': 'en-GB'},
-  {'name': 'ru-ru-x-ruf-network', 'label': 'Piter',   'locale': 'ru-RU'},
+  {'name': 'ru-ru-xruf-local',    'label': 'Piter',   'locale': 'ru-RU'},
   {'name': 'en-au-x-auc-network', 'label': 'Stella',  'locale': 'en-AU'},
   {'name': 'ru-ru-x-rud-local',   'label': 'Tim',     'locale': 'ru-RU'},
   {'name': 'ru-ru-x-ruc-local',   'label': 'Astra',   'locale': 'ru-RU'},
