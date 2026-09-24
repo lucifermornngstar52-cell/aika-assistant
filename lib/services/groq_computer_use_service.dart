@@ -67,6 +67,9 @@ class GroqComputerUseService {
     }
   }
 
+  /// Публичный доступ к скриншоту: base64 JPEG или null (нет Accessibility).
+  static Future<String?> captureScreen() async => await _captureScreen();
+
   static Future<Map<String, String>> _headers() async => {
         'Content-Type': 'application/json; charset=utf-8',
         'Authorization': 'Bearer ${await _groqKey()}',

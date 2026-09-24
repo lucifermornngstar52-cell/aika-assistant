@@ -54,6 +54,7 @@ import '../services/relationship_service.dart';
 import '../services/reminder_service.dart';
 import '../services/schedule_service.dart';
 import '../services/screen_command_service.dart';
+import '../services/groq_computer_use_service.dart';
 import '../services/screen_reader_service.dart';
 import '../services/screen_watcher_service.dart';
 import '../services/shoplist_service.dart';
@@ -1236,6 +1237,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     OverlayService().asyncState('idle');
   }
 
+  /// Вопрос про экран глазами, а не руками: любая формулировка
+  /// («посмотри на экран», «что ты видишь у меня на экране» и т.п.).
+  /// Команды-действия («нажми», «скриншот») перехватываются раньше.
+  bool _isScreenVisionRequest(String text) {
+    final t = text.toLowerCase();
+    if (!t.contains('экран') && !t.contains('screen')) return false;
+    return t.contains('вид') ||
+        t.contains('смотри') ||
+        t.contains('что') ||
+        t.contains('прочит') ||
+        t.contains('покаж') ||
+        t.contains('опиш') ||
+        t.contains('там') ||
+        t.contains('сейчас') ||
+        t.contains('провер');
+  }
+
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     final turnId = ++_aiTurn;
@@ -1965,12 +1983,37 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // ── Чтение контента экрана ───────────────────────────────────────────
-    if (ScreenReaderService.isScreenReadRequest(text)) {
+    // ── Просмотр экрана: скриншот в vision-модель + текст Accessibility ──
+    // ФИКС: раньше работала только точная фраза «что на экране» и только
+    // текстовый канал; любые другие формулировки уходили в обычный чат, и
+    // модель честно отвечала «не вижу твой экран». Теперь при вопросе про
+    // экран делаем скриншот и отправляем его в мультимодальную модель —
+    // ту же цепочку, что обрабатывает фото пользователя.
+    if (ScreenReaderService.isScreenReadRequest(text) ||
+        _isScreenVisionRequest(text)) {
+      String? formatted;
       final screenText = await ScreenReaderService.getScreenText();
       if (screenText != null && screenText.isNotEmpty) {
         final appLabel = ScreenWatcherService.currentLabel;
-        final formatted = ScreenReaderService.formatForAI(screenText, appLabel);
+        formatted = ScreenReaderService.formatForAI(screenText, appLabel);
+      }
+      final shotB64 = await GroqComputerUseService.captureScreen();
+      if (shotB64 != null && shotB64.isNotEmpty) {
+        final aiReply = await _aiService.sendMessage(
+          text,
+          userName: _userName,
+          assistantName: _assistantName,
+          history: _currentAiHistory(),
+          screenContext: formatted ?? '',
+          imageBase64: shotB64,
+          imageMimeType: 'image/jpeg',
+        );
+        final clean = aiReply.replaceAll(RegExp(r'\[ACTION:[^\]]+\]'), '').trim();
+        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: clean, timestamp: DateTime.now()));
+        await _speak(clean);
+        return;
+      }
+      if (formatted != null && formatted.isNotEmpty) {
         final aiReply = await _aiService.sendMessage(
           text,
           userName: _userName,
@@ -1982,12 +2025,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: clean, timestamp: DateTime.now()));
         await _speak(clean);
         return;
-      } else {
-        const noScreen = 'Не могу прочитать экран. Дай разрешение Accessibility для Айки в настройках.';
-        _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: noScreen, timestamp: DateTime.now()));
-        await _speak(noScreen);
-        return;
       }
+      const noScreen =
+          'Не могу увидеть экран. Включи разрешение Accessibility '
+          '(Спец. возможности) для Айки в настройках Android.';
+      _addMessage(ChatMessage(id: DateTime.now().millisecondsSinceEpoch.toString(), role: MessageRole.aika, content: noScreen, timestamp: DateTime.now()));
+      await _speak(noScreen);
+      return;
     }
 
     try {
