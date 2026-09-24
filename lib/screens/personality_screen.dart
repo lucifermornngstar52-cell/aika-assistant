@@ -182,19 +182,26 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
         // дефолтом персонажа. Теперь дефолт персонажа применяется ТОЛЬКО
         // если юзер ни разу не выбирал голос в настройках.
         final prefs = await SharedPreferences.getInstance();
-        final userVoice = prefs.getString('edge_voice');
-        final charGender = PersonalityService.gender;
-        // Женским характерам — женский голос, мужским — мужской.
+        // EdgeTTS мёртв: голоса персонажей — системные Google TTS.
+        // Мужским характерам — Дмитрий, женским — Астра.
         // Выбор юзера уважаем: если голос уже нужного пола — не трогаем.
-        final voiceGender = EdgeTtsService.genderOf(userVoice);
-        if (userVoice == null || userVoice.isEmpty || voiceGender != charGender) {
-          final characterVoice = charGender == 'male'
-              ? 'ru-RU-DmitryNeural'
-              : 'ru-RU-DariyaNeural';
-          await prefs.setString('tts_engine', 'edge');
-          await prefs.setString('edge_voice', characterVoice);
-          EdgeTtsService().setTtsEngine('edge');
-          EdgeTtsService().setVoice(characterVoice);
+        const maleVoice = 'ru-ru-xruf-local';
+        const femaleVoice = 'ru-ru-x-ruc-local';
+        const femaleSet = {
+          'ru-ru-x-ruc-local',   // Astra
+          'en-gb-x-gbs-network', // Ella
+          'en-au-x-auc-network', // Stella
+        };
+        final userVoice = prefs.getString('tts_voice');
+        final charGender = PersonalityService.gender;
+        final voiceIsFemale = femaleSet.contains(userVoice);
+        if (userVoice == null || userVoice.isEmpty ||
+            (charGender == 'male' && voiceIsFemale) ||
+            (charGender == 'female' && !voiceIsFemale)) {
+          final characterVoice = charGender == 'male' ? maleVoice : femaleVoice;
+          await prefs.setString('tts_engine', 'system');
+          await prefs.setString('tts_voice', characterVoice);
+          EdgeTtsService().setTtsEngine('system');
         }
 
         // Ставим авто-имя если текущее имя — дефолтное

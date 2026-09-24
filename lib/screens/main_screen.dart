@@ -862,18 +862,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _edgeTts.initialize();
     final savedVoice = prefs.getString('edge_voice');
     if (savedVoice != null) _edgeTts.setVoice(savedVoice);
-    // Только бесплатные движки: EdgeTTS или системный Android TTS.
-    var ttsEngine = prefs.getString('tts_engine') ?? 'edge';
-    if (ttsEngine != 'edge' && ttsEngine != 'system') {
-      ttsEngine = 'edge';
-      await prefs.setString('tts_engine', 'edge');
-    }
-    _edgeTts.setTtsEngine(ttsEngine);
-    _useEdgeTts = ttsEngine == 'edge';
+    // EdgeTTS мёртв — всегда системный Google TTS.
+    await prefs.setString('tts_engine', 'system');
+    _edgeTts.setTtsEngine('system');
+    _useEdgeTts = false;
     await _tts.setPitch(prefs.getDouble('tts_pitch') ?? 1.0);
     await _tts.setVolume(prefs.getDouble('tts_volume') ?? 1.0);
     final voice = prefs.getString('tts_voice');
-    if (voice != null) await _tts.setVoice({'name': voice, 'locale': 'ru-RU'});
+    if (voice != null && voice.isNotEmpty) {
+      final v = voice.toLowerCase();
+      final locale = v.startsWith('en-gb') ? 'en-GB'
+          : v.startsWith('en-au') ? 'en-AU'
+          : v.startsWith('en-us') ? 'en-US'
+          : v.startsWith('ja') ? 'ja-JP' : 'ru-RU';
+      await _tts.setVoice({'name': voice, 'locale': locale});
+    }
   }
 
 

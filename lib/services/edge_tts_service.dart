@@ -26,7 +26,7 @@ class EdgeTtsService extends ChangeNotifier {
   bool _isSpeaking = false;
   // ФИКС: не отключаем EdgeTTS навсегда — при ошибке делаем реконнект и пробуем снова
   bool _edgeFailed = false;
-  String _ttsEngine = 'edge'; // 'edge' | 'system'
+  String _ttsEngine = 'system'; // EdgeTTS мёртв — только системный Google TTS
   String get ttsEngine => _ttsEngine;
   void setTtsEngine(String engine) { _ttsEngine = engine; notifyListeners(); }
   String _voice = _defaultVoice;
@@ -108,6 +108,17 @@ class EdgeTtsService extends ChangeNotifier {
     _systemTts.setErrorHandler((_) { _isSpeaking = false; notifyListeners(); });
   }
 
+  /// Локаль по имени системного голоса: en-gb-* → en-GB, en-au-* → en-AU,
+  /// остальные русские → ru-RU. Раньше хардкод ru-RU ломал Ella/Stella.
+  static String _localeOf(String voice) {
+    final v = voice.toLowerCase();
+    if (v.startsWith('en-gb')) return 'en-GB';
+    if (v.startsWith('en-au')) return 'en-AU';
+    if (v.startsWith('en-us')) return 'en-US';
+    if (v.startsWith('ja')) return 'ja-JP';
+    return 'ru-RU';
+  }
+
   void setVoice(String voiceId) { _voice = voiceId; notifyListeners(); }
   void setRate(double rate) => _rate = rate;
   void setPitch(double pitch) => _pitch = pitch;
@@ -121,8 +132,9 @@ class EdgeTtsService extends ChangeNotifier {
       _volume = prefs.getDouble('edge_tts_volume') ?? 1.0;
       final voice = prefs.getString('edge_voice');
       if (voice != null && voice.isNotEmpty) _voice = voice;
-      final savedEngine = prefs.getString('tts_engine') ?? 'edge';
-      _ttsEngine = savedEngine == 'system' ? 'system' : 'edge';
+      // EdgeTTS мёртв (Microsoft закрыл доступ) — движок всегда системный.
+      final savedEngine = prefs.getString('tts_engine') ?? 'system';
+      _ttsEngine = 'system';
     } catch (_) {}
   }
 
@@ -179,7 +191,9 @@ class EdgeTtsService extends ChangeNotifier {
 
     // Только бесплатные движки.
     // ФИКС: пробуем EdgeTTS если ошибок было меньше MAX
-    final canUseEdge = _failCount < _maxFails;
+    // Если выбран системный движок — Edge даже не пробуем (иначе каждая
+    // фраза сначала ждала отказ Edge, и голос «не менялся»).
+    final canUseEdge = _failCount < _maxFails && _ttsEngine != 'system';
 
     if (canUseEdge) {
       try {

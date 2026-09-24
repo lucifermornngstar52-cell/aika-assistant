@@ -4,6 +4,18 @@ import '../services/edge_tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 
+/// Фиксированный список голосов Google TTS. EdgeTTS мёртв (Microsoft закрыл
+/// бесплатный доступ), поэтому только системные голоса Android.
+/// Только эти шесть, имя карточки — чистое имя голоса.
+const _curatedVoices = <Map<String, String>>[
+  {'name': 'ru-ru-xruf-local',    'label': 'Дмитрий', 'locale': 'ru-RU'},
+  {'name': 'en-gb-x-gbs-network', 'label': 'Ella',    'locale': 'en-GB'},
+  {'name': 'ru-ru-x-ruf-network', 'label': 'Piter',   'locale': 'ru-RU'},
+  {'name': 'en-au-x-auc-network', 'label': 'Stella',  'locale': 'en-AU'},
+  {'name': 'ru-ru-x-rud-local',   'label': 'Tim',     'locale': 'ru-RU'},
+  {'name': 'ru-ru-x-ruc-local',   'label': 'Astra',   'locale': 'ru-RU'},
+];
+
 class SettingsVoiceScreen extends StatefulWidget {
   const SettingsVoiceScreen({Key? key}) : super(key: key);
   @override
@@ -13,11 +25,9 @@ class SettingsVoiceScreen extends StatefulWidget {
 class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   final FlutterTts _tts = FlutterTts();
   double _rate = 0.5, _pitch = 1.0, _volume = 1.0;
-  List<Map<String, String>> _voices = [];
   String? _selectedVoice;
   bool _loading = true;
-  String _ttsEngine = 'edge'; // 'edge' | 'system'
-  String? _edgeVoiceId;
+  bool _previewing = false;
 
   @override
   void initState() {
@@ -27,54 +37,28 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedEngine = prefs.getString('tts_engine') ?? 'edge';
-    _ttsEngine = savedEngine == 'system' ? 'system' : 'edge';
-    _edgeVoiceId = prefs.getString('edge_voice') ?? 'ru-RU-DariyaNeural';
-    final rawVoices = await _tts.getVoices;
-    final voices = <Map<String, String>>[];
-    if (rawVoices is List) {
-      for (final v in rawVoices) {
-        if (v is Map) {
-          final name = v['name']?.toString() ?? '';
-          final locale = v['locale']?.toString() ?? '';
-          if (locale.startsWith('ru') || locale.startsWith('en')) {
-            voices.add({'name': name, 'locale': locale});
-          }
-        }
-      }
+    // EdgeTTS больше не используется: движок всегда системный Google TTS.
+    await prefs.setString('tts_engine', 'system');
+    EdgeTtsService().setTtsEngine('system');
+    try { await _tts.setEngine('com.google.android.tts'); } catch (_) {}
+    final savedVoice = prefs.getString('tts_voice');
+    if (savedVoice != null && savedVoice.isNotEmpty) {
+      _selectedVoice = savedVoice;
+      final locale = _curatedVoices
+          .firstWhere((v) => v['name'] == savedVoice,
+              orElse: () => const {'locale': 'ru-RU'})['locale'];
+      await _tts.setVoice({'name': savedVoice, 'locale': locale ?? 'ru-RU'});
     }
-    setState(() {
-      _rate = prefs.getDouble('tts_rate') ?? 0.5;
-      _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
-      _volume = prefs.getDouble('tts_volume') ?? 1.0;
-      _selectedVoice = prefs.getString('tts_voice');
-      _voices = voices;
-      _loading = false;
-    });
-  }
-
-
-  /// UI-слайдер 0.25..1.5 (норма=0.5) → проценты EdgeTTS SSML (-50%..+150%, норма=0%)
-  double _toEdgeRate(double r) => (((r - 0.5) / 0.5) * 100).clamp(-50.0, 150.0);
-  /// UI-слайдер 0.5..2.0 (норма=1.0) → сдвиг в Hz для EdgeTTS SSML (-50..+50Hz)
-  double _toEdgePitch(double p) => ((p - 1.0) * 50).clamp(-50.0, 50.0);
-
-  bool _previewing = false;
-  bool _diagRunning = false;
-  String _diagResult = '';
-
-  /// Живая проверка EdgeTTS — показывает, почему голос может не меняться
-  /// (Edge молча падает и всё читает один и тот же системный голос).
-  Future<void> _runDiag() async {
-    if (_diagRunning) return;
-    setState(() { _diagRunning = true; _diagResult = 'Проверяю...'; });
-    try {
-      final res = await EdgeTtsService().diagnose();
-      if (mounted) setState(() => _diagResult = res);
-    } catch (e) {
-      if (mounted) setState(() => _diagResult = '❌ $e');
-    } finally {
-      if (mounted) setState(() => _diagRunning = false);
+    if (mounted) {
+      setState(() {
+        _rate = prefs.getDouble('tts_rate') ?? 0.5;
+        _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
+        _volume = prefs.getDouble('tts_volume') ?? 1.0;
+        if (_selectedVoice == null) {
+          _selectedVoice = _curatedVoices.first['name'];
+        }
+        _loading = false;
+      });
     }
   }
 
@@ -83,23 +67,14 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     setState(() => _previewing = true);
     const sample = 'Привет! Вот так будет звучать мой голос.';
     try {
-      if (_ttsEngine == 'system') {
-        await _tts.setSpeechRate(_rate);
-        await _tts.setPitch(_pitch);
-        await _tts.setVolume(_volume);
-        if (_selectedVoice != null) {
-          await _tts.setVoice({'name': _selectedVoice!, 'locale': 'ru-RU'});
-        }
-        await _tts.speak(sample);
-      } else {
-        await EdgeTtsService().previewSpeak(
-          sample,
-          rate: _toEdgeRate(_rate),
-          pitch: _toEdgePitch(_pitch),
-          volume: _volume,
-          voice: _edgeVoiceId ?? 'ru-RU-DariyaNeural',
-        );
-      }
+      await _tts.setSpeechRate(_rate);
+      await _tts.setPitch(_pitch);
+      await _tts.setVolume(_volume);
+      final v = _curatedVoices.firstWhere(
+          (x) => x['name'] == _selectedVoice,
+          orElse: () => _curatedVoices.first);
+      await _tts.setVoice({'name': v['name']!, 'locale': v['locale']!});
+      await _tts.speak(sample);
     } catch (_) {
     } finally {
       if (mounted) setState(() => _previewing = false);
@@ -108,28 +83,17 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('tts_engine', _ttsEngine);
+    await prefs.setString('tts_engine', 'system');
     await prefs.setDouble('tts_rate', _rate);
     await prefs.setDouble('tts_pitch', _pitch);
     await prefs.setDouble('tts_volume', _volume);
-
-    // ФИКС: раньше EdgeTTS (основной движок) читал edge_tts_rate/edge_tts_pitch,
-    // которые здесь никогда не записывались — ползунки не влияли на голос.
-    final edgeRate = _toEdgeRate(_rate);
-    final edgePitch = _toEdgePitch(_pitch);
-    await prefs.setDouble('edge_tts_rate', edgeRate);
-    await prefs.setDouble('edge_tts_pitch', edgePitch);
-    await prefs.setDouble('edge_tts_volume', _volume);
-    EdgeTtsService().setRate(edgeRate);
-    EdgeTtsService().setPitch(edgePitch);
-    EdgeTtsService().setVolume(_volume);
-    if (_ttsEngine == 'edge') {
-      final voice = _edgeVoiceId ?? 'ru-RU-DariyaNeural';
-      await prefs.setString('edge_voice', voice);
-      EdgeTtsService().setVoice(voice);
-    }
-    if (_ttsEngine == 'system' && _selectedVoice != null) {
+    EdgeTtsService().setTtsEngine('system');
+    if (_selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
+      final v = _curatedVoices.firstWhere(
+          (x) => x['name'] == _selectedVoice,
+          orElse: () => _curatedVoices.first);
+      await _tts.setVoice({'name': v['name']!, 'locale': v['locale']!});
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -163,32 +127,9 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           : ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _label('ДВИЖОК TTS'),
-          _card(Column(children: [
-            _engineTile('EdgeTTS (бесплатно)', 'edge', '⚡', 'Microsoft Neural, мгновенный стриминг'),
-            _engineTile('Системный TTS', 'system', '📱', 'Встроенный Android TTS, офлайн'),
-          ])),
+          _label('ГОЛОСА'),
+          _card(Column(children: _curatedVoices.map(_voiceTile).toList())),
           const SizedBox(height: 20),
-
-
-          const SizedBox(height: 12),
-          _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text('Диагностика EdgeTTS',
-                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
-              TextButton(
-                onPressed: _diagRunning ? null : _runDiag,
-                child: Text(_diagRunning ? '...' : 'Проверить',
-                    style: TextStyle(color: AikaTheme.neonBlue)),
-              ),
-            ]),
-            if (_diagResult.isNotEmpty)
-              Text(_diagResult, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-            Text('Если EdgeTTS недоступен, Айка молча читает системным голосом — голоса не меняются.',
-                style: const TextStyle(color: Colors.white38, fontSize: 11)),
-          ])),
-          const SizedBox(height: 20),
-
           _label('ПАРАМЕТРЫ ГОЛОСА'),
           _card(Column(children: [
             _slider('Скорость речи', _rate, 0.25, 1.5, (v) => setState(() => _rate = v)),
@@ -212,108 +153,34 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
                   : Text('🔊  Проверить голос', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13, fontWeight: FontWeight.w600)),
             ),
           ),
-          const SizedBox(height: 20),
-          if (_ttsEngine == 'edge') ...[
-            const SizedBox(height: 20),
-            _label('НЕЙРОННЫЙ ГОЛОС (EdgeTTS)'),
-            ...EdgeTtsService.voices.map((v) => GestureDetector(
-              onTap: () async {
-                final id = v['id']!;
-                setState(() => _edgeVoiceId = id);
-                EdgeTtsService().setVoice(id);
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('edge_voice', id);
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: _edgeVoiceId == v['id']
-                      ? AikaTheme.neonBlue.withOpacity(0.15)
-                      : const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _edgeVoiceId == v['id'] ? AikaTheme.neonBlue : Colors.transparent,
-                  ),
-                ),
-                child: Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(v['label']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                    Text(v['description'] ?? 'Бесплатный нейронный голос', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                  ])),
-                  if (_edgeVoiceId == v['id'])
-                    Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-                ]),
-              ),
-            )),
-          ] else if (_voices.isNotEmpty && _ttsEngine == 'system') ...[
-            const SizedBox(height: 20),
-            _label('СИСТЕМНЫЙ ГОЛОС'),
-            ..._voices.map((v) => GestureDetector(
-              onTap: () async {
-                final name = v['name'];
-                if (name == null) return;
-                setState(() => _selectedVoice = name);
-                await _tts.setVoice({'name': name, 'locale': v['locale'] ?? 'ru-RU'});
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('tts_voice', name);
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: _selectedVoice == v['name']
-                      ? AikaTheme.neonBlue.withOpacity(0.15)
-                      : const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _selectedVoice == v['name'] ? AikaTheme.neonBlue : Colors.transparent,
-                  ),
-                ),
-                child: Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(v['name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                    Text(v['locale'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                  ])),
-                  if (_selectedVoice == v['name'])
-                    Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-                ]),
-              ),
-            )),
-          ],
         ],
       ),
     );
   }
 
-  Widget _engineTile(String title, String engine, String emoji, String subtitle) =>
-      GestureDetector(
+  Widget _voiceTile(Map<String, String> v) => GestureDetector(
         onTap: () async {
-          setState(() => _ttsEngine = engine);
-          EdgeTtsService().setTtsEngine(engine);
+          setState(() => _selectedVoice = v['name']);
+          await _tts.setVoice({'name': v['name']!, 'locale': v['locale']!});
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('tts_engine', engine);
+          await prefs.setString('tts_voice', v['name']!);
         },
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: _ttsEngine == engine
+            color: _selectedVoice == v['name']
                 ? AikaTheme.neonBlue.withOpacity(0.15)
                 : const Color(0xFF1C1C1E),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: _ttsEngine == engine ? AikaTheme.neonBlue : Colors.transparent,
+              color: _selectedVoice == v['name'] ? AikaTheme.neonBlue : Colors.transparent,
             ),
           ),
           child: Row(children: [
-            Text(emoji, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            ])),
-            if (_ttsEngine == engine)
+            Expanded(child: Text(v['label']!,
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
+            if (_selectedVoice == v['name'])
               Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
           ]),
         ),
