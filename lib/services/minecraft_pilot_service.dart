@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'groq_model_catalog.dart';
+
 /// ═════════════════════════════════════════════════════════════════════
 /// Minecraft Pilot — игровой автопилот Айки.
 ///
@@ -15,7 +17,6 @@ class MinecraftPilotService {
 
   // Groq vision (бесплатно) — та же мультимодальная модель, что и в AiService
   static const _groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
-  static const _visionModel = 'qwen/qwen3.8-27b';
 
   // ── Состояние ─────────────────────────────────────────────────────
   static bool _running = false;
@@ -217,12 +218,13 @@ class MinecraftPilotService {
 
     try {
       // ФИКС: раньше один 400/404 (модель не та / параметр не тот) —
-      // и пилот навсегда молчал. Теперь пробуем комбинации по очереди.
-      const modelCandidates = [
-        // (модель, с reasoning_effort или без)
-        (_visionModel, true),
-        (_visionModel, false),
-        ('qwen/qwen3.8-27b', false), // запасная vision-модель Groq
+      // и пилот навсегда молчал. Модели берём из живого списка Groq.
+      final visionChain =
+          await GroqModelCatalog.resolveVision(_groqKey ?? '');
+      final modelCandidates = <(String, bool)>[
+        for (final m in visionChain) ...(m == visionChain.first
+            ? [(m, true), (m, false)]
+            : [(m, false)]),
       ];
 
       http.Response? resp;

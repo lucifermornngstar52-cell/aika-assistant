@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'groq_model_catalog.dart';
+
 /// Сервис умных кликов через Groq Vision (бесплатный).
 /// Получает скриншот → отправляет в Groq → получает координаты/действие → выполняет.
 /// НЕ заменяет AccessibilityService — работает поверх него как "умный слой".
@@ -21,8 +23,7 @@ class GroqComputerUseService {
     return _envKey;
   }
 
-  // Единственная актуальная мультимодальная модель Groq.
-  static const List<String> _models = ['qwen/qwen3.8-27b'];
+  // Модели зрения определяются по живому списку Groq (GroqModelCatalog).
   static const String _url = 'https://api.groq.com/openai/v1/chat/completions';
 
   /// Основной метод: получи скриншот и выполни задачу
@@ -73,7 +74,9 @@ class GroqComputerUseService {
 
   static Future<String?> _chat(String prompt, String imageB64,
       {int maxTokens = 256, int timeoutSec = 20}) async {
-    for (final model in _models) {
+    final models = await GroqModelCatalog.resolveVision(await _groqKey());
+    if (models.isEmpty) return null;
+    for (final model in models) {
       final body = {
         'model': model,
         'messages': [
@@ -100,6 +103,7 @@ class GroqComputerUseService {
         if (resp.statusCode != 200) continue; // модель недоступна — следующая
         final data = jsonDecode(utf8.decode(resp.bodyBytes));
         // OpenAI-совместимый формат: choices[0].message.content
+        await GroqModelCatalog.confirmVision(model);
         return data['choices']?[0]?['message']?['content'] as String?;
       } catch (_) {
         continue; // таймаут/сеть — пробуем следующую модель

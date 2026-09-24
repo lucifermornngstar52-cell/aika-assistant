@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'groq_model_catalog.dart';
 import 'personality_service.dart';
 import 'web_search_service.dart';
 
@@ -11,9 +12,9 @@ import 'web_search_service.dart';
 class AiService {
   static const _url = 'https://api.groq.com/openai/v1/chat/completions';
   static const _model = 'openai/gpt-oss-120b';
-  // Единственная актуальная мультимодальная модель Groq (llama-4 отключены
-  // в 2026, замена по https://console.groq.com/docs/deprecations).
-  static const visionModels = ['qwen/qwen3.8-27b'];
+  // Модели зрения больше не зашиты: цепочка строится из живого списка
+  // моделей Groq (см. GroqModelCatalog) — Groq больше не может сломать
+  // обработку фото, просто отключив модель.
   static String _groqKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
   static bool _webSearchEnabled = true;
   static int _maxTokens = 1024;
@@ -187,8 +188,14 @@ class AiService {
           {'type': 'image_url', 'image_url': {'url': 'data:$imageMimeType;base64,$imageBase64'}},
         ]},
       ];
-      final models = imageBase64.isEmpty ? [_model] : visionModels;
+      // Живые цепочки моделей: Groq регулярно отключает старые ID (404),
+      // поэтому цепочку строим из актуального списка моделей API.
+      var models = imageBase64.isEmpty
+          ? await GroqModelCatalog.resolveText(key, client: client)
+          : await GroqModelCatalog.resolveVision(key, client: client);
       Object? last;
+      var revalidated = false;
+      while (true) {
       for (final model in models) {
         for (var attempt = 0; attempt < 2; attempt++) {
           if (turn != _generation) throw StateError('Запрос отменён новым сообщением');
@@ -203,6 +210,11 @@ class AiService {
             if (response.statusCode == 200) {
               final content = extractGroqContent(jsonDecode(utf8.decode(response.bodyBytes)));
               if (content.isEmpty) throw const FormatException('Пустой текст');
+              if (imageBase64.isEmpty) {
+                unawaited(GroqModelCatalog.confirmText(model));
+              } else {
+                unawaited(GroqModelCatalog.confirmVision(model));
+              }
               return content;
             }
             last = HttpException('Groq HTTP ${response.statusCode}');
@@ -216,6 +228,19 @@ class AiService {
             on HandshakeException catch (e) { last = e; }
           if (attempt == 0) await Future<void>.delayed(const Duration(milliseconds: 500));
         }
+      }
+        // Все модели цепочки упали на 404/400: Groq сменил набор моделей.
+        // Инвалидируем кэш, заново спрашиваем живой список и пробуем ещё раз.
+        if (!revalidated && last is HttpException &&
+            (last.message.contains('404') || last.message.contains('400'))) {
+          GroqModelCatalog.invalidate();
+          models = imageBase64.isEmpty
+              ? await GroqModelCatalog.resolveText(key, client: client)
+              : await GroqModelCatalog.resolveVision(key, client: client);
+          revalidated = true;
+          continue;
+        }
+        break;
       }
       if (turn != _generation) throw StateError('Запрос отменён новым сообщением');
       throw StateError('Groq недоступен: ${last is HttpException ? last.message : 'ошибка сети или таймаут'}');

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aika_assistant/services/memory_service.dart';
 import 'package:aika_assistant/services/conversation_history_service.dart';
 import 'package:aika_assistant/services/ai_service.dart';
+import 'package:aika_assistant/services/groq_model_catalog.dart';
 import 'package:aika_assistant/services/device_service.dart';
 
 void main() {
@@ -113,6 +114,10 @@ void main() {
     final firstResponse = Completer<http.Response>();
     var calls = 0;
     final service = AiService(clientFactory: () => MockClient((request) {
+      if (request.url.path.endsWith('/models')) {
+        return Future.value(http.Response.bytes(utf8.encode(jsonEncode(
+            {'data': [{'id': 'openai/gpt-oss-120b'}]})), 200));
+      }
       calls++;
       if (calls == 1) return firstResponse.future;
       return Future.value(http.Response.bytes(utf8.encode(jsonEncode({'choices': [
@@ -140,9 +145,15 @@ void main() {
     AiService.setWebSearch(false);
     final pendingChat = Completer<http.Response>();
     final chat = AiService(clientFactory: () => MockClient((request) =>
-        pendingChat.future));
+        request.url.path.endsWith('/models')
+            ? Future.value(http.Response.bytes(utf8.encode(jsonEncode(
+                {'data': [{'id': 'openai/gpt-oss-120b'}]})), 200))
+            : pendingChat.future));
     final background = AiService(clientFactory: () => MockClient((request) async =>
-        http.Response.bytes(utf8.encode(jsonEncode({'choices': [
+        request.url.path.endsWith('/models')
+            ? http.Response.bytes(utf8.encode(jsonEncode(
+                {'data': [{'id': 'openai/gpt-oss-120b'}]})), 200)
+            : http.Response.bytes(utf8.encode(jsonEncode({'choices': [
           {'message': {'content': 'Фон готов'}}
         ]})), 200)));
     try {
@@ -183,8 +194,54 @@ void main() {
             reason: '$path still references deprecated $model');
       }
     }
-    // Фото-обработка требует живой мультимодальной модели.
-    expect(AiService.visionModels, contains('qwen/qwen3.8-27b'));
+    // Фото-обработка строит цепочку моделей из живого списка Groq.
+    expect(GroqModelCatalog.visionChain(
+        ['openai/gpt-oss-120b', 'qwen/qwen3.9-vlm-27b'], null),
+        contains('qwen/qwen3.9-vlm-27b'));
+  });
+
+  test('vision request self-heals after Groq kills the model (404)', () async {
+    SharedPreferences.setMockInitialValues({});
+    GroqModelCatalog.invalidate();
+    AiService.setGroqKey('test-only-key');
+    AiService.setWebSearch(false);
+    // Настоящий image/jpeg: 1x1 чёрный пиксель.
+    const tinyJpeg =
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNCwsLDBkSEw8UHRofHh0a'
+        'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAQAB'
+        'AAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==';
+    final requests = <Map<String, dynamic>>[];
+    final service = AiService(clientFactory: () => MockClient((request) async {
+      if (request.url.path.endsWith('/models')) {
+        return http.Response.bytes(utf8.encode(jsonEncode({'data': [
+          {'id': 'openai/gpt-oss-120b'},
+          {'id': 'qwen/qwen4.0-vl-30b'},
+        ]})), 200);
+      }
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      requests.add(body);
+      if (body['model'] == 'qwen/qwen3.8-27b') {
+        return http.Response.bytes(utf8.encode(jsonEncode({'error': {
+          'message': 'model_not_found'
+        }})), 404);
+      }
+      return http.Response.bytes(utf8.encode(jsonEncode({'choices': [
+        {'message': {'content': 'Вижу фото кота'}}
+      ]})), 200);
+    }));
+    try {
+      final answer = await service.sendMessage('что на фото', imageBase64: tinyJpeg);
+      expect(answer, 'Вижу фото кота');
+      final tried = requests.map((b) => b['model']).toList();
+      expect(tried, contains('qwen/qwen4.0-vl-30b'));
+      // Рабочая модель закэширована и используется сразу в следующий раз.
+      final again = await service.sendMessage('ещё раз', imageBase64: tinyJpeg);
+      expect(again, 'Вижу фото кота');
+    } finally {
+      AiService.setGroqKey('');
+      AiService.setWebSearch(true);
+      GroqModelCatalog.invalidate();
+    }
   });
 
 }
