@@ -9,7 +9,7 @@ import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.android.SpeechService
-import org.vosk.android.SpeechServiceListener
+import org.vosk.android.RecognitionListener
 import java.io.File
 import java.io.FileInputStream
 import java.util.zip.ZipInputStream
@@ -107,7 +107,7 @@ class VoskHandler {
             this.sink = sink
             val ss = SpeechService(rec, 16000.0f)
             speechService = ss
-            ss.addListener(object : SpeechServiceListener {
+            val listener = object : RecognitionListener {
                 override fun onPartialResult(partial: String?) {
                     val text = parseText(partial) ?: return
                     sendEvent("partial", text)
@@ -130,8 +130,8 @@ class VoskHandler {
                 override fun onTimeout() {
                     sendEvent("timeout", "")
                 }
-            })
-            ss.startListening()
+            }
+            ss.startListening(listener)
             result.success(true)
         } catch (e: Exception) {
             Log.e(TAG, "start failed: ${e.message}")
@@ -150,7 +150,7 @@ class VoskHandler {
 
     private fun stopInternal() {
         try { speechService?.stop() } catch (_: Exception) {}
-        try { speechService?.close() } catch (_: Exception) {}
+        try { speechService?.shutdown() } catch (_: Exception) {}
         speechService = null
         try { recognizer?.close() } catch (_: Exception) {}
         recognizer = null
