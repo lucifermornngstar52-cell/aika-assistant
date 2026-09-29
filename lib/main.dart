@@ -47,6 +47,14 @@ void main() async {
   AiService.setMaxTokens(prefs.getInt('ai_max_tokens') ?? 1024);
   WebSearchService.setBraveKey(prefs.getString('brave_key') ?? '');
 
+  // Pro: локальный режим — если включён, Айка думает на устройстве.
+  final localModeOn = prefs.getBool('local_ai_mode') ?? false;
+  AiService.setLocalMode(localModeOn);
+  if (localModeOn) {
+    // Движок грузим не здесь (блокирует старт), а при первом чате
+    // или вручную с экрана «Локальные модели».
+  }
+
   } catch (e) {
     debugPrint('Ошибка инициализации сервисов: $e');
   }

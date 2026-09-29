@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -60,6 +60,9 @@ dependencies:
 
   # Notifications & Reminders
   flutter_local_notifications: ^18.0.0
+
+  # Локальный LLM-движок Pro-версии (llama.cpp + GGUF, зрение через mtmd)
+  llama_cpp_dart: ^0.9.0-dev.12
   
   cupertino_icons: ^1.0.6
 

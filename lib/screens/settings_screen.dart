@@ -6,6 +6,7 @@ import 'minecraft_pilot_screen.dart';
 import 'model_picker_screen.dart';
 import 'settings_background_screen.dart';
 import 'personality_screen.dart';
+import 'local_models_screen.dart';
 import 'chat_history_screen.dart';
 import 'settings_overlay_screen.dart';
 import 'about_project_screen.dart';
@@ -47,6 +48,16 @@ class SettingsScreen extends StatelessWidget {
             accent: const Color(0xFFB0B0B0),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AiSettingsScreen())),
+          ),
+
+          // ── Локальные модели (Pro) ──────────────────────────────────
+          _SettingsCard(
+            title: '⚡ Локальные модели (Pro)',
+            subtitle: 'Qwen3 на устройстве: текст, зрение, оффлайн STT',
+            icon: Icons.memory,
+            accent: const Color(0xFF00E5FF),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const LocalModelsScreen())),
           ),
 
           // ── Характер ───────────────────────────────────────────────

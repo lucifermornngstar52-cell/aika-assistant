@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+
+import 'local_model_manager.dart';
+import 'local_stt_service.dart';
 
 /// SpeechService — владелец единственного экземпляра SpeechToText.
 /// WakeWordService получает shared доступ через sharedStt.
@@ -100,6 +104,37 @@ class SpeechService extends ChangeNotifier {
     Function(String text) onResult, {
     Function()? onListeningStart,
   }) async {
+    // ── Pro: локальный оффлайн STT (Vosk) ──────────────────────────────────
+    final mgr = LocalModelManager.instance;
+    if (await mgr.localSttEnabled) {
+      final vosk = LocalSttService.instance;
+      final ok = await vosk.ensureInitialized();
+      if (ok) {
+        final mic = await Permission.microphone.request();
+        if (mic.isGranted) {
+          _isListening = true;
+          _lastWords = '';
+          notifyListeners();
+          onListeningStart?.call();
+          vosk.startListening(
+            onResult: (text) {
+              _lastWords = text;
+              _soundLevel = 0;
+              _isListening = false;
+              notifyListeners();
+              if (text.isNotEmpty) onResult(text);
+            },
+            onPartial: (partial) {
+              _lastWords = partial;
+              notifyListeners();
+            },
+          );
+          return;
+        }
+      }
+      // Vosk недоступен — тихо падаем в системный STT ниже.
+    }
+
     if (!_isAvailable) {
       debugPrint('[STT] недоступен');
       return;
@@ -140,6 +175,9 @@ class SpeechService extends ChangeNotifier {
   Future<void> stopListening() async {
     _isListening = false;
     await _stt.stop();
+    if (LocalSttService.instance.isListening) {
+      await LocalSttService.instance.stopListening();
+    }
     notifyListeners();
   }
 

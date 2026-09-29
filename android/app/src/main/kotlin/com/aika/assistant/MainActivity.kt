@@ -44,6 +44,8 @@ class MainActivity : FlutterActivity() {
         private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
         private const val ALARM_CHANNEL                    = "com.aika.assistant/alarm"
         private const val SECURITY_CHANNEL                 = "com.aika.assistant/security"
+        private const val VOSK_CHANNEL                    = "com.aika.assistant/vosk"
+        private const val VOSK_EVENTS_CHANNEL             = "com.aika.assistant/vosk_events"
     }
 
     // Новые нативные обработчики (openclaw-inspired)
@@ -51,6 +53,9 @@ class MainActivity : FlutterActivity() {
     private val contactsHandler by lazy { ContactsHandler(applicationContext) }
     private val sensorsHandler  by lazy { SensorsHandler(applicationContext) }
     private val mainHandler     by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+
+    private val voskHandler     by lazy { VoskHandler() }
+    private var voskEventSink: EventChannel.EventSink? = null
 
     // EventChannel sink для отправки событий смены приложений во Flutter
     private var screenEventSink: EventChannel.EventSink? = null
@@ -204,6 +209,36 @@ override fun onResume() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ── Vosk: локальный оффлайн STT (Pro) ─────────────────────────────────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "init" -> voskHandler.init(
+                    call.argument<String>("zipPath") ?: "",
+                    call.argument<String>("modelsDir") ?: "",
+                    result
+                )
+                "start" -> voskHandler.start(voskEventSink ?: object : EventChannel.EventSink {
+                    override fun success(o: Any?) {}
+                    override fun error(s: String?, m: String?, d: Any?) {}
+                    override fun endOfStream() {}
+                }, result)
+                "stop" -> voskHandler.stop(result)
+                "unload" -> voskHandler.unload(result)
+                else -> result.notImplemented()
+            }
+        }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_EVENTS_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    voskEventSink = events
+                    voskHandler.onSinkChanged(events)
+                }
+                override fun onCancel(arguments: Any?) {
+                    voskEventSink = null
+                }
+            }
+        )
 
         // ── 0. License channel ────────────────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LICENSE_CHANNEL)

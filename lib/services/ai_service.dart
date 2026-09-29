@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 
 import 'groq_model_catalog.dart';
+import 'local_llm_service.dart';
+import 'local_model_manager.dart';
 import 'openai_vision_service.dart';
 import 'personality_service.dart';
 import 'web_search_service.dart';
@@ -17,6 +21,7 @@ class AiService {
   // моделей Groq (см. GroqModelCatalog) — Groq больше не может сломать
   // обработку фото, просто отключив модель.
   static String _groqKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
+  static bool _localMode = false;
   static bool _webSearchEnabled = true;
   static int _maxTokens = 1024;
   // Отмена относится к конкретному диалогу. Фоновые вызовы AiService не
@@ -29,6 +34,9 @@ class AiService {
       : _clientFactory = clientFactory ?? http.Client.new;
 
   static void setGroqKey(String value) => _groqKey = value.trim();
+  /// Pro-режим: локальная модель вместо облака (если загружена).
+  static void setLocalMode(bool value) => _localMode = value;
+  static bool get localMode => _localMode;
   static void setWebSearch(bool value) => _webSearchEnabled = value;
   static void setMaxTokens(int value) => _maxTokens = value.clamp(64, 4096).toInt();
   // Compatibility with existing settings call sites. These providers are disabled.
@@ -60,6 +68,18 @@ class AiService {
       'релиз', 'что случилось'].any(m.contains) ||
       RegExp(r'\b20\d{2}\b').allMatches(m).any((match) =>
         int.parse(match.group(0)!) >= currentYear);
+  }
+
+  /// Системный промпт для локальной модели: краткий, чтобы экономить контекст.
+  static String _localSystemPrompt(String assistantName, String userName) {
+    final persona = PersonalityService.systemPromptAddition.trim();
+    final personaPart = persona.isEmpty
+        ? 'Ты дружелюбный и живой ассистент.'
+        : persona;
+    return 'Ты — $assistantName, персональный AI-ассистент '
+        '${userName.isEmpty ? 'пользователя' : 'по имени $userName'}. '
+        '$personaPart Отвечай по-русски, тепло, живо и по делу. '
+        'Не генерируй ACTION-теги. Не инициируй действия на устройстве.';
   }
 
   static String _clean(String text) => text
@@ -153,6 +173,38 @@ class AiService {
   }) async {
     final key = _groqKey;
     final maxTokens = _maxTokens;
+
+    // ── Pro: локальный оффлайн-движок ──────────────────────────────────────
+    if (_localMode && LocalLlmService.instance.isReady) {
+      final engine = LocalLlmService.instance;
+      final hasImage = imageBase64.isNotEmpty;
+      // Фото без локального зрения уходит в облако.
+      if (!hasImage || engine.supportsVision) {
+        try {
+          Uint8List? imageBytes;
+          if (hasImage) {
+            imageBytes = base64Decode(imageBase64);
+            if (imageBytes.length > 6 * 1024 * 1024) imageBytes = null;
+          }
+          final historyList = recentHistory(history, message)
+              .map((m) => {
+                'role': (m['role'] as String?) ?? 'user',
+                'content': (m['content'] as String?) ?? '',
+              })
+              .toList();
+          final text = await engine.chat(
+            system: _localSystemPrompt(assistantName, userName),
+            history: historyList,
+            user: message.isEmpty && hasImage ? 'Опиши изображение' : message,
+            imageBytes: imageBytes,
+            maxTokens: maxTokens,
+          );
+          if (text.isNotEmpty) return text;
+        } catch (e) {
+          // Локальный движок упал — тихо падаем в облако.
+        }
+      }
+    }
     final searchEnabled = _webSearchEnabled;
     if (key.isEmpty) throw StateError('Добавь ключ Groq в настройках AI');
     if (imageBase64.isNotEmpty) _validatedMime(imageBase64, imageMimeType);
