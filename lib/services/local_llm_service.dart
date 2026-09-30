@@ -38,12 +38,34 @@ class LocalLlmService extends ChangeNotifier {
     _status = 'Загружаю модель $modelLabel…';
     notifyListeners();
     try {
+      // ФИКС ПАМЯТИ (VL-модели): Qwen3-VL с динамическим разрешением может
+      // выдать тысячи токенов на одну фотографию — контекст 4096 не
+      // выдерживал, и движок падал по памяти. Решение:
+      //   • KV-кэш квантован в q8_0 (в 2 раза меньше RAM при малой потере);
+      //   • лимит образа: imageMin/imageMax токенов (64..512);
+      //   • меньшие батчи префилла под VL;
+      //   • warmup — надёжный первый токен после загрузки.
+      final isVision = mmprojPath != null;
       _engine = await LlamaEngine.spawn(
         modelParams: ModelParams(path: modelPath, gpuLayers: 0),
-        contextParams: const ContextParams(nCtx: 4096, nThreads: 0),
+        contextParams: isVision
+            ? const ContextParams(
+                nCtx: 4096,
+                nThreads: 0,
+                nBatch: 1024,
+                nUbatch: 256,
+                typeK: KvCacheType.q8_0,
+                typeV: KvCacheType.q8_0,
+              )
+            : const ContextParams(nCtx: 4096, nThreads: 0),
         multimodalParams: mmprojPath == null
             ? null
-            : MultimodalParams(mmprojPath: mmprojPath),
+            : MultimodalParams(
+                mmprojPath: mmprojPath,
+                imageMinTokens: 64,
+                imageMaxTokens: 512,
+                warmup: true,
+              ),
       );
       _ready = true;
       _loadedModelName = modelLabel;

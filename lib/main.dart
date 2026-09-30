@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,7 @@ import 'services/personality_service.dart';
 import 'services/wardrobe_service.dart';
 import 'services/theme_switcher_service.dart';
 import 'services/ai_service.dart';
+import 'services/local_llm_service.dart';
 import 'services/web_search_service.dart';
 import 'main_overlay.dart' show overlayMain;
 
@@ -51,8 +54,17 @@ void main() async {
   final localModeOn = prefs.getBool('local_ai_mode') ?? false;
   AiService.setLocalMode(localModeOn);
   if (localModeOn) {
-    // Движок грузим не здесь (блокирует старт), а при первом чате
-    // или вручную с экрана «Локальные модели».
+    // ФИКС «движок надо грузить руками»: автозагрузка при старте.
+    // Стартуем с задержкой, чтобы не конкурировать с инициализацией UI,
+    // и не блокируем main(): модель грузится в фоне.
+    unawaited(Future.delayed(const Duration(seconds: 6), () async {
+      try {
+        final ok = await loadEngineFromManager();
+        debugPrint('[LocalLLM] автозагрузка: ${ok ? 'готово' : 'модели не скачаны'}');
+      } catch (e) {
+        debugPrint('[LocalLLM] автозагрузка не удалась: $e');
+      }
+    }));
   }
 
   } catch (e) {

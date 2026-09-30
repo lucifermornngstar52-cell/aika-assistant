@@ -188,9 +188,10 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
         const maleVoice = 'ru-ru-x-ruf-network';
         const femaleVoice = 'ru-ru-x-ruc-local';
         const femaleSet = {
-          'ru-ru-x-ruc-local',   // Astra
-          'en-gb-x-gbs-network', // Ella
-          'en-au-x-auc-network', // Stella
+          'ru-ru-x-ruc-local',   // Астра
+          'ru-ru-xruf-local',    // Ника (xruf-local — женский)
+          'en-gb-x-gbs-network', // Элла
+          'en-au-x-auc-network', // Стелла
         };
         final userVoice = prefs.getString('tts_voice');
         final charGender = PersonalityService.gender;

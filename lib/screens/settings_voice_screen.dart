@@ -4,20 +4,34 @@ import '../services/edge_tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 
-/// Фиксированный список голосов Google TTS. EdgeTTS мёртв (Microsoft закрыл
-/// бесплатный доступ), поэтому только системные голоса Android.
-/// Только эти шесть, имя карточки — чистое имя голоса.
-const _curatedVoices = <Map<String, String>>[
-  {'name': 'ru-ru-x-ruf-network', 'label': 'Дмитрий', 'locale': 'ru-RU'},
-  {'name': 'en-gb-x-gbs-network', 'label': 'Ella',    'locale': 'en-GB'},
-  {'name': 'ru-ru-xruf-local',    'label': 'Piter',   'locale': 'ru-RU'},
-  {'name': 'en-au-x-auc-network', 'label': 'Stella',  'locale': 'en-AU'},
-  {'name': 'ru-ru-x-rud-local',   'label': 'Tim',     'locale': 'ru-RU'},
-  {'name': 'ru-ru-x-ruc-local',   'label': 'Astra',   'locale': 'ru-RU'},
+/// Каталог бесплатных системных голосов Google TTS (EdgeTTS мёртв —
+/// Microsoft закрыл бесплатный доступ). Экран оформлен карточками
+/// в стиле Microsoft Voice Gallery: голоса разделены на мужские
+/// и женские, у каждого — имя, язык и кнопка прослушивания.
+
+class _VoiceInfo {
+  final String name; // системный id голоса
+  final String label; // отображаемое имя
+  final String locale;
+  final String gender; // 'female' | 'male'
+  final String desc; // язык/характер
+  final String emoji;
+  const _VoiceInfo(this.name, this.label, this.locale, this.gender, this.desc, this.emoji);
+}
+
+const _curatedVoices = <_VoiceInfo>[
+  // ── Женские ──────────────────────────────────────────────────────────
+  _VoiceInfo('ru-ru-x-ruf-local', 'Ника', 'ru-RU', 'female', 'Русский · мягкий', '🌸'),
+  _VoiceInfo('ru-ru-x-ruc-local', 'Астра', 'ru-RU', 'female', 'Русский · тёплый', '💜'),
+  _VoiceInfo('en-gb-x-gbs-network', 'Элла', 'en-GB', 'female', 'Английский · Британия', '🇬🇧'),
+  _VoiceInfo('en-au-x-auc-network', 'Стелла', 'en-AU', 'female', 'Английский · Австралия', '🇦🇺'),
+  // ── Мужские ──────────────────────────────────────────────────────────
+  _VoiceInfo('ru-ru-x-ruf-network', 'Дмитрий', 'ru-RU', 'male', 'Русский · уверенный', '💼'),
+  _VoiceInfo('ru-ru-x-rud-local', 'Тим', 'ru-RU', 'male', 'Русский · спокойный', '🎧'),
 ];
 
 class SettingsVoiceScreen extends StatefulWidget {
-  const SettingsVoiceScreen({Key? key}) : super(key: key);
+  const SettingsVoiceScreen({super.key});
   @override
   State<SettingsVoiceScreen> createState() => _SettingsVoiceScreenState();
 }
@@ -27,7 +41,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
   double _rate = 0.5, _pitch = 1.0, _volume = 1.0;
   String? _selectedVoice;
   bool _loading = true;
-  bool _previewing = false;
+  String? _previewingVoice;
 
   @override
   void initState() {
@@ -37,17 +51,17 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    // EdgeTTS больше не используется: движок всегда системный Google TTS.
+    // Только системный Google TTS — бесплатный и всегда доступный.
     await prefs.setString('tts_engine', 'system');
     EdgeTtsService().setTtsEngine('system');
     try { await _tts.setEngine('com.google.android.tts'); } catch (_) {}
     final savedVoice = prefs.getString('tts_voice');
     if (savedVoice != null && savedVoice.isNotEmpty) {
       _selectedVoice = savedVoice;
-      final locale = _curatedVoices
-          .firstWhere((v) => v['name'] == savedVoice,
-              orElse: () => const {'locale': 'ru-RU'})['locale'];
-      await _tts.setVoice({'name': savedVoice, 'locale': locale ?? 'ru-RU'});
+      final v = _byId(savedVoice);
+      if (v != null) {
+        await _tts.setVoice({'name': v.name, 'locale': v.locale});
+      }
     }
     if (mounted) {
       setState(() {
@@ -55,30 +69,50 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
         _pitch = prefs.getDouble('tts_pitch') ?? 1.0;
         _volume = prefs.getDouble('tts_volume') ?? 1.0;
         if (_selectedVoice == null) {
-          _selectedVoice = _curatedVoices.first['name'];
+          _selectedVoice = _curatedVoices.first.name;
         }
         _loading = false;
       });
     }
   }
 
-  Future<void> _preview() async {
-    if (_previewing) return;
-    setState(() => _previewing = true);
-    const sample = 'Привет! Вот так будет звучать мой голос.';
+  _VoiceInfo? _byId(String id) {
+    for (final v in _curatedVoices) {
+      if (v.name == id) return v;
+    }
+    return null;
+  }
+
+  /// Прослушать конкретный голос (кнопка ▶ на карточке).
+  Future<void> _previewVoice(_VoiceInfo v) async {
+    if (_previewingVoice != null) return;
+    setState(() => _previewingVoice = v.name);
     try {
       await _tts.setSpeechRate(_rate);
       await _tts.setPitch(_pitch);
       await _tts.setVolume(_volume);
-      final v = _curatedVoices.firstWhere(
-          (x) => x['name'] == _selectedVoice,
-          orElse: () => _curatedVoices.first);
-      await _tts.setVoice({'name': v['name']!, 'locale': v['locale']!});
-      await _tts.speak(sample);
+      await _tts.setVoice({'name': v.name, 'locale': v.locale});
+      await _tts.speak('Привет! Так будет звучать голос «${v.label}».');
     } catch (_) {
     } finally {
-      if (mounted) setState(() => _previewing = false);
+      if (mounted) setState(() => _previewingVoice = null);
     }
+  }
+
+  /// Выбор голоса: тап по карточке — выбираем и сразу сохраняем.
+  Future<void> _selectVoice(_VoiceInfo v) async {
+    setState(() => _selectedVoice = v.name);
+    try {
+      await _tts.setVoice({'name': v.name, 'locale': v.locale});
+    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('tts_engine', 'system');
+    await prefs.setString('tts_voice', v.name);
+  }
+
+  Future<void> _previewSelected() async {
+    final v = _byId(_selectedVoice ?? '') ?? _curatedVoices.first;
+    await _previewVoice(v);
   }
 
   Future<void> _save() async {
@@ -90,10 +124,10 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
     EdgeTtsService().setTtsEngine('system');
     if (_selectedVoice != null) {
       await prefs.setString('tts_voice', _selectedVoice!);
-      final v = _curatedVoices.firstWhere(
-          (x) => x['name'] == _selectedVoice,
-          orElse: () => _curatedVoices.first);
-      await _tts.setVoice({'name': v['name']!, 'locale': v['locale']!});
+      final v = _byId(_selectedVoice!);
+      if (v != null) {
+        await _tts.setVoice({'name': v.name, 'locale': v.locale});
+      }
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -116,7 +150,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Голос', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        title: const Text('Голоса', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
         actions: [
           TextButton(onPressed: _save,
               child: Text('Сохранить', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 15))),
@@ -127,10 +161,13 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           : ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _label('ГОЛОСА'),
-          _card(Column(children: _curatedVoices.map(_voiceTile).toList())),
-          const SizedBox(height: 20),
-          _label('ПАРАМЕТРЫ ГОЛОСА'),
+          _section('👩 ЖЕНСКИЕ ГОЛОСА'),
+          _genderGrid('female'),
+          const SizedBox(height: 18),
+          _section('👨 МУЖСКИЕ ГОЛОСА'),
+          _genderGrid('male'),
+          const SizedBox(height: 18),
+          _section('ПАРАМЕТРЫ ГОЛОСА'),
           _card(Column(children: [
             _slider('Скорость речи', _rate, 0.25, 1.5, (v) => setState(() => _rate = v)),
             _slider('Высота голоса', _pitch, 0.5, 2.0, (v) => setState(() => _pitch = v)),
@@ -138,7 +175,7 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
           ])),
           const SizedBox(height: 10),
           GestureDetector(
-            onTap: _preview,
+            onTap: _previewSelected,
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 13),
               alignment: Alignment.center,
@@ -147,49 +184,116 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.4)),
               ),
-              child: _previewing
-                  ? SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AikaTheme.neonBlue))
-                  : Text('🔊  Проверить голос', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13, fontWeight: FontWeight.w600)),
+              child: Text('🔊  Проверить голос',
+                  style: TextStyle(color: AikaTheme.neonBlue, fontSize: 13, fontWeight: FontWeight.w600)),
             ),
           ),
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _voiceTile(Map<String, String> v) => GestureDetector(
-        onTap: () async {
-          setState(() => _selectedVoice = v['name']);
-          await _tts.setVoice({'name': v['name']!, 'locale': v['locale']!});
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('tts_voice', v['name']!);
-        },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: _selectedVoice == v['name']
-                ? AikaTheme.neonBlue.withOpacity(0.15)
-                : const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _selectedVoice == v['name'] ? AikaTheme.neonBlue : Colors.transparent,
-            ),
-          ),
-          child: Row(children: [
-            Expanded(child: Text(v['label']!,
-                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
-            if (_selectedVoice == v['name'])
-              Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 18),
-          ]),
-        ),
-      );
-
-  Widget _label(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 8, left: 4),
+  Widget _section(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 10, left: 4),
     child: Text(text, style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 2)),
   );
+
+  /// Сетка карточек голосов (2 в ряд) — как в Microsoft Voice Gallery.
+  Widget _genderGrid(String gender) {
+    final voices = _curatedVoices.where((v) => v.gender == gender).toList();
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.55,
+      children: voices.map(_voiceCard).toList(),
+    );
+  }
+
+  Widget _voiceCard(_VoiceInfo v) {
+    final selected = _selectedVoice == v.name;
+    final previewing = _previewingVoice == v.name;
+    return GestureDetector(
+      onTap: () => _selectVoice(v),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AikaTheme.neonBlue.withOpacity(0.18), Colors.transparent],
+                )
+              : null,
+          color: selected ? null : const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AikaTheme.neonBlue : Colors.white.withOpacity(0.06),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: (v.gender == 'female' ? Colors.pinkAccent : Colors.cyanAccent)
+                        .withOpacity(0.15),
+                  ),
+                  child: Text(v.emoji, style: const TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(v.label,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+                if (selected)
+                  const Icon(Icons.check_circle, color: AikaTheme.neonBlue, size: 17),
+              ],
+            ),
+            const Spacer(),
+            Text(v.desc, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _previewButton(v, previewing),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _previewButton(_VoiceInfo v, bool previewing) => GestureDetector(
+        onTap: () => _previewVoice(v),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AikaTheme.neonBlue.withOpacity(0.14),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AikaTheme.neonBlue.withOpacity(0.35)),
+          ),
+          child: previewing
+              ? const SizedBox(
+                  width: 12, height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AikaTheme.neonBlue))
+              : const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.play_arrow, size: 14, color: AikaTheme.neonBlue),
+                  SizedBox(width: 3),
+                  Text('Слушать', style: TextStyle(color: AikaTheme.neonBlue, fontSize: 11)),
+                ]),
+        ),
+      );
 
   Widget _card(Widget child) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

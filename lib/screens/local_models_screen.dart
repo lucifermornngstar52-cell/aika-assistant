@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../services/ai_service.dart';
 import '../services/local_llm_service.dart';
 import '../services/local_model_manager.dart';
 import '../services/local_stt_service.dart';
@@ -278,6 +279,12 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
             onChanged: anyModel
                 ? (v) async {
                     await mgr.setLocalModeEnabled(v);
+                    // ФИКС «тумблер не переключается до перезапуска»:
+                    // раньше флаг писался только в prefs, а AiService
+                    // читал его один раз в main(). Теперь применяем
+                    // мгновенно — следующая же фраза уйдёт в локальный
+                    // движок (или в облако) без перезапуска приложения.
+                    AiService.setLocalMode(v);
                     await _loadFlags();
                     setState(() => localMode = v);
                   }
@@ -307,6 +314,17 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
                     await mgr.setVisionModeEnabled(v);
                     await _loadFlags();
                     setState(() => visionMode = v);
+                    // ФИКС «не переключается до перезапуска»: если движок
+                    // уже загружен — сразу меняем текст ↔ зрение на лету.
+                    if (engine.isReady) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(v
+                            ? 'Переключаю на Qwen3-VL (зрение)…'
+                            : 'Переключаю на текстовую модель…'),
+                        backgroundColor: Colors.cyan.shade900,
+                      ));
+                      await loadEngineFromManager();
+                    }
                   }
                 : null,
           ),
