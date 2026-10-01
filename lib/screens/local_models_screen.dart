@@ -44,6 +44,11 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
   }
 
   Future<void> _refresh() async {
+    // ФИКС «тумблеры сбрасываются при повторном входе»: флаги читались
+    // из кэша полей, которые заполняются только в _loadFlags() после
+    // переключения. При входе на экран prefs не читались вовсе — тумблеры
+    // всегда показывались выключенными, хотя настройки сохранены.
+    await _loadFlags();
     final d = <String, bool>{};
     for (final m in LocalModelManager.catalog) {
       d[m.id] = await mgr.isDownloaded(m);
