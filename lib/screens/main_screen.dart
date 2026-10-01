@@ -14,7 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
 import '../services/aika_mood_service.dart';
-import '../services/minecraft_pilot_service.dart';
+import '../services/minecraft_recipe_service.dart';
+import '../services/minecraft_autopilot_service.dart';
 import '../services/aika_automation_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
@@ -1286,6 +1287,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // ── Стоп автопилота Minecraft — раньше всех, чтобы «стоп» дошли ──
+    if (MinecraftAutopilotService.isBusy) {
+      final low = text.toLowerCase();
+      if (low.contains('стоп') && !low.contains('будильник') && !low.contains('таймер')) {
+        final res = await MinecraftAutopilotService.runSkill(McSkill('stop', ''));
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.aika,
+          content: res,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(res);
+        return;
+      }
+    }
+
     // Будильники обрабатываем собственным AlarmManager до общих команд.
     final directAlarmResult = await _alarmService.tryParseAlarm(text);
     if (directAlarmResult != null) {
@@ -1583,8 +1600,53 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // ── Майнкрафт-пилот: офлайн-рецепты мгновенно, без облака ──────
-    final mcResult = await MinecraftPilotService.instance.tryHandle(text);
+    // ── Айка играет за тебя (автопилот Minecraft) ──────────────────
+    final mcSkill = MinecraftAutopilotService.parseSkillCommand(text);
+    if (mcSkill != null && mcSkill.name != 'stop') {
+      final supportErr = await MinecraftAutopilotService.checkSupport();
+      if (supportErr != null) {
+        const msg = 'Accessibility не включён — включи сервис в настройках, '
+            'и не забудь переподключить его после обновления APK.';
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.aika,
+          content: msg,
+          timestamp: DateTime.now(),
+        ));
+        await _speak('Нужен доступ к экрану, включи его в настройках');
+        return;
+      }
+      final startMsg = switch (mcSkill.name) {
+        'chop' => '🪓 Начинаю рубить дерево! Не трогай экран, я управляю.',
+        'dig' => '⛏️ Копаю вниз, аккуратно!',
+        'wander' => '🚶 Пойду прогуляюсь по миру!',
+        'goal' => '🎮 Слушаюсь, играю за тебя: ${mcSkill.arg}',
+        _ => 'Поехали!',
+      };
+      _addMessage(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.aika,
+        content: startMsg,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(startMsg);
+      // Скилл работает в фоне — чат не блокируется
+      unawaited(() async {
+        final res = await MinecraftAutopilotService.runSkill(mcSkill);
+        if (turnId != _aiTurn || !mounted) return;
+        _addMessage(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          role: MessageRole.aika,
+          content: res,
+          timestamp: DateTime.now(),
+        ));
+        await _speak(res);
+      }());
+      return;
+    }
+
+    // ── Майнкрафт-рецепты: офлайн-ответы мгновенно, без облака ──────
+    final mcResult = await MinecraftRecipeService.instance.tryHandle(text);
     if (mcResult != null) {
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),

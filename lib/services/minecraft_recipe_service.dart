@@ -2,15 +2,15 @@ import 'package:flutter/foundation.dart';
 
 import 'overlay_service.dart';
 
-/// Майнкрафт-пилот: офлайн-база рецептов и советов по выживанию.
+/// Майнкрафт-рецепты: офлайн-база рецептов и советов по выживанию.
 ///
 /// Работает без интернета и без AI: любой вопрос «как скрафтить X»
 /// закрывается мгновенно из локальной базы. Если оверлей включён —
 /// рецепт показывается карточкой прямо поверх игры, чтобы не сворачивать
 /// Майнкрафт.
-class MinecraftPilotService {
-  MinecraftPilotService._();
-  static final MinecraftPilotService instance = MinecraftPilotService._();
+class MinecraftRecipeService {
+  MinecraftRecipeService._();
+  static final MinecraftRecipeService instance = MinecraftRecipeService._();
 
   /// Пытается обработать текст как команду Майнкрафт-пилота.
   /// Возвращает ответ или null (не команда → дальше обычный AI).
@@ -338,7 +338,7 @@ class MinecraftPilotService {
           .replaceAll('\n', ' | ');
       await overlay.showTip(title, plain, seconds: seconds);
     } catch (e) {
-      debugPrint('[McPilot] tip failed: $e');
+      debugPrint('[McRecipe] tip failed: $e');
     }
   }
 }

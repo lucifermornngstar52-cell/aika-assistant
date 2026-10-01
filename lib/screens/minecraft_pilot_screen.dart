@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/minecraft_pilot_service.dart';
+import '../services/minecraft_autopilot_service.dart';
 import '../theme/app_theme.dart';
 
 /// Экран игрового автопилота: Айка играет в Minecraft вместо хозяина.
@@ -22,7 +22,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
   @override
   void initState() {
     super.initState();
-    MinecraftPilotService.onLog = (line) {
+    MinecraftAutopilotService.onLog = (line) {
       if (mounted) {
         setState(() => _logLines.add(line));
       }
@@ -31,8 +31,8 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
 
   @override
   void dispose() {
-    MinecraftPilotService.stop();
-    MinecraftPilotService.onLog = null;
+    MinecraftAutopilotService.stop();
+    MinecraftAutopilotService.onLog = null;
     _goalCtrl.dispose();
     super.dispose();
   }
@@ -40,7 +40,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
   Future<void> _start() async {
     setState(() { _starting = true; _result = null; _logLines.clear(); });
 
-    final err = await MinecraftPilotService.checkSupport();
+    final err = await MinecraftAutopilotService.checkSupport();
     if (err != null) {
       setState(() { _starting = false; _result = err; });
       return;
@@ -52,12 +52,12 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
       return;
     }
 
-    final res = await MinecraftPilotService.start(goal);
+    final res = await MinecraftAutopilotService.start(goal);
     if (mounted) setState(() { _starting = false; _result = res; });
   }
 
   void _stop() {
-    MinecraftPilotService.stop();
+    MinecraftAutopilotService.stop();
     setState(() => _starting = false);
   }
 
@@ -107,7 +107,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
 
   Future<void> _launch() async {
     setState(() => _checking = true);
-    final ok = await MinecraftPilotService.launchMinecraft();
+    final ok = await MinecraftAutopilotService.launchMinecraft();
     if (mounted) {
       setState(() { _checking = false; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -119,7 +119,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final running = _starting || MinecraftPilotService.isRunning;
+    final running = _starting || MinecraftAutopilotService.isRunning;
 
     return Scaffold(
       backgroundColor: AikaTheme.background,
