@@ -1,463 +1,357 @@
-import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
-import 'groq_model_catalog.dart';
+import 'overlay_service.dart';
 
-/// ═════════════════════════════════════════════════════════════════════
-/// Minecraft Pilot — игровой автопилот Айки.
+/// Майнкрафт-пилот: офлайн-база рецептов и советов по выживанию.
 ///
-/// Цикл: скриншот → Groq vision → действие → скриншот → …
-/// Работает поверх AccessibilityService: жесты + реальный захват пикселей.
-/// ═════════════════════════════════════════════════════════════════════
+/// Работает без интернета и без AI: любой вопрос «как скрафтить X»
+/// закрывается мгновенно из локальной базы. Если оверлей включён —
+/// рецепт показывается карточкой прямо поверх игры, чтобы не сворачивать
+/// Майнкрафт.
 class MinecraftPilotService {
-  static const _ch = MethodChannel('com.aika.assistant/screen_reader');
+  MinecraftPilotService._();
+  static final MinecraftPilotService instance = MinecraftPilotService._();
 
-  // Groq vision (бесплатно) — та же мультимодальная модель, что и в AiService
-  static const _groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  /// Пытается обработать текст как команду Майнкрафт-пилота.
+  /// Возвращает ответ или null (не команда → дальше обычный AI).
+  Future<String?> tryHandle(String text) async {
+    final t = _norm(text);
 
-  // ── Состояние ─────────────────────────────────────────────────────
-  static bool _running = false;
-  static bool get isRunning => _running;
-
-  static int _iteration = 0;
-  static int get iteration => _iteration;
-
-  static String _goal = '';
-  static final List<String> _log = [];
-
-  /// Слушатель лога для UI (каждая строка лога).
-  static void Function(String line)? onLog;
-
-  // ── Настройки цикла ───────────────────────────────────────────────
-  /// Пауза после действия перед новым скриншотом (мс).
-  static int actionDelayMs = 2500;
-  /// Максимальное число итераций (защита от вечного цикла).
-  static int maxIterations = 100;
-
-  static String? _groqKey;
-
-  // Зашитый в сборку ключ — бэкап, если юзер не вводил свой в настройках.
-  static const String _envKey = String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
-
-  static Future<void> _loadKey() async {
-    if (_groqKey != null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('groq_key') ?? '';
-    _groqKey = saved.isNotEmpty ? saved : _envKey;
-  }
-
-  static void _addLog(String line) {
-    _log.add(line);
-    if (_log.length > 200) _log.removeRange(0, _log.length - 200);
-    onLog?.call(line);
-  }
-
-  static List<String> get logs => List.unmodifiable(_log);
-
-  /// Останавливает пилота.
-  static void stop() {
-    _running = false;
-    _addLog('⏹ Остановлено пользователем (итерация $_iteration)');
-  }
-
-  /// Сбрасывает счётчики и лог.
-  static void reset() {
-    _iteration = 0;
-    _log.clear();
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  ГЛАВНЫЙ ЦИКЛ
-  // ═══════════════════════════════════════════════════════════════════
-
-  /// Запускает игровой цикл. [goal] — что делать в игре, например
-  /// «доберись до дерева и наруби 5 древесины».
-  /// Работает, пока: не done, не maxIterations, не stop().
-  static Future<String> start(String goal) async {
-    if (_running) return 'Пилот уже запущен';
-    await _loadKey();
-    if (_groqKey == null || _groqKey!.isEmpty) {
-      return 'Нет Groq API ключа — добавь его в Настройки → ИИ-модели';
+    // «закрой рецепт / убери подсказку»
+    if ((t.contains('закрой') || t.contains('убери') || t.contains('скрой')) &&
+        (t.contains('рецепт') || t.contains('подсказк') || t.contains('карточку'))) {
+      await OverlayService().hideTip();
+      return 'Закрыла карточку ✓';
     }
 
-    _goal = goal;
-    _running = true;
-    _iteration = 0;
-    _addLog('🚀 Пилот запущен. Цель: $goal');
-
-    final history = <String>[];
-    var result = 'Цикл завершён';
-
-    // Геометрия экрана — джойстик и зона обзора считаем от неё
-    final size = await _getScreenSize();
-    if (size == null) {
-      _running = false;
-      return 'Не удалось получить размер экрана — включи Accessibility';
+    // Чек-лист первого дня / выживания
+    if ((t.contains('первый день') || t.contains('выживани') || t.contains('чеклист')) &&
+        (t.contains('майнкрафт') || t.contains('minecraft') || t.contains('начат'))) {
+      final tips = _checklist;
+      _maybeShowTip('Первый день в Майнкрафте', tips.first, seconds: 60);
+      return tips.join('\n');
     }
-    final w = size['width'] as int;
-    final h = size['height'] as int;
 
-    var consecutiveFails = 0;
-    while (_running && _iteration < maxIterations) {
-      // 1. Скриншот
-      final b64 = await _captureScreen();
-      if (b64 == null) {
-        consecutiveFails++;
-        _addLog('❌ Скриншот не получился ($consecutiveFails/5)');
-        if (consecutiveFails >= 5) {
-          result = 'Экран не захватывается. Проверь: Accessibility включён и перепривязан, Android 11+, игра открыта';
-          break;
+    // Рецепт: «как скрафтить X», «рецепт X», «что нужно для X»...
+    final wanted = _extractItem(text);
+    if (wanted != null) {
+      final recipe = _findRecipe(wanted);
+      if (recipe != null) {
+        final answer = _formatRecipe(recipe);
+        _maybeShowTip(recipe.title, answer, seconds: 45);
+        return answer;
+      }
+      // Рецепта в базе нет — вернём null, пусть отвечает AI,
+      // но подскажем, что пилот знает.
+      return null;
+    }
+    return null;
+  }
+
+  // ── База рецептов ─────────────────────────────────────────────────
+
+  static const _tools = <_McRecipe>[
+    _McRecipe(
+      title: 'Деревянная кирка',
+      keywords: ['кирка', 'кирку', 'кирки', 'деревянная кирка', 'деревянную кирку'],
+      ingredients: ['3 доски', '2 палки'],
+      steps: ['Открой верстак', '3 доски в верхний ряд', '2 палки по центру под ними'],
+    ),
+    _McRecipe(
+      title: 'Каменная кирка',
+      keywords: ['каменная кирка', 'каменную кирку'],
+      ingredients: ['3 булыжника', '2 палки'],
+      steps: ['На верстаке: 3 булыжника в верхний ряд', '2 палки по центру под ними'],
+    ),
+    _McRecipe(
+      title: 'Железная кирка',
+      keywords: ['железная кирка', 'железную кирку'],
+      ingredients: ['3 железных слитка', '2 палки'],
+      steps: ['Железную руду переплавь в печке', '3 слитка в верхний ряд верстака', '2 палки под ними'],
+    ),
+    _McRecipe(
+      title: 'Алмазная кирка',
+      keywords: ['алмазная кирка', 'алмазную кирку'],
+      ingredients: ['3 алмаза', '2 палки'],
+      steps: ['Алмазы добывай железной киркой+', '3 алмаза в верхний ряд верстака', '2 палки под ними'],
+    ),
+    _McRecipe(
+      title: 'Меч (любой)',
+      keywords: ['меч', 'меча', 'мечу', 'мечи'],
+      ingredients: ['2 единицы материала (доски/булыжник/железо/алмаз/незерит)', '1 палка'],
+      steps: ['На верстаке: 2 материала в столбик', 'Палка под ними'],
+    ),
+    _McRecipe(
+      title: 'Топор (любой)',
+      keywords: ['топор', 'топора', 'топору'],
+      ingredients: ['3 материала', '2 палки'],
+      steps: ['Материалы: 2 сверху, 1 сбоку от верхней', '2 палки по центру'],
+    ),
+    _McRecipe(
+      title: 'Лопата (любая)',
+      keywords: ['лопата', 'лопату', 'лопаты', 'лопатка'],
+      ingredients: ['1 материал', '2 палки'],
+      steps: ['1 материал сверху', '2 палки под ним столбиком'],
+    ),
+    _McRecipe(
+      title: 'Мотыга (любая)',
+      keywords: ['мотыга', 'мотыгу', 'мотыги', 'сапка'],
+      ingredients: ['2 материала', '2 палки'],
+      steps: ['2 материала в верхнем ряду', '2 палки под левым из них'],
+    ),
+  ];
+
+  static const _base = <_McRecipe>[
+    _McRecipe(
+      title: 'Верстак',
+      keywords: ['верстак', 'верстака', 'крафт', 'крафта', 'crafting'],
+      ingredients: ['4 доски (любого дерева)'],
+      steps: ['Сделай доски из бревна', '4 доски квадратом 2×2 в инвентаре'],
+    ),
+    _McRecipe(
+      title: 'Палки',
+      keywords: ['палк', 'палки', 'палку', 'stick', 'палочка'],
+      ingredients: ['2 доски'],
+      steps: ['2 доски столбиком в инвентаре → 4 палки'],
+    ),
+    _McRecipe(
+      title: 'Печка',
+      keywords: ['печк', 'печка', 'печь', 'furnace'],
+      ingredients: ['8 булыжника'],
+      steps: ['На верстаке: булыжник по кругу', 'Центр пустой'],
+    ),
+    _McRecipe(
+      title: 'Сундук',
+      keywords: ['сундук', 'сундука', 'сундучок', 'chest'],
+      ingredients: ['8 досок'],
+      steps: ['На верстаке: доски по кругу', 'Центр пустой'],
+    ),
+    _McRecipe(
+      title: 'Кровать',
+      keywords: ['кроват', 'кровать', 'bed', 'спат'],
+      ingredients: ['3 доски', '3 блока шерсти (один цвет)'],
+      steps: ['Шерсть с овец: ножницами или рукой', 'Доски в нижний ряд, шерсть в верхний'],
+    ),
+    _McRecipe(
+      title: 'Факелы',
+      keywords: ['факел', 'факелы', 'факелов', 'torch', 'свет'],
+      ingredients: ['1 палка', '1 уголь'],
+      steps: ['Уголь: каменная кирка по угольной руде', 'Уголь над палкой → 4 факела'],
+    ),
+    _McRecipe(
+      title: 'Дверь',
+      keywords: ['двер', 'дверь', 'двери', 'door'],
+      ingredients: ['6 досок'],
+      steps: ['6 досок: 2 столбика по 3 высотой'],
+    ),
+    _McRecipe(
+      title: 'Лестница',
+      keywords: ['лестниц', 'лестница', 'лестницу'],
+      ingredients: ['7 палок'],
+      steps: ['Палки в форме лестницы: по диагонали, углы пустые'],
+    ),
+    _McRecipe(
+      title: 'Забор',
+      keywords: ['забор', 'забора', 'fence'],
+      ingredients: ['4 доски', '2 палки'],
+      steps: ['Палки в средний ряд', 'Доски сверху и снизу'],
+    ),
+    _McRecipe(
+      title: 'Лодка',
+      keywords: ['лодк', 'лодка', 'лодку', 'boat'],
+      ingredients: ['5 досок'],
+      steps: ['5 досок: нижний ряд + боковые в среднем ряду', 'Вершина пустая'],
+    ),
+    _McRecipe(
+      title: 'Хлеб',
+      keywords: ['хлеб', 'хлеба', 'bread'],
+      ingredients: ['3 пшеницы'],
+      steps: ['Пшеницу с грядок (семена из травы)', '3 пшеницы в ряд на верстаке'],
+    ),
+    _McRecipe(
+      title: 'Стол зачарований',
+      keywords: ['стол зачаровани', 'зачаровани', 'enchanted', 'энчант', 'зачаровать'],
+      ingredients: ['1 обсидиан (×4)', '2 алмаза', '1 книга'],
+      steps: ['Обсидиан — алмазной киркой по лаве+воде', 'Книга: 3 бумаги + 1 кожа', 'Алмазы по бокам, книга сверху, обсидиан снизу'],
+    ),
+    _McRecipe(
+      title: 'Наковальня',
+      keywords: ['наковальн', 'наковальня', 'anvil'],
+      ingredients: ['31 железный слиток (3 блока + 4 слитка)'],
+      steps: ['3 железных блока в верхний ряд', 'Слиток по центру + 2 по бокам снизу'],
+    ),
+    _McRecipe(
+      title: 'Зельеварка (варочная стойка)',
+      keywords: ['зельеварк', 'варочная', 'зель', 'алхими', 'potion'],
+      ingredients: ['1 бушующий стержень', '3 булыжника'],
+      steps: ['Стержень у ифритов в Незере', 'Стержень сверху, булыжник снизу по кругу'],
+    ),
+    _McRecipe(
+      title: 'Глаз Эндера',
+      keywords: ['глаз эндера', 'эндер', 'крепость', 'эндер глаз', 'ender'],
+      ingredients: ['эндер-жемчуг', 'огненный порошок'],
+      steps: ['Жемчуг с эндерменов ночью', 'Порошок из стержня ифрита', 'Смешай на верстаке'],
+    ),
+    _McRecipe(
+      title: 'Портал в Незер',
+      keywords: ['незер', 'ад', 'портал', 'nether'],
+      ingredients: ['10 обсидиана', 'огниво (кремень + железо)'],
+      steps: ['Рамка 4×5 из обсидиана (углы не нужны)', 'Подожги огнивом низ рамки', 'Стой в фиолетовом — телепорт!'],
+    ),
+    _McRecipe(
+      title: 'Огниво',
+      keywords: ['огнив', 'огниво', 'кремень', 'flint'],
+      ingredients: ['кремень', 'железный слиток'],
+      steps: ['Кремень копай гравий (шанс 10%)', 'Кремень + железо на верстаке'],
+    ),
+    _McRecipe(
+      title: 'Компас',
+      keywords: ['компас', 'compass'],
+      ingredients: ['4 железных слитка', '1 красная пыль'],
+      steps: ['Пыль в центр, слитки по кругу', 'Указывает на точку спавна'],
+    ),
+    _McRecipe(
+      title: 'Карта',
+      keywords: ['карт', 'карта', 'map'],
+      ingredients: ['8 бумаги', '1 компас'],
+      steps: ['Бумага из тростника', 'Компас в центр, бумага по кругу'],
+    ),
+    _McRecipe(
+      title: 'Удочка',
+      keywords: ['удочк', 'удочка', 'рыб', 'fishing'],
+      ingredients: ['3 палки', '2 нити'],
+      steps: ['Нить с пауков', '2 палки по диагонали + 1 сверху, нити слева'],
+    ),
+    _McRecipe(
+      title: 'Вагонетка',
+      keywords: ['вагонетк', 'вагонетка', 'minecart', 'рельс'],
+      ingredients: ['5 железных слитков'],
+      steps: ['Слитки буквой U (низ + бока)'],
+    ),
+    _McRecipe(
+      title: 'Золотое яблоко',
+      keywords: ['золотое яблоко', 'golden apple', 'золотое'],
+      ingredients: ['1 яблоко', '8 золотых слитков'],
+      steps: ['Яблоки с дубов', 'Яблоко в центр, золото по кругу'],
+    ),
+    _McRecipe(
+      title: 'Якорь возрождения',
+      keywords: ['якорь', 'respawn', 'спавн в незере'],
+      ingredients: ['6 плачущего обсидиана', '3 светокамня'],
+      steps: ['Плачущий обсидиан: синий кри́стал + обсидиан', 'Верх/низ — светокамень, середина — обсидиан', 'Заряжается светокамнем'],
+    ),
+    _McRecipe(
+      title: 'Маяк',
+      keywords: ['маяк', 'beacon'],
+      ingredients: ['3 обсидиана', '5 стекла', '1 звезда Незера'],
+      steps: ['Звезда — с Иссушителя', 'Стекло сверху, звезда в центр, обсидиан снизу', 'Поставь на пирамиду из железа/золота/алмазов'],
+    ),
+    _McRecipe(
+      title: 'Котёл',
+      keywords: ['котёл', 'котле', 'cauldron'],
+      ingredients: ['7 железных слитков'],
+      steps: ['Слитки буквой U на верстаке'],
+    ),
+  ];
+
+  static const _checklist = <String>[
+    '⛏️ Первый день в Майнкрафте:',
+    '1. Дерево: 3-5 брёвен',
+    '2. Верстак + деревянная кирка',
+    '3. Камень: 20+ булыжника → каменные инструменты',
+    '4. Еда: убей 2-3 коровы/овцы',
+    '5. Уголь для факелов (или charcoal из брёвен в печке)',
+    '6. Дом: землянка или дупло в холме, дверь + факелы',
+    '7. Кровать из шерсти — иначе фантомы!',
+    '8. Не копай прямо вниз и прямо вверх 🙃',
+  ];
+
+  // ── Поиск и парсинг ────────────────────────────────────────────────
+
+  static List<_McRecipe> get allRecipes => [..._base, ..._tools];
+
+  static String _norm(String s) =>
+      s.toLowerCase().replaceAll('ё', 'е').trim();
+
+  static String? _extractItem(String text) {
+    final t = _norm(text);
+    const triggers = [
+      'как скрафтить', 'как скрафтить', 'крафт ', 'рецепт', 'что нужно для',
+      'из чего сделать', 'как сделать', 'как получить', 'как построить в майнкрафте',
+    ];
+    for (final trig in triggers) {
+      final i = t.indexOf(trig);
+      if (i >= 0) {
+        var item = t.substring(i + trig.length).trim();
+        // хвостовые вопросы отрезаем
+        for (final stop in [' в майнкрафте', ' в minecraft', '?', '!']) {
+          item = item.replaceAll(stop, '');
         }
-        await Future.delayed(const Duration(seconds: 3));
-        continue;
+        item = item.trim();
+        if (item.length >= 3) return item;
       }
-
-      // 2. Спрашиваем vision-модель
-      final action = await _askVision(b64, w, h, history);
-      if (action == null) {
-        // ФИКС: раньше неудача vision сжигала итерацию — 60 ошибок подряд
-        // молча выедали весь лимит. Теперь считаем только реальные шаги.
-        consecutiveFails++;
-        _addLog('❌ Vision не ответил ($consecutiveFails/5), жду 5с');
-        if (consecutiveFails >= 5) {
-          result = 'Vision-модель не отвечает 5 раз подряд — смотри ошибки Groq выше (ключ? лимиты?)';
-          break;
-        }
-        await Future.delayed(const Duration(seconds: 5));
-        continue;
-      }
-      consecutiveFails = 0;
-
-      _iteration++;
-      _addLog('── Шаг $_iteration/$maxIterations ──');
-      _addLog('🧠 ${action['thought'] ?? ''}');
-      final pRaw = action['params'];
-      final p = pRaw is Map<String, dynamic> ? pRaw : <String, dynamic>{};
-      _addLog('🎮 ${action['action']} $p');
-
-      history.add('${action['action']} ${jsonEncode(p)}');
-      if (history.length > 8) history.removeAt(0);
-
-      // 3. Выполняем.
-      // ФИКС: раньше одно исключение из жеста убивало весь запуск
-      // без единого сообщения — теперь логируем и продолжаем.
-      final act = action['action'] as String? ?? 'none';
-      var done = false;
-      try {
-        done = await _execute(act, p, w, h);
-      } catch (e) {
-        _addLog('⚠️ Жест не удался: $e — пробую дальше');
-      }
-
-      if (done) {
-        _addLog('✅ Задача выполнена!');
-        result = 'Готово: ${action['thought']}';
-        break;
-      }
-
-      // 4. Ждём, пока действие применится
-      await Future.delayed(Duration(milliseconds: actionDelayMs));
     }
-
-    _running = false;
-    if (_iteration >= maxIterations) {
-      _addLog('⏹ Лимит итераций исчерпан');
-      result = 'Достигнут лимит итераций ($maxIterations)';
-    }
-    return result;
+    return null;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  //  VISION — Groq
-  // ═══════════════════════════════════════════════════════════════════
+  static _McRecipe? _findRecipe(String wanted) {
+    final w = _norm(wanted);
+    var best = <_McRecipe?>[null, ];
+    var bestScore = 0;
+    for (final r in allRecipes) {
+      for (final kw in r.keywords) {
+        final k = _norm(kw);
+        if (w.contains(k) || k.contains(w)) {
+          // длинное совпадение = точнее
+          final score = k.length;
+          if (score > bestScore) {
+            bestScore = score;
+            best[0] = r;
+          }
+        }
+      }
+    }
+    return best[0];
+  }
 
-  static Future<Map<String, dynamic>?> _askVision(
-      String imgB64, int w, int h, List<String> history) async {
-    final prompt = '''
-Ты — автопилот, который ИГРАЕТ В Minecraft Bedrock на Android-телефоне вместо хозяина.
-Ты видишь скриншот экрана игры (размер экрана ${w}x${h} пикселей).
+  static String _formatRecipe(_McRecipe r) {
+    final sb = StringBuffer();
+    sb.write('⛏️ ${r.title}\n');
+    sb.write('Ингредиенты:\n');
+    for (final i in r.ingredients) {
+      sb.write('• $i\n');
+    }
+    sb.write('Как сделать:\n');
+    for (var i = 0; i < r.steps.length; i++) {
+      sb.write('${i + 1}. ${r.steps[i]}\n');
+    }
+    return sb.toString().trim();
+  }
 
-ЦЕЛЬ: $_goal
-Последние действия: ${history.join(' | ')}
-
-Управление Minecraft (сенсорное):
-• Джойстик движения — левый нижний угол экрана
-• Обзор/поворот камеры — свайп по правой половине экрана
-• Разрушить блок — УДЕРЖИВАТЬ палец на блоке ~2-5 сек
-• Поставить блок / атаковать / открыть сундук — короткий тап
-• Кнопка прыжка — правый нижний угол
-• Инвентарь, крафт, чат — тапом по соответствующим иконкам
-
-Ответь ТОЛЬКО JSON (без markdown):
-{
-  "thought": "что ты видишь и что делаешь, 1 фраза на русском",
-  "action": "move" | "look" | "tap" | "hold" | "none" | "done",
-  "params": {
-    // move: идти джойстиком; cx/cy — центр джойстика В ПИКСЕЛЯХ (видно на скриншоте, левый нижний угол)
-    "angle": 0-360,
-    "cx": 150, "cy": 1900,
-    "duration": 1500,
-    // look: повернуть камеру (dx>0=вправо, dy>0=вниз; доли экрана)
-    "dx": 0.3, "dy": -0.1,
-    // tap: короткое касание (поставить блок/атака/кнопка/меню)
-    "x": 500, "y": 900,
-    // hold: удержание пальца (ломать блок) — x, y, duration
+  Future<void> _maybeShowTip(String title, String body, {int seconds = 45}) async {
+    try {
+      final overlay = OverlayService();
+      if (!await overlay.hasPermission()) return;
+      final plain = body
+          .replaceAll('<b>', '')
+          .replaceAll('</b>', '')
+          .replaceAll('\n', ' | ');
+      await overlay.showTip(title, plain, seconds: seconds);
+    } catch (e) {
+      debugPrint('[McPilot] tip failed: $e');
+    }
   }
 }
 
-Правила:
-• Действие за раз ОДНО, максимально конкретное.
-• Координаты x/y — ПИКСЕЛИ экрана 0..$w и 0..$h.
-• Если экран не игры (меню, лобби) — сначала тапни нужную кнопку.
-• Если цель выполнена — "done".
-• НИКОГДА не выдумывай кнопки, которых не видно на скриншоте.
-''';
-
-    try {
-      // ФИКС: раньше один 400/404 (модель не та / параметр не тот) —
-      // и пилот навсегда молчал. Модели берём из живого списка Groq.
-      final visionChain =
-          await GroqModelCatalog.resolveVision(_groqKey ?? '');
-      final modelCandidates = <(String, bool)>[
-        for (final m in visionChain) ...(m == visionChain.first
-            ? [(m, true), (m, false)]
-            : [(m, false)]),
-      ];
-
-      http.Response? resp;
-      String? failReason;
-      for (final (m, useRef) in modelCandidates) {
-        final body = {
-          'model': m,
-          'messages': [
-            {
-              'role': 'user',
-              'content': [
-                {'type': 'text', 'text': prompt},
-                {
-                  'type': 'image_url',
-                  'image_url': {'url': 'data:image/jpeg;base64,$imgB64'},
-                },
-              ],
-            }
-          ],
-          'temperature': 0.2,
-          'max_tokens': 400,
-          // Без этого qwen уходит в thinking-режим и не выдаёт JSON действия.
-          if (useRef) 'reasoning_effort': 'none',
-        };
-        resp = await http.post(
-          Uri.parse(_groqUrl),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_groqKey',
-            // Cloudflare у Groq банит не-браузерные клиенты (403, код 1010).
-            'User-Agent':
-                'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 30));
-
-        if (resp.statusCode == 200) break;
-
-        final snip = utf8.decode(resp.bodyBytes);
-        failReason = 'HTTP ${resp.statusCode}: '
-            '${snip.length > 120 ? snip.substring(0, 120) : snip}';
-        if (resp.statusCode == 429) {
-          _addLog('⏳ Лимит Groq, жду 15с…');
-          await Future.delayed(const Duration(seconds: 15));
-        }
-        _addLog('⚠️ Groq $m → $failReason');
-        if (resp.statusCode != 400 && resp.statusCode != 404) {
-          // 401/403 — ключ, 500-е — сервис: дальше перебирать бессмысленно,
-          // но не роняем пилот — вернёмся через цикл.
-          return null;
-        }
-        // 400/404 — пробуем следующую комбинацию
-      }
-      if (resp == null || resp.statusCode != 200) {
-        _addLog('⚠️ Groq отклонил все варианты: $failReason');
-        return null;
-      }
-
-      final data = jsonDecode(utf8.decode(resp.bodyBytes));
-      var text = data['choices']?[0]?['message']?['content'] as String? ?? '';
-      text = text.trim();
-      final start = text.indexOf('{');
-      final end = text.lastIndexOf('}');
-      if (start == -1 || end == -1 || end <= start) return null;
-      final json = jsonDecode(text.substring(start, end + 1));
-      return json is Map<String, dynamic> ? json : null;
-    } catch (e) {
-      _addLog('⚠️ Ошибка vision: $e');
-      return null;
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  ВЫПОЛНЕНИЕ ДЕЙСТВИЙ
-  // ═══════════════════════════════════════════════════════════════════
-
-  /// Возвращает true, если задача завершена (done).
-  static Future<bool> _execute(
-      String action, Map<String, dynamic> p, int w, int h) async {
-    switch (action) {
-      case 'move':
-        // Джойстик: модель ВИДИТ скриншот и может указать его точный центр (cx/cy).
-        // Если не указала — левый нижний угол (как в Bedrock classic).
-        var cx = (p['cx'] as num?)?.toDouble() ?? w * 0.12;
-        var cy = (p['cy'] as num?)?.toDouble() ?? h * 0.88;
-        // если модель прислала доли (0..1) вместо пикселей — переводим
-        if (cx >= 0 && cx <= 1) cx *= w;
-        if (cy >= 0 && cy <= 1) cy *= h;
-        cx = cx.clamp(10.0, w - 10.0);
-        cy = cy.clamp(10.0, h - 10.0);
-        var angle = (p['angle'] as num?)?.toDouble();
-        // Модель иногда присылает dx/dy вместо angle — переводим:
-        // dx>0 = вправо, dy>0 = вниз; angle: 0=вперёд, 90=вправо, 180=назад, 270=влево
-        if (angle == null) {
-          final dx = (p['dx'] as num?)?.toDouble() ?? 0.0;
-          final dy = (p['dy'] as num?)?.toDouble() ?? 0.0;
-          if (dx != 0 || dy != 0) {
-            angle = 90.0 * dx + 180.0 * dy.abs();
-          }
-        }
-        angle ??= 0.0;
-        var dur = (p['duration'] as num?)?.toDouble() ?? 1500;
-        // модель может прислать секунды вместо миллисекунд
-        if (dur > 0 && dur < 10) dur *= 1000;
-        await _ch.invokeMethod('joystickMove', {
-          'cx': cx, 'cy': cy,
-          'angle': angle, 'duration': dur.toInt().clamp(100, 8000),
-        });
-        break;
-
-      case 'look':
-        // Модель присылает ЛИБО dx/dy (доли экрана), ЛИБО angle (0=вверх, 90=вправо).
-        var dx = (p['dx'] as num?)?.toDouble();
-        var dy = (p['dy'] as num?)?.toDouble();
-        final angle = (p['angle'] as num?)?.toDouble();
-        if (dx == null && dy == null && angle != null) {
-          // angle: 90 → вправо на пол-экрана, 270 → влево, 0 → вверх, 180 → вниз
-          dx = 0.5 * (angle == 90 ? 1 : angle == 270 ? -1 : 0);
-          dy = angle == 0 ? -0.25 : angle == 180 ? 0.25 : 0.0;
-        }
-        dx ??= 0.3;
-        dy ??= 0.0;
-        final sx = w * 0.75, sy = h * 0.45;
-        // ФИКС: было sx - dx*w — камера крутилась в ПРОТИВОПОЛОЖНУЮ сторону:
-        // модель просит вправо, а пилот смотрел влево, и промахивался всегда.
-        // Теперь свайп идёт в ту сторону, которую просит модель.
-        final x2 = (sx + dx * w).clamp(10.0, w - 10.0);
-        final y2 = (sy + dy * h).clamp(10.0, h - 10.0);
-        await _ch.invokeMethod('swipe', {
-          'x1': sx, 'y1': sy,
-          'x2': x2.toDouble(), 'y2': y2.toDouble(),
-          'duration': 300,
-        });
-        await Future.delayed(const Duration(milliseconds: 400));
-        break;
-
-      case 'tap':
-        var x = (p['x'] as num?)?.toDouble() ?? w / 2;
-        var y = (p['y'] as num?)?.toDouble() ?? h / 2;
-        // модель любит присылать координаты долями экрана (0..1) — учитываем
-        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) { x *= w; y *= h; }
-        await _ch.invokeMethod('tapAt', {
-          'x': x.clamp(5.0, w - 5.0).toDouble(),
-          'y': y.clamp(5.0, h - 5.0).toDouble(),
-        });
-        break;
-
-      case 'hold':
-        var x = (p['x'] as num?)?.toDouble() ?? w / 2;
-        var y = (p['y'] as num?)?.toDouble() ?? h / 2;
-        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) { x *= w; y *= h; }
-        var dur = (p['duration'] as num?)?.toDouble() ?? 3000;
-        if (dur > 0 && dur < 10) dur *= 1000; // секунды → мс
-        await _ch.invokeMethod('holdTouch', {
-          'x': x.clamp(5.0, w - 5.0).toDouble(),
-          'y': y.clamp(5.0, h - 5.0).toDouble(),
-          'duration': dur.toInt().clamp(300, 8000),
-        });
-        break;
-
-      case 'done':
-        return true;
-
-      case 'none':
-      default:
-        await Future.delayed(const Duration(seconds: 2));
-        break;
-    }
-    return false;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  ХЕЛПЕРЫ
-  // ═══════════════════════════════════════════════════════════════════
-
-  static Future<Map<String, int>?> _getScreenSize() async {
-    try {
-      final res = await _ch.invokeMethod('getScreenSize');
-      if (res is Map) {
-        return {
-          'width': (res['width'] as num).toInt(),
-          'height': (res['height'] as num).toInt(),
-        };
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<String?> _captureScreen() async {
-    try {
-      final b64 = await _ch.invokeMethod('captureScreen', {
-        'maxWidth': 720,
-        'quality': 55,
-      });
-      return b64 as String?;
-    } on PlatformException catch (e) {
-      // ФИКС: раньше молча возвращали null — непонятно, почему сломано.
-      // Теперь в логе видно точную причину (Accessibility, версия, код ошибки).
-      _addLog('📷 Захват не удался: ${e.message ?? e.code}');
-      return null;
-    } catch (e) {
-      _addLog('📷 Захват не удался: $e');
-      return null;
-    }
-  }
-
-  /// Проверка готовности: Accessibility включён.
-  /// Возвращает null если всё ок, иначе текст ошибки.
-  static Future<String?> checkSupport() async {
-    try {
-      final size = await _getScreenSize();
-      if (size == null) {
-        return 'AccessibilityService не запущен — включи его в настройках. '
-            'Важно: после каждого обновления APK Android молча выключает '
-            'accessibility-сервис — переподключи его заново';
-      }
-      return null;
-    } on PlatformException catch (e) {
-      return e.message;
-    }
-  }
-
-  /// Запускает официальный Minecraft (Bedrock) через PackageManager.
-  static Future<bool> launchMinecraft() async {
-    try {
-      const ch = MethodChannel('com.aika.assistant/launcher');
-      return await ch.invokeMethod('launchApp', {'package': 'com.mojang.minecraftpe'}) ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
+class _McRecipe {
+  final String title;
+  final List<String> keywords;
+  final List<String> ingredients;
+  final List<String> steps;
+  const _McRecipe({
+    required this.title,
+    required this.keywords,
+    required this.ingredients,
+    required this.steps,
+  });
 }

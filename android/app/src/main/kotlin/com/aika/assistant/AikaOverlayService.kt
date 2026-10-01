@@ -15,6 +15,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.graphics.drawable.GradientDrawable
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -58,6 +61,11 @@ class AikaOverlayService : Service() {
         const val EXTRA_SOUND_PATH   = "sound_path"
         const val ACTION_PLAY_SOUND  = "aika.overlay.PLAY_SOUND"
         const val ACTION_STOP_SOUND  = "aika.overlay.STOP_SOUND"
+        const val ACTION_SHOW_TIP    = "aika.overlay.SHOW_TIP"
+        const val ACTION_HIDE_TIP    = "aika.overlay.HIDE_TIP"
+        const val EXTRA_TIP_TITLE    = "tip_title"
+        const val EXTRA_TIP_TEXT     = "tip_text"
+        const val EXTRA_TIP_SECONDS  = "tip_seconds"
         const val ENGINE_ID          = "live2d_overlay_engine"
 
         private const val CHANNEL_ID = "aika_overlay_channel"
@@ -77,6 +85,11 @@ class AikaOverlayService : Service() {
     private var dragEnabled  = true
     private var currentState = "idle"
     private var currentMode  = "live2d"  // "live2d" | "3d"
+
+    // ── Карточка-подсказка (рецепты Майнкрафт и т.п.) ────────────────
+    private var tipView: LinearLayout? = null
+    private var tipParams: WindowManager.LayoutParams? = null
+    private var tipHideRunnable: Runnable? = null
 
     private fun getHtmlPath(): String =
         if (currentMode == "3d") "file:///android_asset/flutter_assets/assets/model3d_viewer.html"
@@ -129,6 +142,7 @@ class AikaOverlayService : Service() {
             try { webView?.let { wm?.removeView(it) } } catch (_: Exception) {}
             webView?.destroy()
             webView = null
+            hideTipNow()
         }
         super.onDestroy()
     }
@@ -394,8 +408,108 @@ class AikaOverlayService : Service() {
                     webView?.evaluateJavascript("window.setAikaState('$currentState')", null)
                 }
             }
+            ACTION_SHOW_TIP -> {
+                val title  = intent.getStringExtra(EXTRA_TIP_TITLE) ?: "Подсказка"
+                val text   = intent.getStringExtra(EXTRA_TIP_TEXT) ?: ""
+                val secs    = intent.getIntExtra(EXTRA_TIP_SECONDS, 45)
+                handler.post { showTipCard(title, text, secs) }
+            }
+            ACTION_HIDE_TIP -> {
+                handler.post { hideTipNow() }
+            }
         }
         return START_STICKY
+    }
+
+    // ── Карточка-подсказка поверх всего ─────────────────────────────
+    @SuppressLint("ClickableViewAccessibility")
+    private fun showTipCard(title: String, text: String, seconds: Int) {
+        // окно оверлея может быть ещё не создано — нам нужен только wm
+        if (wm == null) {
+            wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        }
+
+        hideTipNow()
+
+        val density = resources.displayMetrics.density
+        val screenW = resources.displayMetrics.widthPixels
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (12 * density).roundToInt()
+            setPadding(pad, pad, pad, pad)
+            background = GradientDrawable().apply {
+                setColor(0xEE1A1626.toInt())
+                cornerRadius = 16 * density
+                setStroke((1 * density).roundToInt(), 0xFF8B7BD8.toInt())
+            }
+        }
+
+        val titleView = TextView(this).apply {
+            this.text = title
+            setTextColor(0xFFEDE7FF.toInt())
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        val textView = TextView(this).apply {
+            this.text = text
+            setTextColor(0xFFC9C3E6.toInt())
+            textSize = 13f
+            setLineSpacing(2f, 1f)
+        }
+        val hintView = TextView(this).apply {
+            text = "нажми, чтобы закрыть"
+            setTextColor(0x99FFFFFF.toInt())
+            textSize = 10f
+        }
+
+        card.addView(titleView)
+        card.addView(textView)
+        card.addView(hintView)
+
+        card.setOnClickListener { hideTipNow() }
+
+        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+
+        val tipW = (screenW * 0.8f).roundToInt().coerceAtMost((320 * density).roundToInt())
+        val tipParams = WindowManager.LayoutParams(
+            tipW,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = (64 * density).roundToInt()
+        }
+        this.tipParams = tipParams
+
+        try {
+            wm?.addView(card, tipParams)
+            tipView = card
+        } catch (e: Exception) {
+            Log.e(TAG, "tip addView failed: ${e.message}")
+            return
+        }
+
+        // автоскрытие
+        tipHideRunnable?.let { handler.removeCallbacks(it) }
+        val hide = Runnable { hideTipNow() }
+        tipHideRunnable = hide
+        handler.postDelayed(hide, seconds * 1000L)
+    }
+
+    private fun hideTipNow() {
+        tipHideRunnable?.let { handler.removeCallbacks(it) }
+        tipHideRunnable = null
+        val tv = tipView
+        if (tv != null) {
+            try { wm?.removeView(tv) } catch (_: Exception) {}
+        }
+        tipView = null
     }
 
     private fun createNotificationChannel() {

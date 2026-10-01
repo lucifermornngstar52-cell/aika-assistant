@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
 import '../services/aika_mood_service.dart';
+import '../services/minecraft_pilot_service.dart';
 import '../services/aika_automation_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
@@ -1579,6 +1580,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final prompt = 'Ответить в $appName на сообщение от ${last['title']}: "${last['text']}"?\n\nСкажи "да" чтобы я придумала ответ, или "нет" чтобы отменить.';
             _addMessage(ChatMessage(id: (DateTime.now().millisecondsSinceEpoch + 1).toString(), role: MessageRole.aika, content: prompt, timestamp: DateTime.now()));
       await _speak('Ответить в $appName на это сообщение?');
+      return;
+    }
+
+    // ── Майнкрафт-пилот: офлайн-рецепты мгновенно, без облака ──────
+    final mcResult = await MinecraftPilotService.instance.tryHandle(text);
+    if (mcResult != null) {
+      _addMessage(ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: MessageRole.aika,
+        content: mcResult,
+        timestamp: DateTime.now(),
+      ));
+      await _speak(mcResult);
       return;
     }
 

@@ -66,6 +66,21 @@ class OverlayService {
     try { await _overlayChannel.invokeMethod('hideOverlay'); } catch (_) {}
   }
 
+  /// Карточка-подсказка поверх всего (рецепты Майнкрафт и т.п.).
+  Future<void> showTip(String title, String text, {int seconds = 45}) async {
+    try {
+      await _overlayChannel.invokeMethod('showTipOverlay', {
+        'title': title,
+        'text': text,
+        'seconds': seconds,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> hideTip() async {
+    try { await _overlayChannel.invokeMethod('hideTipOverlay'); } catch (_) {}
+  }
+
   // ─── Состояния модели ───────────────────────────────────────────────
   Future<void> setState(String state) async {
     try { await _overlayChannel.invokeMethod('updateOverlay', {'state': state}); } catch (_) {}

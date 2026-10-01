@@ -305,6 +305,26 @@ override fun onResume() {
                         result.success(null)
                     }
 
+                    "showTipOverlay" -> {
+                        val title = call.argument<String>("title") ?: "Подсказка"
+                        val text  = call.argument<String>("text") ?: ""
+                        val secs  = call.argument<Int>("seconds") ?: 45
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_SHOW_TIP
+                            putExtra(AikaOverlayService.EXTRA_TIP_TITLE, title)
+                            putExtra(AikaOverlayService.EXTRA_TIP_TEXT, text)
+                            putExtra(AikaOverlayService.EXTRA_TIP_SECONDS, secs)
+                        })
+                        result.success(null)
+                    }
+
+                    "hideTipOverlay" -> {
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_HIDE_TIP
+                        })
+                        result.success(null)
+                    }
+
                     "configOverlay" -> {
                         val size    = (call.argument<Double>("size")    ?: 170.0).toFloat()
                         val side    = call.argument<String>("side")     ?: "left"
