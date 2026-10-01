@@ -885,6 +885,28 @@ override fun onResume() {
                         }.start()
                     }
 
+                    "getLogcat" -> {
+                        val maxLines = call.argument<Int>("lines") ?: 800
+                        Thread {
+                            val out = StringBuilder()
+                            try {
+                                val proc = ProcessBuilder("logcat", "-d", "-t", maxLines.toString(), "-v", "time")
+                                    .redirectErrorStream(true)
+                                    .start()
+                                val reader = proc.inputStream.bufferedReader()
+                                var line: String?
+                                var count = 0
+                                while (reader.readLine().also { line = it } != null && count < maxLines) {
+                                    out.appendLine(line); count++
+                                }
+                                proc.waitFor()
+                            } catch (e: Exception) {
+                                out.append("logcat failed: ").append(e.message)
+                            }
+                            mainHandler.post { result.success(out.toString()) }
+                        }.start()
+                    }
+
                     "holdTouch" -> {
                         val x  = (call.argument<Double>("x") ?: 540.0).toFloat()
                         val y  = (call.argument<Double>("y") ?: 1000.0).toFloat()

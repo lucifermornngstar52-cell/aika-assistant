@@ -16,6 +16,7 @@ import '../services/ai_service.dart';
 import '../services/aika_mood_service.dart';
 import '../services/minecraft_recipe_service.dart';
 import '../services/minecraft_autopilot_service.dart';
+import '../services/aika_log_service.dart';
 import '../services/aika_automation_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
@@ -1261,6 +1262,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _sendMessage(String text) async {
+    AikaLogService.log('intent', '▸ Сообщение: "$text"');
     if (text.trim().isEmpty) return;
     final turnId = ++_aiTurn;
     // Настроение по фронталке — в фоне, не блокирует отправку.
@@ -1602,6 +1604,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // ── Айка играет за тебя (автопилот Minecraft) ──────────────────
     final mcSkill = MinecraftAutopilotService.parseSkillCommand(text);
+    if (mcSkill != null) AikaLogService.log('intent', 'сработал автопилот: ${mcSkill.name} (${mcSkill.arg})');
     if (mcSkill != null && mcSkill.name != 'stop') {
       final supportErr = await MinecraftAutopilotService.checkSupport();
       if (supportErr != null) {
@@ -1646,7 +1649,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
 
     // ── Майнкрафт-рецепты: офлайн-ответы мгновенно, без облака ──────
+    AikaLogService.log('intent', 'автопилот не сработал — пробую рецепты');
     final mcResult = await MinecraftRecipeService.instance.tryHandle(text);
+    if (mcResult != null) AikaLogService.log('intent', 'рецепт отвечен офлайн');
     if (mcResult != null) {
       _addMessage(ChatMessage(
         id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),

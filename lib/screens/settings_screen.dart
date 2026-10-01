@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import 'settings_general_screen.dart';
 import 'settings_voice_screen.dart';
 import 'minecraft_pilot_screen.dart';
+import 'logs_screen.dart';
 import 'model_picker_screen.dart';
 import 'settings_background_screen.dart';
 import 'personality_screen.dart';
@@ -75,6 +76,14 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.sports_esports,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const MinecraftPilotScreen())),
+          ),
+
+          _SettingsCard(
+            title: '📜 Логи',
+            subtitle: 'Живой лог всех функций — ищем баги на месте',
+            icon: Icons.terminal,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const LogsScreen())),
           ),
 
           _SettingsCard(

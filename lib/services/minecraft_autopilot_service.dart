@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'groq_model_catalog.dart';
 
 import 'overlay_service.dart';
+import 'aika_log_service.dart';
 
 /// ═════════════════════════════════════════════════════════════════════
 /// Minecraft Pilot — игровой автопилот Айки.
@@ -134,6 +135,7 @@ class MinecraftAutopilotService {
       consecutiveFails = 0;
 
       _iteration++;
+      AikaLogService.log('autopilot', 'шаг $_iteration: ${action['action']} $p');
       _addLog('── Шаг $_iteration/$maxIterations ──');
       _addLog('🧠 ${action['thought'] ?? ''}');
       final pRaw = action['params'];
@@ -297,6 +299,7 @@ class MinecraftAutopilotService {
       return json is Map<String, dynamic> ? json : null;
     } catch (e) {
       _addLog('⚠️ Ошибка vision: $e');
+      AikaLogService.error('autopilot', 'vision: $e');
       return null;
     }
   }
@@ -541,6 +544,7 @@ class MinecraftAutopilotService {
     final w = size['width']!;
     final h = size['height']!;
     _running = true;
+    AikaLogService.log('autopilot', 'скилл chop: $cycles циклов, экран ${w}x$h');
     _addLog('🪓 Рублю дерево ($cycles циклов)');
     await _status('⛏️ Айка рубит дерево', 'Держу палец на стволе, не трогай экран');
 
@@ -584,6 +588,7 @@ class MinecraftAutopilotService {
     final w = size['width']!;
     final h = size['height']!;
     _running = true;
+    AikaLogService.log('autopilot', 'скилл dig: $blocks блока вниз');
     _addLog('⛏️ Копаю вниз ($blocks блока)');
     await _status('⛏️ Айка копает вниз', 'Осторожно, я не вижу пещеры снизу!');
 
@@ -616,6 +621,7 @@ class MinecraftAutopilotService {
     final w = size['width']!;
     final h = size['height']!;
     _running = true;
+    AikaLogService.log('autopilot', 'скилл wander: $seconds сек');
     _addLog('🚶 Гуляю $seconds сек');
     await _status('🚶 Айка бродит по миру', 'Иду куда глаза глядят');
 

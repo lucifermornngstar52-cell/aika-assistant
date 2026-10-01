@@ -11,13 +11,31 @@ import 'services/wardrobe_service.dart';
 import 'services/theme_switcher_service.dart';
 import 'services/ai_service.dart';
 import 'services/local_llm_service.dart';
+import 'services/aika_log_service.dart';
 import 'services/web_search_service.dart';
 import 'main_overlay.dart' show overlayMain;
 
 export 'main_overlay.dart' show overlayMain;
 
+/// Оригинальный вывод в консоль (только в debug-сборке).
+void kDebugModeOnlyPrint(String? message) {
+  if (kDebugMode) {
+    // ignore: avoid_print
+    print(message);
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ПЕРЕХВАТ: все debugPrint по всему приложению пишутся в лог-просмотрщик.
+  debugPrint = (String? message, {int? wrapWidth}) {
+    final m = message ?? '';
+    AikaLogService.log('flutter', m,
+        level: m.contains('Exception') || m.contains('Ошибка') || m.contains('❌')
+            ? LogLevel.error : LogLevel.debug);
+    kDebugModeOnlyPrint(message);
+  };
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
