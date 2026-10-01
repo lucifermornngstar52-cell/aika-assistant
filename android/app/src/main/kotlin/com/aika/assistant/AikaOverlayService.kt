@@ -458,7 +458,7 @@ class AikaOverlayService : Service() {
             setLineSpacing(2f, 1f)
         }
         val hintView = TextView(this).apply {
-            text = "нажми, чтобы закрыть"
+            this.text = "нажми, чтобы закрыть"
             setTextColor(0x99FFFFFF.toInt())
             textSize = 10f
         }
