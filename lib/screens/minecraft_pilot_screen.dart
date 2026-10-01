@@ -309,8 +309,12 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
                     },
                     style: ButtonStyle(
                       foregroundColor: MaterialStateProperty.all(AikaTheme.textPrimary),
+                      backgroundColor: MaterialStateProperty.resolveWith(
+                        (states) => states.contains(MaterialState.selected)
+                            ? AikaTheme.accent
+                            : AikaTheme.surface,
+                      ),
                     ),
-                    selectedBackgroundColor: AikaTheme.accent,
                   ),
                 ],
               ),
