@@ -175,35 +175,24 @@ class AiService {
     final maxTokens = _maxTokens;
 
     // ── Pro: локальный оффлайн-движок ──────────────────────────────────────
-    if (_localMode && LocalLlmService.instance.isReady) {
-      final engine = LocalLlmService.instance;
-      final hasImage = imageBase64.isNotEmpty;
-      // Фото без локального зрения уходит в облако.
-      if (!hasImage || engine.supportsVision) {
-        try {
-          Uint8List? imageBytes;
-          if (hasImage) {
-            imageBytes = base64Decode(imageBase64);
-            if (imageBytes.length > 6 * 1024 * 1024) imageBytes = null;
-          }
-          final historyList = recentHistory(history, message)
-              .map((m) => {
-                'role': (m['role'] as String?) ?? 'user',
-                'content': (m['content'] as String?) ?? '',
-              })
-              .toList();
-          final text = await engine.chat(
-            system: _localSystemPrompt(assistantName, userName),
-            history: historyList,
-            user: message.isEmpty && hasImage ? 'Опиши изображение' : message,
-            imageBytes: imageBytes,
-            maxTokens: maxTokens,
-          );
-          if (text.isNotEmpty) return text;
-        } catch (e) {
-          // Локальный движок упал — тихо падаем в облако.
-        }
-      }
+    // ФИКС «локалка не заменяет облако»: раньше локальный путь работал
+    // только если движок УЖЕ загружен. Если автозагрузка не успела или
+    // упала — молча уходили в Groq, и без интернета всё умирало. Теперь:
+    //   • ждём идущую автозагрузку;
+    //   • если движка нет — поднимаем на месте (ленивая загрузка);
+    //   • если облако недоступно — локальная модель спасает ответ (см. ниже).
+    final hasImage = imageBase64.isNotEmpty;
+    if (_localMode && (!hasImage || LocalLlmService.instance.supportsVision)) {
+      await _ensureLocalEngineReady();
+      final text = await _localReply(
+        message: message,
+        userName: userName,
+        assistantName: assistantName,
+        history: history,
+        imageBase64: imageBase64,
+        maxTokens: maxTokens,
+      );
+      if (text != null) return text;
     }
     final searchEnabled = _webSearchEnabled;
     if (key.isEmpty) throw StateError('Добавь ключ Groq в настройках AI');
@@ -305,10 +294,93 @@ class AiService {
             client: client, maxTokens: maxTokens);
         if (fallback != null && fallback.isNotEmpty) return fallback;
       }
-      throw StateError('Groq недоступен: ${last is HttpException ? last.message : 'ошибка сети или таймаут'}');
+      // ФИКС оффлайн: облако недоступно (нет интернета / Groq лежит),
+      // но локальная модель скачана — она ДОЛЖНА заменять облако, когда
+      // это нужно, даже если локальный режим не включён тумблером.
+      if (!hasImage || LocalLlmService.instance.supportsVision) {
+        await _ensureLocalEngineReady();
+        final text = await _localReply(
+          message: message,
+          userName: userName,
+          assistantName: assistantName,
+          history: history,
+          imageBase64: imageBase64,
+          maxTokens: maxTokens,
+        );
+        if (text != null) return text;
+      }
+      var hint = '';
+      try {
+        hint = await LocalModelManager.instance.anyDownloaded()
+            ? ' Локальная модель скачана, но не смогла ответить — статус движка '
+              'смотри в «Локальные модели (Pro)».'
+            : ' Скачай модель в «Локальные модели (Pro)» — она работает без интернета.';
+      } catch (_) {}
+      throw StateError('Нет связи с облаком'
+          ' (${last is HttpException ? last.message : 'ошибка сети или таймаут'}).$hint');
     } finally {
       client.close();
       if (turn == _generation) _activeClient = null;
+    }
+  }
+
+  /// Ждёт идущую автозагрузку движка; если движка нет — поднимает его
+  /// на месте (только если модель скачана). Никогда не бросает исключений.
+  Future<void> _ensureLocalEngineReady() async {
+    final engine = LocalLlmService.instance;
+    if (engine.isReady) return;
+    if (engine.isLoading) {
+      // Автозагрузка при старте ещё идёт — ждём до минуты.
+      for (var i = 0; i < 120 && engine.isLoading && !engine.isReady; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      return;
+    }
+    try {
+      final mgr = LocalModelManager.instance;
+      if (!await mgr.anyDownloaded()) return;
+      await loadEngineFromManager();
+    } catch (_) {
+      // Не смогли поднять движок — вернёмся к обычной цепочке ответа.
+    }
+  }
+
+  /// Ответ локальной моделью. null — попробовать другой путь (облако).
+  Future<String?> _localReply({
+    required String message,
+    required String userName,
+    required String assistantName,
+    required List<String> history,
+    required String imageBase64,
+    required int maxTokens,
+  }) async {
+    final engine = LocalLlmService.instance;
+    if (!engine.isReady) return null;
+    final hasImage = imageBase64.isNotEmpty;
+    if (hasImage && !engine.supportsVision) return null;
+    try {
+      Uint8List? imageBytes;
+      if (hasImage) {
+        imageBytes = base64Decode(imageBase64);
+        if (imageBytes.length > 6 * 1024 * 1024) imageBytes = null;
+      }
+      final historyList = recentHistory(history, message)
+          .map((m) => {
+            'role': (m['role'] as String?) ?? 'user',
+            'content': (m['content'] as String?) ?? '',
+          })
+          .toList();
+      final text = await engine.chat(
+        system: _localSystemPrompt(assistantName, userName),
+        history: historyList,
+        user: message.isEmpty && hasImage ? 'Опиши изображение' : message,
+        imageBytes: imageBytes,
+        maxTokens: maxTokens,
+      );
+      return text.isEmpty ? null : text;
+    } catch (_) {
+      // Локальный движок упал — тихо идём дальше по цепочке.
+      return null;
     }
   }
 

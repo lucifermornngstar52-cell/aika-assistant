@@ -21,12 +21,14 @@ class _VoiceInfo {
 
 const _curatedVoices = <_VoiceInfo>[
   // ── Женские ──────────────────────────────────────────────────────────
-  _VoiceInfo('ru-ru-x-ruf-local', 'Ника', 'ru-RU', 'female', 'Русский · мягкий', '🌸'),
+  // ФИКС: ru-ru-x-ruf-local — МУЖСКОЙ голос (проверено на слух), раньше
+  // ошибочно числился женским («Ника»). Теперь это Питер.
   _VoiceInfo('ru-ru-x-ruc-local', 'Астра', 'ru-RU', 'female', 'Русский · тёплый', '💜'),
   _VoiceInfo('en-gb-x-gbs-network', 'Элла', 'en-GB', 'female', 'Английский · Британия', '🇬🇧'),
   _VoiceInfo('en-au-x-auc-network', 'Стелла', 'en-AU', 'female', 'Английский · Австралия', '🇦🇺'),
   // ── Мужские ──────────────────────────────────────────────────────────
   _VoiceInfo('ru-ru-x-ruf-network', 'Дмитрий', 'ru-RU', 'male', 'Русский · уверенный', '💼'),
+  _VoiceInfo('ru-ru-x-ruf-local', 'Питер', 'ru-RU', 'male', 'Русский · низкий', '🕶️'),
   _VoiceInfo('ru-ru-x-rud-local', 'Тим', 'ru-RU', 'male', 'Русский · спокойный', '🎧'),
 ];
 

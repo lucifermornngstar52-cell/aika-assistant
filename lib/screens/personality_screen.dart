@@ -189,7 +189,7 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
         const femaleVoice = 'ru-ru-x-ruc-local';
         const femaleSet = {
           'ru-ru-x-ruc-local',   // Астра
-          'ru-ru-xruf-local',    // Ника (xruf-local — женский)
+          // ru-ru-xruf-local (Питер) — МУЖСКОЙ, в женский набор не входит.
           'en-gb-x-gbs-network', // Элла
           'en-au-x-auc-network', // Стелла
         };
