@@ -308,9 +308,9 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
                       MinecraftAutopilotService.setControlScheme(v.first);
                     },
                     style: ButtonStyle(
-                      selectedBackgroundColor: MaterialStateProperty.all(AikaTheme.accent),
                       foregroundColor: MaterialStateProperty.all(AikaTheme.textPrimary),
                     ),
+                    selectedBackgroundColor: AikaTheme.accent,
                   ),
                 ],
               ),
