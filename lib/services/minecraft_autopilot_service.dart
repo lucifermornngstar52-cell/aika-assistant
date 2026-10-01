@@ -135,11 +135,11 @@ class MinecraftAutopilotService {
       consecutiveFails = 0;
 
       _iteration++;
+      final pRaw = action['params'];
+      final p = pRaw is Map<String, dynamic> ? pRaw : <String, dynamic>{};
       AikaLogService.log('autopilot', 'шаг $_iteration: ${action['action']} $p');
       _addLog('── Шаг $_iteration/$maxIterations ──');
       _addLog('🧠 ${action['thought'] ?? ''}');
-      final pRaw = action['params'];
-      final p = pRaw is Map<String, dynamic> ? pRaw : <String, dynamic>{};
       _addLog('🎮 ${action['action']} $p');
 
       history.add('${action['action']} ${jsonEncode(p)}');
@@ -540,9 +540,10 @@ class MinecraftAutopilotService {
     if (!await _checkGestures()) {
       return 'Accessibility не включён — включи сервис в настройках';
     }
-    final size = await _getScreenSize()!;
-    final w = size['width']!;
-    final h = size['height']!;
+    final size = await _getScreenSize();
+    if (size == null) return 'Не удалось получить размер экрана — включи Accessibility';
+    final w = size['width'] as int;
+    final h = size['height'] as int;
     _running = true;
     AikaLogService.log('autopilot', 'скилл chop: $cycles циклов, экран ${w}x$h');
     _addLog('🪓 Рублю дерево ($cycles циклов)');
@@ -584,9 +585,10 @@ class MinecraftAutopilotService {
     if (!await _checkGestures()) {
       return 'Accessibility не включён — включи сервис в настройках';
     }
-    final size = await _getScreenSize()!;
-    final w = size['width']!;
-    final h = size['height']!;
+    final size = await _getScreenSize();
+    if (size == null) return 'Не удалось получить размер экрана — включи Accessibility';
+    final w = size['width'] as int;
+    final h = size['height'] as int;
     _running = true;
     AikaLogService.log('autopilot', 'скилл dig: $blocks блока вниз');
     _addLog('⛏️ Копаю вниз ($blocks блока)');
@@ -617,9 +619,10 @@ class MinecraftAutopilotService {
     if (!await _checkGestures()) {
       return 'Accessibility не включён — включи сервис в настройках';
     }
-    final size = await _getScreenSize()!;
-    final w = size['width']!;
-    final h = size['height']!;
+    final size = await _getScreenSize();
+    if (size == null) return 'Не удалось получить размер экрана — включи Accessibility';
+    final w = size['width'] as int;
+    final h = size['height'] as int;
     _running = true;
     AikaLogService.log('autopilot', 'скилл wander: $seconds сек');
     _addLog('🚶 Гуляю $seconds сек');
