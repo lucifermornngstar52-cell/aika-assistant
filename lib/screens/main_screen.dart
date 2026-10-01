@@ -17,6 +17,7 @@ import '../services/aika_mood_service.dart';
 import '../services/minecraft_recipe_service.dart';
 import '../services/minecraft_autopilot_service.dart';
 import '../services/aika_log_service.dart';
+import '../widgets/floating_logs_button.dart';
 import '../services/aika_automation_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
@@ -2678,7 +2679,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-          ),
+         ),
+
+          // ── Плавающая кнопка логов ─────────────────────────────────────
+          const FloatingLogsButton(),
         ],
       ),
     );
