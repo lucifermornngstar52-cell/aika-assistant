@@ -185,7 +185,7 @@ void main() {
     final sources = [
       'lib/services/ai_service.dart',
       'lib/services/groq_computer_use_service.dart',
-      'lib/services/minecraft_pilot_service.dart',
+      'lib/services/minecraft_autopilot_service.dart',
     ];
     for (final path in sources) {
       final text = File(path).readAsStringSync();
