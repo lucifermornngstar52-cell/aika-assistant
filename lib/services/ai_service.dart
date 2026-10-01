@@ -71,7 +71,7 @@ class AiService {
   }
 
   /// Системный промпт для локальной модели: краткий, чтобы экономить контекст.
-  static String _localSystemPrompt(String assistantName, String userName) {
+  static String _localSystemPrompt(String assistantName, String userName, {String mood = ''}) {
     final persona = PersonalityService.systemPromptAddition.trim();
     final personaPart = persona.isEmpty
         ? 'Ты дружелюбный и живой ассистент.'
@@ -79,7 +79,8 @@ class AiService {
     return 'Ты — $assistantName, персональный AI-ассистент '
         '${userName.isEmpty ? 'пользователя' : 'по имени $userName'}. '
         '$personaPart Отвечай по-русски, тепло, живо и по делу. '
-        'Не генерируй ACTION-теги. Не инициируй действия на устройстве.';
+        'Не генерируй ACTION-теги. Не инициируй действия на устройстве.'
+        '${mood.isEmpty ? '' : ' $mood'}';
   }
 
   static String _clean(String text) => text
@@ -168,6 +169,7 @@ class AiService {
     String memoryContext = '',
     String screenContext = '',
     String longMemory = '',
+    String mood = '',
     String imageBase64 = '',
     String imageMimeType = 'image/jpeg',
   }) async {
@@ -191,6 +193,7 @@ class AiService {
         history: history,
         imageBase64: imageBase64,
         maxTokens: maxTokens,
+        moodHint: mood,
       );
       if (text != null) return text;
     }
@@ -214,7 +217,7 @@ class AiService {
         'name': userName, 'assistant': assistantName,
         'persona': PersonalityService.systemPromptAddition,
         'gender': PersonalityService.genderPrompt,
-        'memory': memoryContext, 'longMemory': longMemory,
+        'memory': memoryContext, 'longMemory': longMemory, 'mood': mood,
         'screen': screenContext, 'web': webContext,
       };
       final messages = <Map<String, dynamic>>[
@@ -306,6 +309,7 @@ class AiService {
           history: history,
           imageBase64: imageBase64,
           maxTokens: maxTokens,
+          moodHint: mood,
         );
         if (text != null) return text;
       }
@@ -353,6 +357,7 @@ class AiService {
     required List<String> history,
     required String imageBase64,
     required int maxTokens,
+    String moodHint = '',
   }) async {
     final engine = LocalLlmService.instance;
     if (!engine.isReady) return null;
@@ -371,7 +376,8 @@ class AiService {
           })
           .toList();
       final text = await engine.chat(
-        system: _localSystemPrompt(assistantName, userName),
+        system: _localSystemPrompt(assistantName, userName,
+            mood: moodHint.isEmpty ? '' : '$moodHint Учитывай это в тоне ответа.'),
         history: historyList,
         user: message.isEmpty && hasImage ? 'Опиши изображение' : message,
         imageBytes: imageBytes,

@@ -174,6 +174,7 @@ Future<bool> loadEngineFromManager() async {
   final mgr = LocalModelManager.instance;
   final vision = await mgr.visionModeEnabled;
   final visionModel = LocalModelManager.byId('qwen3_vision');
+  final textModel4b = LocalModelManager.byId('qwen3_4b_text');
   final textModel = LocalModelManager.byId('qwen3_text');
   if (vision && visionModel != null && await mgr.isDownloaded(visionModel)) {
     final modelPath =
@@ -184,6 +185,14 @@ Future<bool> loadEngineFromManager() async {
       modelPath: modelPath,
       mmprojPath: mmprojPath,
       modelLabel: 'Qwen3-VL-2B',
+    );
+  }
+  // Текстовый движок: приоритет у 4B (лучше держит персону), 1.7B — запасная.
+  if (textModel4b != null && await mgr.isDownloaded(textModel4b)) {
+    final modelPath = await mgr.pathFor(textModel4b.files[0].fileName);
+    return LocalLlmService.instance.load(
+      modelPath: modelPath,
+      modelLabel: 'Qwen3-4B',
     );
   }
   if (textModel != null && await mgr.isDownloaded(textModel)) {

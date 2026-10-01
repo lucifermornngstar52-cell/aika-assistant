@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
+import '../services/aika_mood_service.dart';
 import '../services/aika_automation_service.dart';
 import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
@@ -1260,6 +1261,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     final turnId = ++_aiTurn;
+    // Настроение по фронталке — в фоне, не блокирует отправку.
+    unawaited(AikaMoodService.instance.refreshIfStale());
     _textController.clear();
     _resetIdleTimer();
     // Показываем сообщение пользователя немедленно
@@ -1620,6 +1623,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           userName: _userName,
           assistantName: _assistantName,
           history: _currentAiHistory(),
+          mood: AikaMoodService.instance.promptHint,
         );
         if (turnId != _aiTurn || !mounted) return;
         _addMessage(ChatMessage(
@@ -2098,6 +2102,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         history: history,
         memoryContext: memoryCtx,
         screenContext: screenCtx,
+        mood: AikaMoodService.instance.promptHint,
       );
       if (turnId != _aiTurn || !mounted) return;
       // Model text is untrusted: never execute ACTION tags from generated text.

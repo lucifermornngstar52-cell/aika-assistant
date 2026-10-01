@@ -25,6 +25,7 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
   bool localMode = false;
   bool localStt = false;
   bool visionMode = false;
+  bool moodCam = false;
 
   @override
   void initState() {
@@ -59,17 +60,20 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
       localMode = _localModeOn;
       localStt = _localSttOn;
       visionMode = _visionOn;
+      moodCam = _moodCamOn;
     });
   }
 
   bool _localModeOn = false;
   bool _localSttOn = false;
   bool _visionOn = false;
+  bool _moodCamOn = true;
 
   Future<void> _loadFlags() async {
     _localModeOn = await mgr.localModeEnabled;
     _localSttOn = await mgr.localSttEnabled;
     _visionOn = await mgr.visionModeEnabled;
+    _moodCamOn = await mgr.moodCamEnabled;
   }
 
   @override
@@ -271,6 +275,7 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
 
   Widget _settingsCard() {
     final anyModel = downloaded['qwen3_text'] == true ||
+        downloaded['qwen3_4b_text'] == true ||
         downloaded['qwen3_vision'] == true;
     return Card(
       child: Column(
@@ -330,6 +335,21 @@ class _LocalModelsScreenState extends State<LocalModelsScreen> {
                       ));
                       await loadEngineFromManager();
                     }
+                  }
+                : null,
+          ),
+          SwitchListTile(
+            title: const Text('Настроение по камере'),
+            subtitle: const Text(
+                'Айка раз в 3 минуты смотрит на тебя фронталкой и '
+                'подстраивает тон ответа. Работает через Qwen3-VL, '
+                'полностью оффлайн, кадры никуда не отправляются.'),
+            value: moodCam,
+            onChanged: downloaded['qwen3_vision'] == true
+                ? (v) async {
+                    await mgr.setMoodCamEnabled(v);
+                    await _loadFlags();
+                    setState(() => moodCam = v);
                   }
                 : null,
           ),

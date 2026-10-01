@@ -52,6 +52,22 @@ class LocalModelManager {
       ],
     ),
     LocalModelInfo(
+      id: 'qwen3_4b_text',
+      name: 'Qwen3-4B — текст (Pro+)',
+      description:
+          'Более умная локальная модель: заметно лучше держит персону и '
+          'системный промпт, чем 1.7B. GGUF Q4_K_M, ~2.5 ГБ. '
+          'Рекомендуется при 8+ ГБ оперативной памяти.',
+      icon: '🧠',
+      kind: 'text',
+      files: [
+        LocalModelFile(
+          url: 'https://huggingface.co/ggml-org/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf',
+          fileName: 'Qwen3-4B-Q4_K_M.gguf',
+        ),
+      ],
+    ),
+    LocalModelInfo(
       id: 'qwen3_vision',
       name: 'Qwen3-VL-2B — зрение (Pro)',
       description:
@@ -249,4 +265,9 @@ class LocalModelManager {
   Future<bool> get visionModeEnabled async =>
       _getFlag('local_vision_mode');
   Future<void> setVisionModeEnabled(bool v) => _setFlag('local_vision_mode', v);
+
+  /// Детект настроения по фронтальной камере (по умолчанию включён).
+  Future<bool> get moodCamEnabled async =>
+      _getFlag('mood_cam_enabled', def: true);
+  Future<void> setMoodCamEnabled(bool v) => _setFlag('mood_cam_enabled', v);
 }
