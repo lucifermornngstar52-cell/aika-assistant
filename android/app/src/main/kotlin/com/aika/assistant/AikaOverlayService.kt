@@ -577,7 +577,7 @@ class AikaOverlayService : Service() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.Shape.OVAL
+                    shape = GradientDrawable.OVAL
                     setColor(Color.parseColor("#CC20204A"))
                     setStroke(dp(1.5f), Color.parseColor("#FF8B7CF6"))
                 }
