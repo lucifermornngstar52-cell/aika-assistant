@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/minecraft_autopilot_service.dart';
+import '../services/overlay_service.dart';
 import '../theme/app_theme.dart';
 
 /// Экран игрового автопилота: Айка играет в Minecraft вместо хозяина.
@@ -19,6 +22,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
   bool _checking = false;
   String? _result;
   String _scheme = MinecraftAutopilotService.kSchemeClassic;
+  bool _pilotButton = false;
 
   @override
   void initState() {
@@ -26,6 +30,7 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
     MinecraftAutopilotService.loadControlScheme().then((_) {
       if (mounted) setState(() => _scheme = MinecraftAutopilotService.controlScheme);
     });
+    _loadPilotButtonPref();
     MinecraftAutopilotService.onLog = (line) {
       if (mounted) {
         setState(() => _logLines.add(line));
@@ -39,6 +44,35 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
     MinecraftAutopilotService.onLog = null;
     _goalCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPilotButtonPref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getBool('pilot_button_enabled') ?? false;
+      if (mounted) setState(() => _pilotButton = v);
+    } catch (_) {}
+  }
+
+  Future<void> _togglePilotButton(bool v) async {
+    setState(() => _pilotButton = v);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('pilot_button_enabled', v);
+    } catch (_) {}
+    if (v) {
+      await OverlayService().showPilotButton();
+    } else {
+      await OverlayService().hidePilotButton();
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(v
+            ? 'Кнопка 🎮 показана поверх игр — найди её в Minecraft'
+            : 'Плавающая кнопка пилота скрыта'),
+        backgroundColor: AikaTheme.surface,
+      ));
+    }
   }
 
   Future<void> _start() async {
@@ -315,6 +349,34 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
                             : AikaTheme.surface,
                       ),
                     ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // ── Плавающая кнопка пилота ──
+            _card(
+              icon: '🕹️',
+              title: 'Плавающая кнопка поверх игр',
+              child: Column(
+                children: [
+                  Text(
+                    'Круглая кнопка 🎮 над любым приложением. Тап — мини-окно: '
+                    'вводишь промпт, жмёшь «Старт» — команда уходит пилоту, '
+                    'не выходя из игры. Окно растягивается за угол ⤢ и '
+                    'таскается за шапку. Требуется разрешение поверх окон.',
+                    style: TextStyle(color: AikaTheme.textSecondary, fontSize: 12),
+                  ),
+                  SwitchListTile(
+                    value: _pilotButton,
+                    onChanged: _togglePilotButton,
+                    title: Text(
+                      'Показывать кнопку 🎮',
+                      style: const TextStyle(
+                          color: AikaTheme.textPrimary, fontSize: 14),
+                    ),
+                    activeColor: AikaTheme.accent,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ],
               ),

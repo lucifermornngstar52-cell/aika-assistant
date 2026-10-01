@@ -32,6 +32,7 @@ class MainActivity : FlutterActivity() {
         private const val LAUNCHER_CHANNEL      = "com.aika.assistant/launcher"
         private const val SCREEN_CHANNEL        = "com.aika.assistant/screen"
         private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
+        private const val PILOT_CHANNEL = "com.aika.assistant/pilot_overlay"
         private const val AUDIO_CHANNEL         = "aika/audio"
         private const val MESSENGER_CHANNEL     = "com.aika.assistant/messenger"
         private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
@@ -59,6 +60,10 @@ class MainActivity : FlutterActivity() {
 
     // EventChannel sink для отправки событий смены приложений во Flutter
     private var screenEventSink: EventChannel.EventSink? = null
+
+    // ── Minecraft-пилот: канал Flutter ← окно-оверлей ──
+    private var pilotChannel: MethodChannel? = null
+    private var pilotReceiver: BroadcastReceiver? = null
 
     // EventChannel sink для уведомлений
     private var notificationEventSink: EventChannel.EventSink? = null
@@ -109,6 +114,21 @@ class MainActivity : FlutterActivity() {
         } else {
             registerReceiver(notificationReceiver, notifFilter)
         }
+
+        // ── Ресивер команд из окна-оверлея Minecraft-пилота ──
+        pilotReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val cmd = intent?.getStringExtra(AikaOverlayService.EXTRA_CMD) ?: return
+                Log.i("PilotOverlay", "команда из окна: $cmd")
+                pilotChannel?.invokeMethod("command", mapOf("cmd" to cmd))
+            }
+        }
+        val pilotFilter = IntentFilter(AikaOverlayService.ACTION_PILOT_CMD)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(pilotReceiver, pilotFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(pilotReceiver, pilotFilter)
+        }
     }
 
     private fun sendMediaKey(keyCode: Int) {
@@ -146,6 +166,8 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
         try { unregisterReceiver(screenEventReceiver)
         try { unregisterReceiver(notificationReceiver) } catch (_: Exception) {} } catch (_: Exception) {}
+        try { pilotReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+        pilotChannel = null
     }
 
 override fun onResume() {
@@ -209,6 +231,9 @@ override fun onResume() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ── Minecraft-пилот: окно-оверлей → Flutter (обратный канал) ──
+        pilotChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PILOT_CHANNEL)
 
         // ── Vosk: локальный оффлайн STT (Pro) ─────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_CHANNEL).setMethodCallHandler { call, result ->
@@ -301,6 +326,29 @@ override fun onResume() {
                     "hideOverlay" -> {
                         startService(Intent(this, AikaOverlayService::class.java).apply {
                             action = AikaOverlayService.ACTION_HIDE
+                        })
+                        result.success(null)
+                    }
+
+                    "showPilotButton" -> {
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_SHOW_PILOT
+                        })
+                        result.success(null)
+                    }
+
+                    "hidePilotButton" -> {
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_HIDE_PILOT
+                        })
+                        result.success(null)
+                    }
+
+                    "pilotStatusOverlay" -> {
+                        val t = call.argument<String>("text") ?: ""
+                        startService(Intent(this, AikaOverlayService::class.java).apply {
+                            action = AikaOverlayService.ACTION_PILOT_STATUS
+                            putExtra(AikaOverlayService.EXTRA_STATUS, t)
                         })
                         result.success(null)
                     }

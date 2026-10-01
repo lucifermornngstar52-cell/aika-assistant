@@ -329,6 +329,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initServices();
+    // Окно-оверлей Minecraft-пилота: приём команд + автозапуск кнопки
+    MinecraftAutopilotService.hookPilotOverlay();
+    _maybeShowPilotButton();
+  }
+
+  /// Показываем плавающую кнопку пилота, если она была включена в настройках.
+  Future<void> _maybeShowPilotButton() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('pilot_button_enabled') == true) {
+        await OverlayService().showPilotButton();
+      }
+    } catch (_) {}
   }
 
   @override

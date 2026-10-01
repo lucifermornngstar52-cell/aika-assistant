@@ -56,9 +56,40 @@ class MinecraftAutopilotService {
     _log.add(line);
     if (_log.length > 200) _log.removeRange(0, _log.length - 200);
     onLog?.call(line);
+    // Прогресс — в мини-окно пилота поверх игры (если открыто)
+    unawaited(OverlayService().pilotStatus(line));
   }
 
   static List<String> get logs => List.unmodifiable(_log);
+
+  // ─── Обратный канал: окно-оверлей пилота → сюда ────────────────────
+  static const _pilotCh = MethodChannel('com.aika.assistant/pilot_overlay');
+  static bool _pilotHooked = false;
+
+  /// Регистрирует приём команд из плавающего окна пилота.
+  /// Вызывается один раз при старте приложения.
+  static void hookPilotOverlay() {
+    if (_pilotHooked) return;
+    _pilotHooked = true;
+    _pilotCh.setMethodCallHandler((call) async {
+      if (call.method != 'command') return;
+      final cmd = ((call.arguments as Map?)?['cmd'] as String?)?.trim();
+      if (cmd == null || cmd.isEmpty) return;
+      AikaLogService.log('intent', 'команда из окна-оверлея: $cmd');
+
+      final supportErr = await checkSupport();
+      if (supportErr != null) {
+        await OverlayService().pilotStatus(supportErr);
+        return;
+      }
+
+      final skill = parseSkillCommand(cmd) ?? McSkill('goal', cmd);
+      if (skill.name == 'stop' && !isBusy) return;
+      final res = await runSkill(skill);
+      AikaLogService.log('autopilot', 'overlay-команда готова: $res');
+      await OverlayService().pilotStatus(res);
+    });
+  }
 
   /// Останавливает пилота.
   static void stop() {
@@ -218,6 +249,9 @@ class MinecraftAutopilotService {
 • Если экран не игры (меню, лобби) — сначала тапни нужную кнопку.
 • Если цель выполнена — "done".
 • НИКОГДА не выдумывай кнопки, которых не видно на скриншоте.
+• Копать ВНИЗ — штатная задача, а не «оказался в туннеле». Если цель —
+  докопаться вниз, смотри под ноги (свайп вниз), держи палец в центре
+  и копай. НЕ пытайся «выбраться наверх» без команды.
 ''';
 
     try {

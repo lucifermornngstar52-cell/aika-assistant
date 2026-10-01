@@ -81,6 +81,22 @@ class OverlayService {
     try { await _overlayChannel.invokeMethod('hideTipOverlay'); } catch (_) {}
   }
 
+  // ─── Плавающая кнопка Minecraft-пилота ──────────────────────────────
+  Future<void> showPilotButton() async {
+    try { await _overlayChannel.invokeMethod('showPilotButton'); } catch (_) {}
+  }
+
+  Future<void> hidePilotButton() async {
+    try { await _overlayChannel.invokeMethod('hidePilotButton'); } catch (_) {}
+  }
+
+  /// Строка статуса в мини-окне пилота (последнее действие).
+  Future<void> pilotStatus(String text) async {
+    try {
+      await _overlayChannel.invokeMethod('pilotStatusOverlay', {'text': text});
+    } catch (_) {}
+  }
+
   // ─── Состояния модели ───────────────────────────────────────────────
   Future<void> setState(String state) async {
     try { await _overlayChannel.invokeMethod('updateOverlay', {'state': state}); } catch (_) {}
