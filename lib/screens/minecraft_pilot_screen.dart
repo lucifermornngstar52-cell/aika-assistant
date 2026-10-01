@@ -18,10 +18,14 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
   bool _starting = false;
   bool _checking = false;
   String? _result;
+  String _scheme = MinecraftAutopilotService.kSchemeClassic;
 
   @override
   void initState() {
     super.initState();
+    MinecraftAutopilotService.loadControlScheme().then((_) {
+      if (mounted) setState(() => _scheme = MinecraftAutopilotService.controlScheme);
+    });
     MinecraftAutopilotService.onLog = (line) {
       if (mounted) {
         setState(() => _logLines.add(line));
@@ -84,9 +88,22 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
           break;
         case 'joy':
           await _ch.invokeMethod('joystickMove', {
-            'cx': w * 0.12, 'cy': h * 0.88,
+            'cx': w * 0.11, 'cy': h * 0.82,
             'angle': 0.0, 'duration': 2000,
           });
+          break;
+        case 'fwd':
+          if (MinecraftAutopilotService.controlScheme ==
+              MinecraftAutopilotService.kSchemeJoystick) {
+            await _ch.invokeMethod('joystickMove', {
+              'cx': w * 0.11, 'cy': h * 0.82,
+              'angle': 0.0, 'duration': 2000,
+            });
+          } else {
+            await _ch.invokeMethod('holdTouch', {
+              'x': w * 0.105, 'y': h * 0.76, 'duration': 2000,
+            });
+          }
           break;
       }
       if (mounted) {
@@ -259,6 +276,46 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
                     ),
             ),
             const SizedBox(height: 8),
+            // ── Схема управления ──
+            _card(
+              icon: '🎮',
+              title: 'Схема управления в игре',
+              child: Column(
+                children: [
+                  Text(
+                    'Как двигается персонаж. «Классика» — стрелки D-pad (дефолт '
+                    'Bedrock). «Джойстик» — левый стик. Выбери неверно — '
+                    'Айка будет бегать в сторону!',
+                    style: TextStyle(color: AikaTheme.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: MinecraftAutopilotService.kSchemeClassic,
+                        label: Text('Классика (D-pad)'),
+                        icon: Icon(Icons.gamepad_outlined, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: MinecraftAutopilotService.kSchemeJoystick,
+                        label: Text('Джойстик'),
+                        icon: Icon(Icons.sports_esports_outlined, size: 16),
+                      ),
+                    ],
+                    selected: {_scheme},
+                    onSelectionChanged: (v) {
+                      setState(() => _scheme = v.first);
+                      MinecraftAutopilotService.setControlScheme(v.first);
+                    },
+                    style: ButtonStyle(
+                      selectedBackgroundColor: MaterialStateProperty.all(AikaTheme.accent),
+                      foregroundColor: MaterialStateProperty.all(AikaTheme.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
             // ── Жест-тест ──
             _card(
               icon: '🧪',
@@ -277,7 +334,10 @@ class _MinecraftPilotScreenState extends State<MinecraftPilotScreen> {
                       _testBtn('Тап центр', 'tap'),
                       _testBtn('Свайп ←', 'swipe'),
                       _testBtn('Держать 2с', 'hold'),
-                      _testBtn('Вперёд 2с', 'joy'),
+                      _testBtn(
+                          _scheme == MinecraftAutopilotService.kSchemeJoystick
+                              ? 'Вперёд (стик) 2с' : 'Вперёд (D-pad) 2с',
+                          'fwd'),
                     ],
                   ),
                 ],

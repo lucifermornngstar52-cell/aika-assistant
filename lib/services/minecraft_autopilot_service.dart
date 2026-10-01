@@ -315,8 +315,17 @@ class MinecraftAutopilotService {
       case 'move':
         // Джойстик: модель ВИДИТ скриншот и может указать его точный центр (cx/cy).
         // Если не указала — левый нижний угол (как в Bedrock classic).
-        var cx = (p['cx'] as num?)?.toDouble() ?? w * 0.12;
-        var cy = (p['cy'] as num?)?.toDouble() ?? h * 0.88;
+        final modelCx = p['cx'] as num?;
+        final modelCy = p['cy'] as num?;
+        if (modelCx == null && modelCy == null) {
+          // Модель не увидела джойстик/D-pad — идём вперёд по схеме
+          var dur0 = (p['duration'] as num?)?.toDouble() ?? 1500;
+          if (dur0 > 0 && dur0 < 10) dur0 *= 1000;
+          await _moveForward(w, h, dur0.toInt().clamp(100, 8000));
+          break;
+        }
+        var cx = modelCx?.toDouble() ?? w * 0.12;
+        var cy = modelCy?.toDouble() ?? h * 0.88;
         // если модель прислала доли (0..1) вместо пикселей — переводим
         if (cx >= 0 && cx <= 1) cx *= w;
         if (cy >= 0 && cy <= 1) cy *= h;
@@ -468,6 +477,22 @@ class MinecraftAutopilotService {
 
     if (t.contains('стоп') && _running) return McSkill('stop', '');
 
+    // «беги прямо 5 секунд» / «иди вперёд» — прямая ходьба
+    const walkWords = ['беги прямо', 'иди прямо', 'беги вперед', 'иди вперед',
+        'беги вперёд', 'иди вперёд', 'пробеги прямо', 'пройди прямо',
+        'иди вперед', 'беги вперед', 'шагай прямо'];
+    for (final w0 in walkWords) {
+      final i = t.indexOf(w0);
+      if (i >= 0) {
+        // ищем секунды после фразы
+        var secs = 3;
+        final rest = t.substring(i + w0.length);
+        final m = RegExp(r'(\d+)\s*(сек|с)\b').firstMatch(rest);
+        if (m != null) secs = int.tryParse(m.group(1)!) ?? 3;
+        return McSkill('walk', secs.toString());
+      }
+    }
+
     const chopWords = ['наруби дерево', 'руби дерево', 'сруби дерево',
         'напили дерева', 'добудь дерева', 'руби деревья', 'наруби лес'];
     if (chopWords.any((w) => t.contains(w))) return McSkill('chop', '');
@@ -516,6 +541,8 @@ class MinecraftAutopilotService {
         return _dig();
       case 'wander':
         return _wander();
+      case 'walk':
+        return _walk(seconds: int.tryParse(skill.arg) ?? 3);
       case 'goal':
         return start(skill.arg);
       default:
@@ -525,6 +552,57 @@ class MinecraftAutopilotService {
 
   /// Активен ли сейчас какой-то автопилот (скилл или агентский цикл).
   static bool get isBusy => _running;
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  СХЕМА УПРАВЛЕНИЯ Bedrock
+  //  'classic'  — D-pad (классика, дефолт Bedrock): ходьба = удержание
+  //               стрелки «вверх» (≈10% ширины, 76% высоты).
+  //  'joystick' — джойстик слева: ходьба = перетаскивание джойстика.
+  //  Без этой настройки свайп по экрану попадал в левую стрелку D-pad —
+  //  отсюда «бежит влево, когда просил прямо».
+  // ═══════════════════════════════════════════════════════════════════
+  static String controlScheme = 'classic';
+  static const kSchemeClassic = 'classic';
+  static const kSchemeJoystick = 'joystick';
+
+  static Future<void> loadControlScheme() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      controlScheme =
+          prefs.getString('mc_control_scheme') ?? kSchemeClassic;
+      AikaLogService.log('autopilot', 'схема управления: $controlScheme');
+    } catch (_) {}
+  }
+
+  static Future<void> setControlScheme(String scheme) async {
+    controlScheme = scheme;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('mc_control_scheme', scheme);
+    } catch (_) {}
+    AikaLogService.log('autopilot', 'схема управления → $scheme');
+  }
+
+  /// Универсальный шаг вперёд: работает и с D-pad, и с джойстиком.
+  /// [ms] — сколько идти. Возвращает true, если жест прошёл.
+  static Future<void> _moveForward(int w, int h, int ms) async {
+    if (controlScheme == kSchemeJoystick) {
+      AikaLogService.debug('autopilot',
+          'жест: джойстик вперёд ${ms}мс');
+      await _ch.invokeMethod('joystickMove', {
+        'cx': w * 0.11, 'cy': h * 0.82,
+        'angle': 0.0, 'duration': ms,
+      });
+    } else {
+      // Классика: держим стрелку «вверх» D-pad
+      AikaLogService.debug('autopilot',
+          'жест: D-pad вверх (${(w * 0.105).toInt()},${(h * 0.76).toInt()}) ${ms}мс');
+      await _ch.invokeMethod('holdTouch', {
+        'x': (w * 0.105).toDouble(), 'y': (h * 0.76).toDouble(),
+        'duration': ms,
+      });
+    }
+  }
 
   static Future<bool> _checkGestures() async {
     final size = await _getScreenSize();
@@ -551,25 +629,24 @@ class MinecraftAutopilotService {
 
     var broken = 0;
     for (var i = 0; i < cycles && _running; i++) {
-      // Ломаем блок перед носом (чуть выше центра — ствол)
-      await _ch.invokeMethod('holdTouch', {
-        'x': (w * 0.5).toDouble(), 'y': (h * 0.40).toDouble(), 'duration': 2600,
-      });
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Дерево рукой ломается ~3 секунды — держим 3.4 с, чтобы дошло.
+      // Ломаем по очереди низ ствола, середину и верх (лезем пальцем вверх).
+      for (final fy in [0.56, 0.47, 0.38]) {
+        if (!_running) break;
+        AikaLogService.debug('autopilot',
+            'жест: ломаю блок (${(w * 0.5).toInt()},${(h * fy).toInt()}) 3400мс');
+        await _ch.invokeMethod('holdTouch', {
+          'x': (w * 0.5).toDouble(), 'y': (h * fy).toDouble(),
+          'duration': 3400,
+        });
+        await Future.delayed(const Duration(milliseconds: 600));
+      }
       if (!_running) break;
-      // Шаг вперёд — подобрать выпавшие дропы
-      await _ch.invokeMethod('joystickMove', {
-        'cx': w * 0.12, 'cy': h * 0.88,
-        'angle': 0.0, 'duration': 900,
-      });
-      await Future.delayed(const Duration(milliseconds: 700));
-      // Ещё удар по следующему блоку ствола
-      await _ch.invokeMethod('holdTouch', {
-        'x': (w * 0.5).toDouble(), 'y': (h * 0.42).toDouble(), 'duration': 2600,
-      });
-      await Future.delayed(const Duration(milliseconds: 800));
       broken++;
       _addLog('Цикл ${i + 1}/$cycles ✓');
+      // Короткий шаг вперёд — подобрать дропы (не проскочить дерево)
+      await _moveForward(w, h, 600);
+      await Future.delayed(const Duration(milliseconds: 500));
     }
     final stopped = !_running;
     _running = false;
@@ -614,6 +691,33 @@ class MinecraftAutopilotService {
     return '⛏️ Прокопалась на $blocks блока вниз. Осторожно, снизу может быть пещера — не падай!';
   }
 
+  /// 🏃 Бег прямо: «беги прямо 5 секунд».
+  static Future<String> _walk({int seconds = 3}) async {
+    if (!await _checkGestures()) {
+      return 'Accessibility не включён — включи сервис в настройках';
+    }
+    final size = await _getScreenSize();
+    if (size == null) return 'Не удалось получить размер экрана — включи Accessibility';
+    final w = size['width'] as int;
+    final h = size['height'] as int;
+    _running = true;
+    AikaLogService.log('autopilot', 'скилл walk: вперёд $seconds сек ($controlScheme)');
+    _addLog('🏃 Бегу прямо $seconds сек');
+    await _status('🏃 Айка бежит прямо', 'Держу направление, не трогай экран');
+
+    var msLeft = seconds * 1000;
+    // Классика: holdTouch ограничен — идём порциями по 4 секунды
+    while (_running && msLeft > 0) {
+      final chunk = msLeft > 4000 ? 4000 : msLeft;
+      await _moveForward(w, h, chunk);
+      await Future.delayed(const Duration(milliseconds: 300));
+      msLeft -= chunk + 300;
+    }
+    _running = false;
+    await OverlayService().hideTip();
+    return '🏃 Пробежала прямо $seconds секунд ($controlScheme). Куда дальше?';
+  }
+
   /// 🚶 Прогулка: случайные повороты + ходьба + прыжки.
   static Future<String> _wander({int seconds = 30}) async {
     if (!await _checkGestures()) {
@@ -633,11 +737,8 @@ class MinecraftAutopilotService {
     var steps = 0;
     while (_running && DateTime.now().difference(started).inSeconds < seconds) {
       final phase = (rnd + steps * 137) % 360;
-      // Ходьба 2 сек в случайном направлении
-      await _ch.invokeMethod('joystickMove', {
-        'cx': w * 0.12, 'cy': h * 0.88,
-        'angle': phase.toDouble(), 'duration': 2000,
-      });
+      // Ходьба 2 сек вперёд (схема-зависимо), направление меняем камерой
+      await _moveForward(w, h, 2000);
       await Future.delayed(const Duration(milliseconds: 500));
       // Поворот камеры
       final dir = (rnd + steps * 71) % 2 == 0 ? 1 : -1;
