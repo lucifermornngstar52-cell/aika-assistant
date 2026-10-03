@@ -13,6 +13,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.net.wifi.WifiManager
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
@@ -23,1226 +26,1340 @@ import android.util.Log
 import android.telephony.TelephonyManager
 import android.telephony.PhoneStateListener
 
-class MainActivity : FlutterActivity() {
+class MainActivity: FlutterActivity() {
 
 
-    companion object {
-        private const val OVERLAY_CHANNEL       = "com.aika.assistant/overlay"
-        private const val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
-        private const val LAUNCHER_CHANNEL      = "com.aika.assistant/launcher"
-        private const val SCREEN_CHANNEL        = "com.aika.assistant/screen"
-        private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
-        private const val PILOT_CHANNEL = "com.aika.assistant/pilot_overlay"
-        private const val AUDIO_CHANNEL         = "aika/audio"
-        private const val MESSENGER_CHANNEL     = "com.aika.assistant/messenger"
-        private const val MEDIA_CHANNEL             = "com.aika.assistant/media"
-        private const val NOTIFICATION_EVENTS_CHANNEL  = "com.aika.assistant/notification_events"
-        private const val NOTIFICATIONS_CHANNEL          = "com.aika.assistant/notifications"
-        private const val CALENDAR_CHANNEL                = "com.aika.assistant/calendar"
-        private const val LICENSE_CHANNEL                = "com.aika.assistant/license"
-        private const val CONTACTS_CHANNEL                = "com.aika.assistant/contacts"
-        private const val SENSORS_CHANNEL                 = "com.aika.assistant/sensors"
-        private const val PHONE_STATE_CHANNEL              = "com.aika.assistant/phone_state"
-        private const val ALARM_CHANNEL                    = "com.aika.assistant/alarm"
-        private const val SECURITY_CHANNEL                 = "com.aika.assistant/security"
-        private const val VOSK_CHANNEL                    = "com.aika.assistant/vosk"
-        private const val VOSK_EVENTS_CHANNEL             = "com.aika.assistant/vosk_events"
-    }
+ companion object {
+ private const val OVERLAY_CHANNEL = "com.aika.assistant/overlay"
+ private const val SCREEN_READER_CHANNEL = "com.aika.assistant/screen_reader"
+ private const val LAUNCHER_CHANNEL = "com.aika.assistant/launcher"
+ private const val SCREEN_CHANNEL = "com.aika.assistant/screen"
+ private const val SCREEN_EVENTS_CHANNEL = "com.aika.assistant/screen_events"
+ private const val PILOT_CHANNEL = "com.aika.assistant/pilot_overlay"
+ private const val AUDIO_CHANNEL = "aika/audio"
+ private const val MESSENGER_CHANNEL = "com.aika.assistant/messenger"
+ private const val MEDIA_CHANNEL = "com.aika.assistant/media"
+ private const val NOTIFICATION_EVENTS_CHANNEL = "com.aika.assistant/notification_events"
+ private const val NOTIFICATIONS_CHANNEL = "com.aika.assistant/notifications"
+ private const val CALENDAR_CHANNEL = "com.aika.assistant/calendar"
+ private const val LICENSE_CHANNEL = "com.aika.assistant/license"
+ private const val CONTACTS_CHANNEL = "com.aika.assistant/contacts"
+ private const val SENSORS_CHANNEL = "com.aika.assistant/sensors"
+ private const val PHONE_STATE_CHANNEL = "com.aika.assistant/phone_state"
+ private const val ALARM_CHANNEL = "com.aika.assistant/alarm"
+ private const val SECURITY_CHANNEL = "com.aika.assistant/security"
+ private const val VOSK_CHANNEL = "com.aika.assistant/vosk"
+ private const val SYSTEM_CHANNEL = "com.aika.assistant/system"
+ private const val VOSK_EVENTS_CHANNEL = "com.aika.assistant/vosk_events"
+ }
 
-    // Новые нативные обработчики (openclaw-inspired)
-    private val calendarHandler by lazy { CalendarHandler(applicationContext) }
-    private val contactsHandler by lazy { ContactsHandler(applicationContext) }
-    private val sensorsHandler  by lazy { SensorsHandler(applicationContext) }
-    private val mainHandler     by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+ // Новые нативные обработчики (openclaw-inspired)
+ private val calendarHandler by lazy { CalendarHandler(applicationContext) }
+ private val contactsHandler by lazy { ContactsHandler(applicationContext) }
+ private val sensorsHandler by lazy { SensorsHandler(applicationContext) }
+ private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
 
-    private val voskHandler     by lazy { VoskHandler() }
-    private var voskEventSink: EventChannel.EventSink? = null
+ private val voskHandler by lazy { VoskHandler() }
+ private var voskEventSink: EventChannel.EventSink? = null
 
-    // EventChannel sink для отправки событий смены приложений во Flutter
-    private var screenEventSink: EventChannel.EventSink? = null
+ // EventChannel sink для отправки событий смены приложений во Flutter
+ private var screenEventSink: EventChannel.EventSink? = null
 
-    // ── Minecraft-пилот: канал Flutter ← окно-оверлей ──
-    private var pilotChannel: MethodChannel? = null
-    private var pilotReceiver: BroadcastReceiver? = null
+ // ── Minecraft-пилот: канал Flutter ← окно-оверлей ──
+ private var pilotChannel: MethodChannel? = null
+ private var pilotReceiver: BroadcastReceiver? = null
 
-    // EventChannel sink для уведомлений
-    private var notificationEventSink: EventChannel.EventSink? = null
-    // EventChannel sink для телефонных состояний
-    private var phoneStateSink: EventChannel.EventSink? = null
-    private var telephonyManager: TelephonyManager? = null
+ // EventChannel sink для уведомлений
+ private var notificationEventSink: EventChannel.EventSink? = null
+ // EventChannel sink для телефонных состояний
+ private var phoneStateSink: EventChannel.EventSink? = null
+ private var telephonyManager: TelephonyManager? = null
 
-    // BroadcastReceiver — получает события от AikaAccessibilityService
-    private val screenEventReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            // ACTION_SCREEN_EVENT removed — accessibility events are pull-based now
-            val pkg   = intent?.getStringExtra("package") ?: return
-            val label = intent?.getStringExtra("label")   ?: ""
-            screenEventSink?.success(mapOf("package" to pkg, "label" to label))
-        }
-    }
+ // BroadcastReceiver — получает события от AikaAccessibilityService
+ private val screenEventReceiver = object: BroadcastReceiver() {
+ override fun onReceive(context: Context?, intent: Intent?) {
+ // ACTION_SCREEN_EVENT removed — accessibility events are pull-based now
+ val pkg = intent?.getStringExtra("package")?: return
+ val label = intent?.getStringExtra("label")?: ""
+ screenEventSink?.success(mapOf("package" to pkg, "label" to label))
+ }
+ }
 
-    // BroadcastReceiver — уведомления от AikaNotificationListenerService
-    private val notificationReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != AikaNotificationListenerService.ACTION_NOTIF) return
-            val pkg   = intent.getStringExtra(AikaNotificationListenerService.EXTRA_PKG)   ?: return
-            val title = intent.getStringExtra(AikaNotificationListenerService.EXTRA_TITLE) ?: ""
-            val text  = intent.getStringExtra(AikaNotificationListenerService.EXTRA_TEXT)  ?: ""
-            val time  = intent.getLongExtra(AikaNotificationListenerService.EXTRA_TIME, 0).toString()
-            notificationEventSink?.success(mapOf(
-                "pkg" to pkg, "title" to title, "text" to text, "time" to time
-            ))
-        }
-    }
+ // BroadcastReceiver — уведомления от AikaNotificationListenerService
+ private val notificationReceiver = object: BroadcastReceiver() {
+ override fun onReceive(context: Context?, intent: Intent?) {
+ if (intent?.action!= AikaNotificationListenerService.ACTION_NOTIF) return
+ val pkg = intent.getStringExtra(AikaNotificationListenerService.EXTRA_PKG)?: return
+ val title = intent.getStringExtra(AikaNotificationListenerService.EXTRA_TITLE)?: ""
+ val text = intent.getStringExtra(AikaNotificationListenerService.EXTRA_TEXT)?: ""
+ val time = intent.getLongExtra(AikaNotificationListenerService.EXTRA_TIME, 0).toString()
+ notificationEventSink?.success(mapOf(
+ "pkg" to pkg, "title" to title, "text" to text, "time" to time
+))
+ }
+ }
 
-    // ── Автостарт overlay при запуске приложения ─────────────────────────────
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        autoStartOverlay()
-        // Регистрируем ресивер событий смены приложений
-        val filter = IntentFilter("com.aika.assistant.SCREEN_EVENT") // legacy
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(screenEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(screenEventReceiver, filter)
-        }
+ // ── Автостарт overlay при запуске приложения ─────────────────────────────
+ override fun onCreate(savedInstanceState: Bundle?) {
+ super.onCreate(savedInstanceState)
+ autoStartOverlay()
+ // Регистрируем ресивер событий смены приложений
+ val filter = IntentFilter("com.aika.assistant.SCREEN_EVENT") // legacy
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+ registerReceiver(screenEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+ } else {
+ registerReceiver(screenEventReceiver, filter)
+ }
 
-        // Регистрируем ресивер уведомлений
-        val notifFilter = IntentFilter(AikaNotificationListenerService.ACTION_NOTIF)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(notificationReceiver, notifFilter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(notificationReceiver, notifFilter)
-        }
+ // Регистрируем ресивер уведомлений
+ val notifFilter = IntentFilter(AikaNotificationListenerService.ACTION_NOTIF)
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+ registerReceiver(notificationReceiver, notifFilter, Context.RECEIVER_NOT_EXPORTED)
+ } else {
+ registerReceiver(notificationReceiver, notifFilter)
+ }
 
-        // ── Ресивер команд из окна-оверлея Minecraft-пилота ──
-        pilotReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                val cmd = intent?.getStringExtra(AikaOverlayService.EXTRA_CMD) ?: return
-                Log.i("PilotOverlay", "команда из окна: $cmd")
-                pilotChannel?.invokeMethod("command", mapOf("cmd" to cmd))
-            }
-        }
-        val pilotFilter = IntentFilter(AikaOverlayService.ACTION_PILOT_CMD)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(pilotReceiver, pilotFilter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(pilotReceiver, pilotFilter)
-        }
-    }
+ // ── Ресивер команд из окна-оверлея Minecraft-пилота ──
+ pilotReceiver = object: BroadcastReceiver() {
+ override fun onReceive(context: Context?, intent: Intent?) {
+ val cmd = intent?.getStringExtra(AikaOverlayService.EXTRA_CMD)?: return
+ Log.i("PilotOverlay", "команда из окна: $cmd")
+ pilotChannel?.invokeMethod("command", mapOf("cmd" to cmd))
+ }
+ }
+ val pilotFilter = IntentFilter(AikaOverlayService.ACTION_PILOT_CMD)
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+ registerReceiver(pilotReceiver, pilotFilter, Context.RECEIVER_NOT_EXPORTED)
+ } else {
+ registerReceiver(pilotReceiver, pilotFilter)
+ }
+ }
 
-    private fun sendMediaKey(keyCode: Int) {
-        val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
-        audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
-        audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
-    }
+ private fun sendMediaKey(keyCode: Int) {
+ val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+ audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+ audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+ }
 
-    private fun launchSpotifySearch(query: String) {
-        try {
-            // Пробуем открыть Spotify через deep link с поиском
-            val spotifyPkg = "com.spotify.music"
-            val intent = if (query.isNotEmpty()) {
-                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    data = android.net.Uri.parse("spotify:search:${query}")
-                    setPackage(spotifyPkg)
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            } else {
-                packageManager.getLaunchIntentForPackage(spotifyPkg)?.apply {
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            }
-            if (intent != null) startActivity(intent)
-            // После запуска нажимаем Play через медиаключ
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
-            }, 2000)
-        } catch (e: Exception) {
-            Log.e("Aika", "launchSpotifySearch failed: ${e.message}")
-        }
-    }
+ private fun launchSpotifySearch(query: String) {
+ try {
+ // Пробуем открыть Spotify через deep link с поиском
+ val spotifyPkg = "com.spotify.music"
+ val intent = if (query.isNotEmpty()) {
+ android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+ data = android.net.Uri.parse("spotify:search:${query}")
+ setPackage(spotifyPkg)
+ addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ } else {
+ packageManager.getLaunchIntentForPackage(spotifyPkg)?.apply {
+ addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ }
+ if (intent!= null) startActivity(intent)
+ // После запуска нажимаем Play через медиаключ
+ android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+ sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+ }, 2000)
+ } catch (e: Exception) {
+ Log.e("Aika", "launchSpotifySearch failed: ${e.message}")
+ }
+ }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        try { unregisterReceiver(screenEventReceiver)
-        try { unregisterReceiver(notificationReceiver) } catch (_: Exception) {} } catch (_: Exception) {}
-        try { pilotReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
-        pilotChannel = null
-    }
+ override fun onDestroy() {
+ super.onDestroy()
+ try { unregisterReceiver(screenEventReceiver)
+ try { unregisterReceiver(notificationReceiver) } catch (_: Exception) {} } catch (_: Exception) {}
+ try { pilotReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+ pilotChannel = null
+ }
 
 override fun onResume() {
-        super.onResume()
-        // При возврате в приложение — если overlay не запущен, стартуем
-        if (!AikaOverlayService.isRunning) {
-            autoStartOverlay()
-        }
-    }
-
-    // Проверка системной настройки: включена ли Айка в Специальных возможностях.
-    // Работает даже когда сам сервис ещё не привязан (instance == null).
-    private fun isAccessibilityEnabledBySettings(): Boolean {
-        return try {
-            val setting = Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
-            setting.contains("com.aika.assistant/.AikaAccessibilityService") ||
-                setting.contains("com.aika.assistant/com.aika.assistant.AikaAccessibilityService")
-        } catch (e: Exception) {
-            Log.e("Aika", "isAccessibilityEnabledBySettings failed: ${e.message}")
-            false
-        }
-    }
-
-    private fun autoStartOverlay() {
-        // ФИКС: пользователь выключил оверлей в настройках приложения —
-        // не запускаем его заново при старте/resume приложения.
-        try {
-            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val overlayEnabled = flutterPrefs.getBoolean("flutter.overlay_enabled", true)
-            if (!overlayEnabled) {
-                Log.d("Aika", "Overlay disabled by user (overlay_enabled=false) — skipping auto-start")
-                return
-            }
-        } catch (e: Exception) {
-            Log.e("Aika", "Failed to read overlay_enabled pref: ${e.message}")
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                Log.d("Aika", "Overlay permission not granted — skipping auto-start")
-                return
-            }
-        }
-        try {
-            val intent = Intent(this, AikaOverlayService::class.java).apply {
-                action = AikaOverlayService.ACTION_SHOW
-                putExtra(AikaOverlayService.EXTRA_STATE, "idle")
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            Log.d("Aika", "Overlay auto-started")
-        } catch (e: Exception) {
-            Log.e("Aika", "Failed to auto-start overlay: ${e.message}")
-        }
-    }
-
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-
-        // ── Minecraft-пилот: окно-оверлей → Flutter (обратный канал) ──
-        pilotChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PILOT_CHANNEL)
-
-        // ── Vosk: локальный оффлайн STT (Pro) ─────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "init" -> voskHandler.init(
-                    call.argument<String>("zipPath") ?: "",
-                    call.argument<String>("modelsDir") ?: "",
-                    result
-                )
-                "start" -> voskHandler.start(voskEventSink ?: object : EventChannel.EventSink {
-                    override fun success(o: Any?) {}
-                    override fun error(s: String?, m: String?, d: Any?) {}
-                    override fun endOfStream() {}
-                }, result)
-                "stop" -> voskHandler.stop(result)
-                "unload" -> voskHandler.unload(result)
-                else -> result.notImplemented()
-            }
-        }
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_EVENTS_CHANNEL).setStreamHandler(
-            object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    voskEventSink = events
-                    voskHandler.onSinkChanged(events)
-                }
-                override fun onCancel(arguments: Any?) {
-                    voskEventSink = null
-                }
-            }
-        )
-
-        // ── 0. License channel ────────────────────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LICENSE_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "getDeviceId" -> {
-                        result.success(Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 1. Overlay channel ────────────────────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-
-                    "hasPermission" -> {
-                        val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                            Settings.canDrawOverlays(this) else true
-                        result.success(ok)
-                    }
-
-                    "requestPermission" -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            startActivity(Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:$packageName")
-                            ))
-                        }
-                        result.success(null)
-                    }
-
-                    "setModeOverlay" -> {
-                    val mode = call.argument<String>("mode") ?: "live2d"
-                    startService(Intent(this, AikaOverlayService::class.java).apply {
-                        action = AikaOverlayService.ACTION_SET_MODE
-                        putExtra(AikaOverlayService.EXTRA_MODE, mode)
-                    })
-                    result.success(null)
-                }
-                "showOverlay" -> {
-                        val state = call.argument<String>("state") ?: "idle"
-                        startOverlay(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_SHOW
-                            putExtra(AikaOverlayService.EXTRA_STATE, state)
-                        })
-                        result.success(null)
-                    }
-
-                    "updateOverlay" -> {
-                        val state = call.argument<String>("state") ?: "idle"
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_UPDATE
-                            putExtra(AikaOverlayService.EXTRA_STATE, state)
-                        })
-                        result.success(null)
-                    }
-
-                    "hideOverlay" -> {
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_HIDE
-                        })
-                        result.success(null)
-                    }
-
-                    "showPilotButton" -> {
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_SHOW_PILOT
-                        })
-                        result.success(null)
-                    }
-
-                    "hidePilotButton" -> {
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_HIDE_PILOT
-                        })
-                        result.success(null)
-                    }
-
-                    "pilotStatusOverlay" -> {
-                        val t = call.argument<String>("text") ?: ""
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_PILOT_STATUS
-                            putExtra(AikaOverlayService.EXTRA_STATUS, t)
-                        })
-                        result.success(null)
-                    }
-
-                    "showTipOverlay" -> {
-                        val title = call.argument<String>("title") ?: "Подсказка"
-                        val text  = call.argument<String>("text") ?: ""
-                        val secs  = call.argument<Int>("seconds") ?: 45
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_SHOW_TIP
-                            putExtra(AikaOverlayService.EXTRA_TIP_TITLE, title)
-                            putExtra(AikaOverlayService.EXTRA_TIP_TEXT, text)
-                            putExtra(AikaOverlayService.EXTRA_TIP_SECONDS, secs)
-                        })
-                        result.success(null)
-                    }
-
-                    "hideTipOverlay" -> {
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_HIDE_TIP
-                        })
-                        result.success(null)
-                    }
-
-                    "configOverlay" -> {
-                        val size    = (call.argument<Double>("size")    ?: 170.0).toFloat()
-                        val side    = call.argument<String>("side")     ?: "left"
-                        val opacity = (call.argument<Double>("opacity") ?: 1.0).toFloat()
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_CONFIG
-                            putExtra(AikaOverlayService.EXTRA_SIZE,    size)
-                            putExtra(AikaOverlayService.EXTRA_SIDE,    side)
-                            putExtra(AikaOverlayService.EXTRA_OPACITY, opacity)
-                        })
-                        result.success(null)
-                    }
-
-                    "musicOverlay" -> {
-                        val playing = call.argument<Boolean>("playing") ?: false
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_MUSIC
-                            putExtra(AikaOverlayService.EXTRA_PLAYING, playing)
-                        })
-                        result.success(null)
-                    }
-
-                    "animOverlay" -> {
-                        val animName = call.argument<String>("anim") ?: "idle"
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_ANIM
-                            putExtra(AikaOverlayService.EXTRA_ANIM, animName)
-                        })
-                        result.success(null)
-                    }
-
-                    "playSound" -> {
-                        val soundPath = call.argument<String>("path") ?: ""
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_PLAY_SOUND
-                            putExtra(AikaOverlayService.EXTRA_SOUND_PATH, soundPath)
-                        })
-                        result.success(true)
-                    }
-
-                    "stopSound" -> {
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_STOP_SOUND
-                        })
-                        result.success(true)
-                    }
-
-                    "setDragEnabled" -> {
-                        val enabled = call.argument<Boolean>("enabled") ?: true
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_DRAG_ENABLED
-                            putExtra(AikaOverlayService.EXTRA_DRAG_ENABLED, enabled)
-                        })
-                        result.success(null)
-                    }
-
-                    "switchModel" -> {
-                        val path = call.argument<String>("path") ?: "models/Hiyori/Hiyori.model3.json"
-                        startService(Intent(this, AikaOverlayService::class.java).apply {
-                            action = AikaOverlayService.ACTION_SWITCH_MODEL
-                            putExtra(AikaOverlayService.EXTRA_MODEL_PATH, path)
-                        })
-                        result.success(null)
-                    }
-
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 3. App launcher channel ─────────────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LAUNCHER_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "launchApp" -> {
-                        val pkg = call.argument<String>("package") ?: ""
-                        Log.d("Aika", "launchApp: $pkg")
-                        if (pkg.isEmpty()) { result.success(false); return@setMethodCallHandler }
-                        
-                        // ── Попытка 1: getLaunchIntentForPackage ──
-                        try {
-                            val intent = packageManager.getLaunchIntentForPackage(pkg)
-                            if (intent != null) {
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                                startActivity(intent)
-                                Log.d("Aika", "launchApp SUCCESS (method 1): $pkg")
-                                result.success(true)
-                                return@setMethodCallHandler
-                            } else {
-                                Log.w("Aika", "launchApp: method 1 returned null for $pkg")
-                            }
-                        } catch (e: Exception) {
-                            Log.w("Aika", "launchApp method 1 failed: ${'$'}{e.message}")
-                        }
-                        
-                        // ── Попытка 2: ACTION_MAIN + CATEGORY_LAUNCHER ──
-                        try {
-                            val launchIntent = Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_LAUNCHER)
-                                setPackage(pkg)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(launchIntent)
-                            Log.d("Aika", "launchApp SUCCESS (method 2): $pkg")
-                            result.success(true)
-                            return@setMethodCallHandler
-                        } catch (e: Exception) {
-                            Log.w("Aika", "launchApp method 2 failed: ${'$'}{e.message}")
-                        }
-                        
-                        // ── Попытка 3: Найти activity через PackageManager.resolveActivity ──
-                        try {
-                            val resolveIntent = Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_LAUNCHER)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            val resolveInfoList = packageManager.queryIntentActivities(resolveIntent, 0)
-                            for (info in resolveInfoList) {
-                                if (info.activityInfo.packageName == pkg) {
-                                    val launchIntent2 = Intent(Intent.ACTION_MAIN).apply {
-                                        setClassName(info.activityInfo.packageName, info.activityInfo.name)
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    startActivity(launchIntent2)
-                                    Log.d("Aika", "launchApp SUCCESS (method 3): $pkg")
-                                    result.success(true)
-                                    return@setMethodCallHandler
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.w("Aika", "launchApp method 3 failed: ${'$'}{e.message}")
-                        }
-                        
-                        // ── Попытка 4: Проверяем, может пакет просто не имеет launcher activity ──
-                        try {
-                            val pkgInfo = packageManager.getPackageInfo(pkg, 0)
-                            // Пакет установлен, но нет launcher activity
-                            // Пробуем открыть страницу приложения в настройках
-                            Log.w("Aika", "launchApp: package installed but no launcher activity: $pkg")
-                            result.success(false)
-                            return@setMethodCallHandler
-                        } catch (_: Exception) {
-                            // Пакет не установлен
-                            Log.w("Aika", "launchApp: package not installed: $pkg")
-                        }
-                        
-                        result.success(false)
-                    }
-                    "isInstalled" -> {
-                        val pkg = call.argument<String>("package") ?: ""
-                        val installed = try {
-                            packageManager.getApplicationInfo(pkg, 0)
-                            true
-                        } catch (_: Exception) { false }
-                        result.success(installed)
-                    }
-                    "launchUrl" -> {
-                        val url = call.argument<String>("url") ?: ""
-                        if (url.isEmpty()) { result.success(false); return@setMethodCallHandler }
-                        try {
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                data = android.net.Uri.parse(url)
-                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(intent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            Log.e("Aika", "launchUrl failed: ${e.message}")
-                            result.success(false)
-                        }
-                    }
-                    "findAndLaunch" -> {
-                        val name = (call.argument<String>("name") ?: "").lowercase()
-                        if (name.isEmpty()) { result.success(false); return@setMethodCallHandler }
-                        try {
-                            val apps = packageManager.getInstalledApplications(0)
-                            val match = apps.firstOrNull { app ->
-                                val label = packageManager.getApplicationLabel(app).toString().lowercase()
-                                label.contains(name) || app.packageName.contains(name)
-                            }
-                            if (match != null) {
-                                val intent = packageManager.getLaunchIntentForPackage(match.packageName)
-                                if (intent != null) {
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    startActivity(intent)
-                                    result.success(true)
-                                } else { result.success(false) }
-                            } else { result.success(false) }
-                        } catch (e: Exception) {
-                            result.success(false)
-                        }
-                    }
-                    "launchCamera" -> {
-                        try {
-                            val intent = android.content.Intent(android.hardware.camera2.CameraManager::class.java.name).apply {
-                                action = android.provider.MediaStore.ACTION_IMAGE_CAPTURE
-                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(intent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            try {
-                                val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
-                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                startActivity(intent)
-                                result.success(true)
-                            } catch (e2: Exception) {
-                                result.success(false)
-                            }
-                        }
-                    }
-                    "getInstalledApps" -> {
-                        try {
-                            val apps = packageManager.getInstalledApplications(0)
-                            val list = mutableListOf<Map<String, String>>()
-                            for (app in apps) {
-                                val label = try {
-                                    packageManager.getApplicationLabel(app).toString()
-                                } catch (_: Exception) { "" }
-                                val pkg = app.packageName
-                                // Только запускаемые приложения (есть launcher activity)
-                                val hasLauncher = try {
-                                    packageManager.getLaunchIntentForPackage(pkg) != null
-                                } catch (_: Exception) { false }
-                                if (hasLauncher && label.isNotEmpty()) {
-                                    list.add(mapOf(
-                                        "label" to label,
-                                        "package" to pkg
-                                    ))
-                                }
-                            }
-                            // Сортируем по имени
-                            list.sortBy { it["label"]?.lowercase() ?: "" }
-                            result.success(list)
-                        } catch (e: Exception) {
-                            Log.e("Aika", "getInstalledApps failed: ${'$'}{e.message}")
-                            result.success(emptyList<Map<String, String>>())
-                        }
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 4. Screen accessibility channel ──────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "isAccessibilityEnabled" -> {
-                        // ФИКС: instance может быть null после переустановки APK —
-                        // система держит тумблер включённым, но сервис не перепривязан.
-                        // Проверяем также системную настройку ENABLED_ACCESSIBILITY_SERVICES.
-                        val enabled = AikaAccessibilityService.instance != null ||
-                            isAccessibilityEnabledBySettings()
-                        result.success(enabled)
-                    }
-                    "openAccessibilitySettings" -> {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        })
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 5. Screen events EventChannel (app switch notifications) ──────────
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    screenEventSink = events
-                    // ФИКС: раньше sink просто лежал мёртвым — события смены
-                    // приложений никто не отправлял (заглушка «pull-only»).
-                    // Теперь AccessibilityService шлёт TYPE_WINDOW_STATE_CHANGED.
-                    AikaAccessibilityService.screenEventSink = events
-                }
-                override fun onCancel(arguments: Any?) {
-                    screenEventSink = null
-                    AikaAccessibilityService.screenEventSink = null
-                }
-            })
-
-        // ── 6. Notification events EventChannel ──────────────────────────────────
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_EVENTS_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    notificationEventSink = events
-                }
-                override fun onCancel(arguments: Any?) {
-                    notificationEventSink = null
-                }
-            })
-
-        // ── 7. Phone State EventChannel (calls + recording) ─────────────
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, PHONE_STATE_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    phoneStateSink = events
-                    setupPhoneStateListener()
-                }
-                override fun onCancel(arguments: Any?) {
-                    phoneStateSink = null
-                    telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE)
-                }
-            })
-
-        // ── 9. Notifications permission channel ──────────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "hasPermission" -> {
-                        val enabledListeners = android.provider.Settings.Secure.getString(
-                            contentResolver, "enabled_notification_listeners"
-                        )
-                        val enabled = enabledListeners?.contains(packageName) == true
-                        result.success(enabled)
-                    }
-                    "openPermissionSettings" -> {
-                        startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        })
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 2. Screen reader channel ──────────────────────────────────────────
-        // Все вызовы делегируются в AikaAccessibilityService.instance
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_READER_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                val svc = AikaAccessibilityService.instance
-                if (svc == null) {
-                    // Различаем: (а) accessibility вообще не включён,
-                    // (б) включён в системе, но сервис не привязан (после
-                    // переустановки APK) — нужен перезапуск тумблера/телефона.
-                    val enabledInSettings = isAccessibilityEnabledBySettings()
-                    val hint = if (enabledInSettings)
-                        "AccessibilityService включён в системе, но не привязан. " +
-                        "Выключи и снова включи Айку в Специальных возможностях (или перезапусти телефон)"
-                    else
-                        "AccessibilityService не запущен"
-                    result.error("NO_SERVICE", hint, null)
-                    return@setMethodCallHandler
-                }
-                when (call.method) {
-
-                    "getScreenText" -> {
-                        result.success(svc.getAllScreenText())
-                    }
-
-                    // Диагностика: отличаем «Accessibility выключен» от
-                    // «скриншот не снялся» — раньше любое падение выглядело
-                    // как «дай разрешение Accessibility», хотя оно выдано.
-                    "isServiceConnected" -> {
-                        result.success(true)
-                    }
-                    "getCaptureError" -> {
-                        result.success(AikaAccessibilityService.lastCaptureError)
-                    }
-
-                    "getClickableElements" -> {
-                        val list = svc.getClickableElements()
-                        result.success(list)
-                    }
-
-                    "getFocusedElement" -> {
-                        result.success(svc.getFocusedElement())
-                    }
-
-                    "clickElement" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.clickByText(text))
-                    }
-
-                    "clickElementExact" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.clickByExactText(text))
-                    }
-
-                    "clickByDescription" -> {
-                        val desc = call.argument<String>("desc") ?: ""
-                        result.success(svc.clickByDescription(desc))
-                    }
-
-                    "typeInField" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.typeText(text))
-                    }
-
-                    "clearField" -> {
-                        result.success(svc.clearText())
-                    }
-
-                    "pressEnter" -> {
-                        result.success(svc.pressEnter())
-                    }
-
-                    "performBack" -> {
-                        svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-                        result.success(true)
-                    }
-
-                    "pressHome" -> {
-                        svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
-                        result.success(true)
-                    }
-
-                    "pressRecents" -> {
-                        svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS)
-                        result.success(true)
-                    }
-
-                    "openNotifications" -> {
-                        svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
-                        result.success(true)
-                    }
-
-                    "openQuickSettings" -> {
-                        svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
-                        result.success(true)
-                    }
-
-                    "lockScreen" -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-                            result.success(true)
-                        } else {
-                            result.error("UNSUPPORTED", "lockScreen требует Android 9+", null)
-                        }
-                    }
-
-                    "takeScreenshot" -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
-                            result.success(true)
-                        } else {
-                            result.error("UNSUPPORTED", "Screenshot требует Android 9+", null)
-                        }
-                    }
-
-                    "performGlobalAction" -> {
-                        val actionId = call.argument<Int>("action") ?: 0
-                        svc.performGlobalAction(actionId)
-                        result.success(true)
-                    }
-
-                    "scroll" -> {
-                        val direction = call.argument<String>("direction") ?: "down"
-                        svc.scrollScreen(direction)
-                        result.success(true)
-                    }
-
-                    "swipe" -> {
-                        val x1 = (call.argument<Double>("x1") ?: 540.0).toFloat()
-                        val y1 = (call.argument<Double>("y1") ?: 800.0).toFloat()
-                        val x2 = (call.argument<Double>("x2") ?: 540.0).toFloat()
-                        val y2 = (call.argument<Double>("y2") ?: 400.0).toFloat()
-                        val dur = (call.argument<Int>("duration") ?: 300).toLong()
-                        svc.swipe(x1, y1, x2, y2, dur)
-                        result.success(true)
-                    }
-
-                    "tapAt" -> {
-                        val x = (call.argument<Double>("x") ?: 540.0).toFloat()
-                        val y = (call.argument<Double>("y") ?: 1000.0).toFloat()
-                        svc.tapAt(x, y)
-                        result.success(true)
-                    }
-
-                    "getScreenSize" -> {
-                        result.success(svc.getScreenSize())
-                    }
-
-                    "getScreenStructure" -> {
-                        result.success(svc.getScreenStructure())
-                    }
-
-                    "getScreenHash" -> {
-                        result.success(svc.screenHash())
-                    }
-
-                    "findPackageByName" -> {
-                        val name = call.argument<String>("name") ?: ""
-                        result.success(svc.findPackageByName(name))
-                    }
-
-
-                    "clickByText" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.clickByText(text))
-                    }
-
-                    "clickByDescription" -> {
-                        val desc = call.argument<String>("desc") ?: ""
-                        result.success(svc.clickByDescription(desc))
-                    }
-
-                    "swipeDir" -> {
-                        val dir = call.argument<String>("direction") ?: "down"
-                        svc.swipeDir(dir); result.success(true)
-                    }
-
-                    "launchApp" -> {
-                        val pkg = call.argument<String>("package") ?: ""
-                        result.success(svc.launchApp(pkg))
-                    }
-
-                    "clearField" -> {
-                        result.success(svc.clearField())
-                    }
-
-                    "clickByExactText" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.clickByExactText(text))
-                    }
-
-                    "longClickByText" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.longClickByText(text))
-                    }
-
-                    "longTapAt" -> {
-                        val x = (call.argument<Double>("x") ?: 540.0).toFloat()
-                        val y = (call.argument<Double>("y") ?: 1000.0).toFloat()
-                        svc.longTapAt(x, y)
-                        result.success(true)
-                    }
-
-                    "doubleTapAt" -> {
-                        val x = (call.argument<Double>("x") ?: 540.0).toFloat()
-                        val y = (call.argument<Double>("y") ?: 1000.0).toFloat()
-                        svc.doubleTapAt(x, y)
-                        result.success(true)
-                    }
-
-                    "takeScreenshot" -> {
-                        result.success(svc.takeScreenshot())
-                    }
-
-                    // ── Screen Pilot (игровой автопилот) ──────────────────────
-
-                    "captureScreen" -> {
-                        // Реальный захват пикселей — БЛОКИРУЮЩИЙ, уводим с main-потока.
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                            result.error("UNSUPPORTED", "Захват экрана требует Android 11+", null)
-                            return@setMethodCallHandler
-                        }
-                        val maxWidth = call.argument<Int>("maxWidth") ?: 720
-                        val quality  = call.argument<Int>("quality") ?: 55
-                        Thread {
-                            val b64 = try { svc.captureScreenJpeg(maxWidth, quality) } catch (e: Exception) { null }
-                            mainHandler.post {
-                                if (b64 != null) result.success(b64)
-                                else result.error("CAPTURE_FAILED",
-                                    AikaAccessibilityService.lastCaptureError ?: "Не удалось захватить экран", null)
-                            }
-                        }.start()
-                    }
-
-                    "getLogcat" -> {
-                        val maxLines = call.argument<Int>("lines") ?: 800
-                        Thread {
-                            val out = StringBuilder()
-                            try {
-                                val proc = ProcessBuilder("logcat", "-d", "-t", maxLines.toString(), "-v", "time")
-                                    .redirectErrorStream(true)
-                                    .start()
-                                val reader = proc.inputStream.bufferedReader()
-                                var line: String?
-                                var count = 0
-                                while (reader.readLine().also { line = it } != null && count < maxLines) {
-                                    out.appendLine(line); count++
-                                }
-                                proc.waitFor()
-                            } catch (e: Exception) {
-                                out.append("logcat failed: ").append(e.message)
-                            }
-                            mainHandler.post { result.success(out.toString()) }
-                        }.start()
-                    }
-
-                    "holdTouch" -> {
-                        val x  = (call.argument<Double>("x") ?: 540.0).toFloat()
-                        val y  = (call.argument<Double>("y") ?: 1000.0).toFloat()
-                        val dur = (call.argument<Int>("duration") ?: 1000).toLong()
-                        result.success(svc.holdTouchAt(x, y, dur))
-                    }
-
-                    "joystickMove" -> {
-                        val cx = (call.argument<Double>("cx") ?: 150.0).toFloat()
-                        val cy = (call.argument<Double>("cy") ?: 1900.0).toFloat()
-                        val angle = call.argument<Double>("angle") ?: 0.0
-                        val dur = (call.argument<Int>("duration") ?: 1000).toLong()
-                        val radius = (call.argument<Double>("radius") ?: 130.0).toFloat()
-                        result.success(svc.joystickMove(cx, cy, angle, dur, radius))
-                    }
-
-                    "powerDialog" -> {
-                        result.success(svc.powerDialog())
-                    }
-
-                    "toggleSplitScreen" -> {
-                        result.success(svc.toggleSplitScreen())
-                    }
-
-                    "copySelectedText" -> {
-                        result.success(svc.copySelectedText())
-                    }
-
-                    "pasteText" -> {
-                        result.success(svc.pasteText())
-                    }
-
-                    "appendText" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.appendText(text))
-                    }
-
-                    "clickByDescription" -> {
-                        val desc = call.argument<String>("desc") ?: ""
-                        result.success(svc.clickByDescription(desc))
-                    }
-
-                    "findByClass" -> {
-                        val cls = call.argument<String>("className") ?: "EditText"
-                        result.success(svc.findNodesByClass(cls))
-                    }
-
-                    "closeCurrentApp" -> {
-                        svc.closeCurrentApp()
-                        result.success(true)
-                    }
-
-                    "openAppSettings" -> {
-                        val pkg = call.argument<String>("package") ?: ""
-                        result.success(svc.openAppSettings(pkg))
-                    }
-
-                    "uninstallApp" -> {
-                        val pkg = call.argument<String>("package") ?: ""
-                        result.success(svc.uninstallApp(pkg))
-                    }
-
-                    "pressBack" -> {
-                        svc.performBack()
-                        result.success(true)
-                    }
-
-                    "captureScreenBase64" -> {
-                        // ФИКС: было (а) всегда null — стаб-заглушка в сервисе,
-                        // (б) вызов на main-потоке — latch.await(4с) вешал UI.
-                        // Теперь реальный захват и только с фонового потока.
-                        val quality = call.argument<Int>("quality") ?: 60
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                            AikaAccessibilityService.lastCaptureError = "нужен Android 11+"
-                            result.success(null)
-                            return@setMethodCallHandler
-                        }
-                        Thread {
-                            val b64 = try { svc.captureScreenBase64(quality) } catch (e: Exception) { null }
-                            mainHandler.post { result.success(b64) }
-                        }.start()
-                    }
-
-                    "typeInSearch" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        // Ищем поле поиска и вводим текст
-                        val root = svc.rootInActiveWindow
-                        val searchNode = root?.findAccessibilityNodeInfosByViewId("search")?.firstOrNull()
-                            ?: root?.findAccessibilityNodeInfosByText("Поиск")?.firstOrNull()
-                            ?: root?.findAccessibilityNodeInfosByText("Search")?.firstOrNull()
-                        if (searchNode != null) {
-                            searchNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                svc.typeText(text)
-                            }, 300)
-                            result.success(true)
-                        } else {
-                            result.success(svc.typeText(text))
-                        }
-                    }
-                    "clickByText" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.clickByText(text))
-                    }
-                    "typeText" -> {
-                        val text = call.argument<String>("text") ?: ""
-                        result.success(svc.typeText(text))
-                    }
-
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 3. Audio channel ──────────────────────────────────────────────────
-        // ── 6. Messenger channel — отправка сообщений через Accessibility ──────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MESSENGER_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                val svc = AikaAccessibilityService.instance
-                when (call.method) {
-                    "sendMessage" -> {
-                        val app     = call.argument<String>("app")     ?: ""
-                        val contact = call.argument<String>("contact") ?: ""
-                        val message = call.argument<String>("message") ?: ""
-                        if (svc == null) {
-                            result.success("NO_ACCESSIBILITY: включи Accessibility в настройках")
-                            return@setMethodCallHandler
-                        }
-                        if (app.isEmpty() || contact.isEmpty() || message.isEmpty()) {
-                            result.success("ERROR: app/contact/message не указаны")
-                            return@setMethodCallHandler
-                        }
-                        svc.startSendMessage(app, contact, message)
-                        result.success("Отправляю сообщение для $contact...")
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 7. Media channel — управление музыкой ──────────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "playPause" -> {
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-                        result.success(true)
-                    }
-                    "next" -> {
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
-                        result.success(true)
-                    }
-                    "prev" -> {
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-                        result.success(true)
-                    }
-                    "play" -> {
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
-                        result.success(true)
-                    }
-                    "pause" -> {
-                        sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)
-                        result.success(true)
-                    }
-                    "launchSpotifyAndPlay" -> {
-                        val query = call.argument<String>("query") ?: ""
-                        launchSpotifySearch(query)
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "isMusicPlaying" -> {
-                        val am = getSystemService(AUDIO_SERVICE) as AudioManager
-                        result.success(am.isMusicActive)
-                    }
-                    
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── Новые каналы: Calendar, Contacts, Sensors ────────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALENDAR_CHANNEL)
-            .setMethodCallHandler(calendarHandler)
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CONTACTS_CHANNEL)
-            .setMethodCallHandler(contactsHandler)
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SENSORS_CHANNEL)
-            .setMethodCallHandler(sensorsHandler)
-
-        // ── 8. Alarm channel — планирование будильников ──────────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/alarm")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "scheduleAlarm" -> {
-                        try {
-                            val id = call.argument<String>("id") ?: ""
-                            val triggerMillis = call.argument<Long>("triggerMillis") ?: 0L
-                            val label = call.argument<String>("label") ?: ""
-                            result.success(AikaAlarmReceiver.schedule(this, id, triggerMillis, label))
-                        } catch (e: Exception) { result.success(false) }
-                    }
-                    "cancelAlarm" -> {
-                        try {
-                            val id = call.argument<String>("id") ?: ""
-                            AikaAlarmReceiver.cancel(this, id)
-                            result.success(true)
-                        } catch (e: Exception) { result.success(false) }
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // ── 9. Security channel — блокировка экрана и сирена ─────────────────
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/security")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "lockScreen" -> {
-                        try {
-                            val dm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-                            try { dm.lockNow(); result.success(true) }
-                            catch (_: SecurityException) { result.success(false) }
-                        } catch (e: Exception) { result.success(false) }
-                    }
-                    "lockScreenAccessibility" -> {
-                        try {
-                            val svc = AikaAccessibilityService.get()
-                            if (svc != null && svc.lockScreen()) { result.success(true) }
-                            else { result.success(false) }
-                        } catch (e: Exception) { result.success(false) }
-                    }
-                    "triggerAlarm" -> {
-                        // Вибрация + звук как сирена
-                        try {
-                            val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
-                            val pattern = longArrayOf(0, 1000, 500, 1000)
-                            vibrator.vibrate(pattern, -1)
-                            result.success(true)
-                        } catch (e: Exception) { result.success(false) }
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-    }
-
-    private fun startOverlay(intent: Intent) {
-        // Если сервис уже запущен — просто шлём ему интент (не создаём новый)
-        // Иначе каждый вызов создавал бы новый WebView поверх старого
-        if (AikaOverlayService.isRunning) {
-            startService(intent)
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
-
-    // ── Phone State Listener ────────────────────────────────────────────
-    private fun setupPhoneStateListener() {
-        try {
-            telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            telephonyManager?.listen(object : PhoneStateListener() {
-                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                    when (state) {
-                        TelephonyManager.CALL_STATE_IDLE -> {
-                            Log.d("AikaPhone", "CALL_STATE_IDLE")
-                            phoneStateSink?.success(mapOf("state" to "call_ended"))
-                        }
-                        TelephonyManager.CALL_STATE_RINGING -> {
-                            Log.d("AikaPhone", "CALL_STATE_RINGING")
-                            phoneStateSink?.success(mapOf("state" to "call_started"))
-                        }
-                        TelephonyManager.CALL_STATE_OFFHOOK -> {
-                            Log.d("AikaPhone", "CALL_STATE_OFFHOOK")
-                            phoneStateSink?.success(mapOf("state" to "call_started"))
-                        }
-                    }
-                }
-            }, PhoneStateListener.LISTEN_CALL_STATE)
-        } catch (e: Exception) {
-            Log.e("AikaPhone", "Failed to setup phone state listener: ${e.message}")
-        }
-    }
+ super.onResume()
+ // При возврате в приложение — если overlay не запущен, стартуем
+ if (!AikaOverlayService.isRunning) {
+ autoStartOverlay()
+ }
+ }
+
+ // Проверка системной настройки: включена ли Айка в Специальных возможностях.
+ // Работает даже когда сам сервис ещё не привязан (instance == null).
+ private fun isAccessibilityEnabledBySettings(): Boolean {
+ return try {
+ val setting = Settings.Secure.getString(
+ contentResolver,
+ Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+)?: return false
+ setting.contains("com.aika.assistant/.AikaAccessibilityService") ||
+ setting.contains("com.aika.assistant/com.aika.assistant.AikaAccessibilityService")
+ } catch (e: Exception) {
+ Log.e("Aika", "isAccessibilityEnabledBySettings failed: ${e.message}")
+ false
+ }
+ }
+
+ private fun autoStartOverlay() {
+ // ФИКС: пользователь выключил оверлей в настройках приложения —
+ // не запускаем его заново при старте/resume приложения.
+ try {
+ val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+ val overlayEnabled = flutterPrefs.getBoolean("flutter.overlay_enabled", true)
+ if (!overlayEnabled) {
+ Log.d("Aika", "Overlay disabled by user (overlay_enabled=false) — skipping auto-start")
+ return
+ }
+ } catch (e: Exception) {
+ Log.e("Aika", "Failed to read overlay_enabled pref: ${e.message}")
+ }
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+ if (!Settings.canDrawOverlays(this)) {
+ Log.d("Aika", "Overlay permission not granted — skipping auto-start")
+ return
+ }
+ }
+ try {
+ val intent = Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SHOW
+ putExtra(AikaOverlayService.EXTRA_STATE, "idle")
+ }
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+ startForegroundService(intent)
+ } else {
+ startService(intent)
+ }
+ Log.d("Aika", "Overlay auto-started")
+ } catch (e: Exception) {
+ Log.e("Aika", "Failed to auto-start overlay: ${e.message}")
+ }
+ }
+
+ override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+ super.configureFlutterEngine(flutterEngine)
+
+ // ── Minecraft-пилот: окно-оверлей → Flutter (обратный канал) ──
+ pilotChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PILOT_CHANNEL)
+
+ // ── Vosk: локальный оффлайн STT (Pro) ─────────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_CHANNEL).setMethodCallHandler { call, result ->
+ when (call.method) {
+ "init" -> voskHandler.init(
+ call.argument<String>("zipPath")?: "",
+ call.argument<String>("modelsDir")?: "",
+ result
+)
+ "start" -> voskHandler.start(voskEventSink?: object: EventChannel.EventSink {
+ override fun success(o: Any?) {}
+ override fun error(s: String?, m: String?, d: Any?) {}
+ override fun endOfStream() {}
+ }, result)
+ "stop" -> voskHandler.stop(result)
+ "unload" -> voskHandler.unload(result)
+ else -> result.notImplemented()
+ }
+ }
+ EventChannel(flutterEngine.dartExecutor.binaryMessenger, VOSK_EVENTS_CHANNEL).setStreamHandler(
+ object: EventChannel.StreamHandler {
+ override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+ voskEventSink = events
+ voskHandler.onSinkChanged(events)
+ }
+ override fun onCancel(arguments: Any?) {
+ voskEventSink = null
+ }
+ }
+)
+
+ // ── 0. License channel ────────────────────────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LICENSE_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "getDeviceId" -> {
+ result.success(Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 1. Overlay channel ────────────────────────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+
+ "hasPermission" -> {
+ val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+ Settings.canDrawOverlays(this) else true
+ result.success(ok)
+ }
+
+ "requestPermission" -> {
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+ startActivity(Intent(
+ Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+ Uri.parse("package:$packageName")
+))
+ }
+ result.success(null)
+ }
+
+ "setModeOverlay" -> {
+ val mode = call.argument<String>("mode")?: "live2d"
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SET_MODE
+ putExtra(AikaOverlayService.EXTRA_MODE, mode)
+ })
+ result.success(null)
+ }
+ "showOverlay" -> {
+ val state = call.argument<String>("state")?: "idle"
+ startOverlay(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SHOW
+ putExtra(AikaOverlayService.EXTRA_STATE, state)
+ })
+ result.success(null)
+ }
+
+ "updateOverlay" -> {
+ val state = call.argument<String>("state")?: "idle"
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_UPDATE
+ putExtra(AikaOverlayService.EXTRA_STATE, state)
+ })
+ result.success(null)
+ }
+
+ "hideOverlay" -> {
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_HIDE
+ })
+ result.success(null)
+ }
+
+ "showPilotButton" -> {
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SHOW_PILOT
+ })
+ result.success(null)
+ }
+
+ "hidePilotButton" -> {
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_HIDE_PILOT
+ })
+ result.success(null)
+ }
+
+ "pilotStatusOverlay" -> {
+ val t = call.argument<String>("text")?: ""
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_PILOT_STATUS
+ putExtra(AikaOverlayService.EXTRA_STATUS, t)
+ })
+ result.success(null)
+ }
+
+ "showTipOverlay" -> {
+ val title = call.argument<String>("title")?: "Подсказка"
+ val text = call.argument<String>("text")?: ""
+ val secs = call.argument<Int>("seconds")?: 45
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SHOW_TIP
+ putExtra(AikaOverlayService.EXTRA_TIP_TITLE, title)
+ putExtra(AikaOverlayService.EXTRA_TIP_TEXT, text)
+ putExtra(AikaOverlayService.EXTRA_TIP_SECONDS, secs)
+ })
+ result.success(null)
+ }
+
+ "hideTipOverlay" -> {
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_HIDE_TIP
+ })
+ result.success(null)
+ }
+
+ "configOverlay" -> {
+ val size = (call.argument<Double>("size")?: 170.0).toFloat()
+ val side = call.argument<String>("side")?: "left"
+ val opacity = (call.argument<Double>("opacity")?: 1.0).toFloat()
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_CONFIG
+ putExtra(AikaOverlayService.EXTRA_SIZE, size)
+ putExtra(AikaOverlayService.EXTRA_SIDE, side)
+ putExtra(AikaOverlayService.EXTRA_OPACITY, opacity)
+ })
+ result.success(null)
+ }
+
+ "musicOverlay" -> {
+ val playing = call.argument<Boolean>("playing")?: false
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_MUSIC
+ putExtra(AikaOverlayService.EXTRA_PLAYING, playing)
+ })
+ result.success(null)
+ }
+
+ "animOverlay" -> {
+ val animName = call.argument<String>("anim")?: "idle"
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_ANIM
+ putExtra(AikaOverlayService.EXTRA_ANIM, animName)
+ })
+ result.success(null)
+ }
+
+ "playSound" -> {
+ val soundPath = call.argument<String>("path")?: ""
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_PLAY_SOUND
+ putExtra(AikaOverlayService.EXTRA_SOUND_PATH, soundPath)
+ })
+ result.success(true)
+ }
+
+ "stopSound" -> {
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_STOP_SOUND
+ })
+ result.success(true)
+ }
+
+ "setDragEnabled" -> {
+ val enabled = call.argument<Boolean>("enabled")?: true
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_DRAG_ENABLED
+ putExtra(AikaOverlayService.EXTRA_DRAG_ENABLED, enabled)
+ })
+ result.success(null)
+ }
+
+ "switchModel" -> {
+ val path = call.argument<String>("path")?: "models/Hiyori/Hiyori.model3.json"
+ startService(Intent(this, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SWITCH_MODEL
+ putExtra(AikaOverlayService.EXTRA_MODEL_PATH, path)
+ })
+ result.success(null)
+ }
+
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 3. App launcher channel ─────────────────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LAUNCHER_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "launchApp" -> {
+ val pkg = call.argument<String>("package")?: ""
+ Log.d("Aika", "launchApp: $pkg")
+ if (pkg.isEmpty()) { result.success(false); return@setMethodCallHandler }
+ 
+ // ── Попытка 1: getLaunchIntentForPackage ──
+ try {
+ val intent = packageManager.getLaunchIntentForPackage(pkg)
+ if (intent!= null) {
+ intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+ startActivity(intent)
+ Log.d("Aika", "launchApp SUCCESS (method 1): $pkg")
+ result.success(true)
+ return@setMethodCallHandler
+ } else {
+ Log.w("Aika", "launchApp: method 1 returned null for $pkg")
+ }
+ } catch (e: Exception) {
+ Log.w("Aika", "launchApp method 1 failed: ${'$'}{e.message}")
+ }
+ 
+ // ── Попытка 2: ACTION_MAIN + CATEGORY_LAUNCHER ──
+ try {
+ val launchIntent = Intent(Intent.ACTION_MAIN).apply {
+ addCategory(Intent.CATEGORY_LAUNCHER)
+ setPackage(pkg)
+ addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ startActivity(launchIntent)
+ Log.d("Aika", "launchApp SUCCESS (method 2): $pkg")
+ result.success(true)
+ return@setMethodCallHandler
+ } catch (e: Exception) {
+ Log.w("Aika", "launchApp method 2 failed: ${'$'}{e.message}")
+ }
+ 
+ // ── Попытка 3: Найти activity через PackageManager.resolveActivity ──
+ try {
+ val resolveIntent = Intent(Intent.ACTION_MAIN).apply {
+ addCategory(Intent.CATEGORY_LAUNCHER)
+ addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ val resolveInfoList = packageManager.queryIntentActivities(resolveIntent, 0)
+ for (info in resolveInfoList) {
+ if (info.activityInfo.packageName == pkg) {
+ val launchIntent2 = Intent(Intent.ACTION_MAIN).apply {
+ setClassName(info.activityInfo.packageName, info.activityInfo.name)
+ addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ startActivity(launchIntent2)
+ Log.d("Aika", "launchApp SUCCESS (method 3): $pkg")
+ result.success(true)
+ return@setMethodCallHandler
+ }
+ }
+ } catch (e: Exception) {
+ Log.w("Aika", "launchApp method 3 failed: ${'$'}{e.message}")
+ }
+ 
+ // ── Попытка 4: Проверяем, может пакет просто не имеет launcher activity ──
+ try {
+ val pkgInfo = packageManager.getPackageInfo(pkg, 0)
+ // Пакет установлен, но нет launcher activity
+ // Пробуем открыть страницу приложения в настройках
+ Log.w("Aika", "launchApp: package installed but no launcher activity: $pkg")
+ result.success(false)
+ return@setMethodCallHandler
+ } catch (_: Exception) {
+ // Пакет не установлен
+ Log.w("Aika", "launchApp: package not installed: $pkg")
+ }
+ 
+ result.success(false)
+ }
+ "isInstalled" -> {
+ val pkg = call.argument<String>("package")?: ""
+ val installed = try {
+ packageManager.getApplicationInfo(pkg, 0)
+ true
+ } catch (_: Exception) { false }
+ result.success(installed)
+ }
+ "launchUrl" -> {
+ val url = call.argument<String>("url")?: ""
+ if (url.isEmpty()) { result.success(false); return@setMethodCallHandler }
+ try {
+ val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+ data = android.net.Uri.parse(url)
+ addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ startActivity(intent)
+ result.success(true)
+ } catch (e: Exception) {
+ Log.e("Aika", "launchUrl failed: ${e.message}")
+ result.success(false)
+ }
+ }
+ "findAndLaunch" -> {
+ val name = (call.argument<String>("name")?: "").lowercase()
+ if (name.isEmpty()) { result.success(false); return@setMethodCallHandler }
+ try {
+ val apps = packageManager.getInstalledApplications(0)
+ val match = apps.firstOrNull { app ->
+ val label = packageManager.getApplicationLabel(app).toString().lowercase()
+ label.contains(name) || app.packageName.contains(name)
+ }
+ if (match!= null) {
+ val intent = packageManager.getLaunchIntentForPackage(match.packageName)
+ if (intent!= null) {
+ intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ startActivity(intent)
+ result.success(true)
+ } else { result.success(false) }
+ } else { result.success(false) }
+ } catch (e: Exception) {
+ result.success(false)
+ }
+ }
+ "launchCamera" -> {
+ try {
+ val intent = android.content.Intent(android.hardware.camera2.CameraManager::class.java.name).apply {
+ action = android.provider.MediaStore.ACTION_IMAGE_CAPTURE
+ addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ startActivity(intent)
+ result.success(true)
+ } catch (e: Exception) {
+ try {
+ val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+ addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ startActivity(intent)
+ result.success(true)
+ } catch (e2: Exception) {
+ result.success(false)
+ }
+ }
+ }
+ "getInstalledApps" -> {
+ try {
+ val apps = packageManager.getInstalledApplications(0)
+ val list = mutableListOf<Map<String, String>>()
+ for (app in apps) {
+ val label = try {
+ packageManager.getApplicationLabel(app).toString()
+ } catch (_: Exception) { "" }
+ val pkg = app.packageName
+ // Только запускаемые приложения (есть launcher activity)
+ val hasLauncher = try {
+ packageManager.getLaunchIntentForPackage(pkg)!= null
+ } catch (_: Exception) { false }
+ if (hasLauncher && label.isNotEmpty()) {
+ list.add(mapOf(
+ "label" to label,
+ "package" to pkg
+))
+ }
+ }
+ // Сортируем по имени
+ list.sortBy { it["label"]?.lowercase()?: "" }
+ result.success(list)
+ } catch (e: Exception) {
+ Log.e("Aika", "getInstalledApps failed: ${'$'}{e.message}")
+ result.success(emptyList<Map<String, String>>())
+ }
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 4. Screen accessibility channel ──────────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "isAccessibilityEnabled" -> {
+ // ФИКС: instance может быть null после переустановки APK —
+ // система держит тумблер включённым, но сервис не перепривязан.
+ // Проверяем также системную настройку ENABLED_ACCESSIBILITY_SERVICES.
+ val enabled = AikaAccessibilityService.instance!= null ||
+ isAccessibilityEnabledBySettings()
+ result.success(enabled)
+ }
+ "openAccessibilitySettings" -> {
+ startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+ addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ })
+ result.success(null)
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 5. Screen events EventChannel (app switch notifications) ──────────
+ EventChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_EVENTS_CHANNEL)
+.setStreamHandler(object: EventChannel.StreamHandler {
+ override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+ screenEventSink = events
+ // ФИКС: раньше sink просто лежал мёртвым — события смены
+ // приложений никто не отправлял (заглушка «pull-only»).
+ // Теперь AccessibilityService шлёт TYPE_WINDOW_STATE_CHANGED.
+ AikaAccessibilityService.screenEventSink = events
+ }
+ override fun onCancel(arguments: Any?) {
+ screenEventSink = null
+ AikaAccessibilityService.screenEventSink = null
+ }
+ })
+
+ // ── 6. Notification events EventChannel ──────────────────────────────────
+ EventChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_EVENTS_CHANNEL)
+.setStreamHandler(object: EventChannel.StreamHandler {
+ override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+ notificationEventSink = events
+ }
+ override fun onCancel(arguments: Any?) {
+ notificationEventSink = null
+ }
+ })
+
+ // ── 7. Phone State EventChannel (calls + recording) ─────────────
+ EventChannel(flutterEngine.dartExecutor.binaryMessenger, PHONE_STATE_CHANNEL)
+.setStreamHandler(object: EventChannel.StreamHandler {
+ override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+ phoneStateSink = events
+ setupPhoneStateListener()
+ }
+ override fun onCancel(arguments: Any?) {
+ phoneStateSink = null
+ telephonyManager?.listen(null, PhoneStateListener.LISTEN_CALL_STATE)
+ }
+ })
+
+ // ── 9. Notifications permission channel ──────────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "hasPermission" -> {
+ val enabledListeners = android.provider.Settings.Secure.getString(
+ contentResolver, "enabled_notification_listeners"
+)
+ val enabled = enabledListeners?.contains(packageName) == true
+ result.success(enabled)
+ }
+ "openPermissionSettings" -> {
+ startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").apply {
+ addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ })
+ result.success(null)
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 2. Screen reader channel ──────────────────────────────────────────
+ // Все вызовы делегируются в AikaAccessibilityService.instance
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_READER_CHANNEL)
+.setMethodCallHandler { call, result ->
+ val svc = AikaAccessibilityService.instance
+ if (svc == null) {
+ // Различаем: (а) accessibility вообще не включён,
+ // (б) включён в системе, но сервис не привязан (после
+ // переустановки APK) — нужен перезапуск тумблера/телефона.
+ val enabledInSettings = isAccessibilityEnabledBySettings()
+ val hint = if (enabledInSettings)
+ "AccessibilityService включён в системе, но не привязан. " +
+ "Выключи и снова включи Айку в Специальных возможностях (или перезапусти телефон)"
+ else
+ "AccessibilityService не запущен"
+ result.error("NO_SERVICE", hint, null)
+ return@setMethodCallHandler
+ }
+ when (call.method) {
+
+ "getScreenText" -> {
+ result.success(svc.getAllScreenText())
+ }
+
+ // Диагностика: отличаем «Accessibility выключен» от
+ // «скриншот не снялся» — раньше любое падение выглядело
+ // как «дай разрешение Accessibility», хотя оно выдано.
+ "isServiceConnected" -> {
+ result.success(true)
+ }
+ "getCaptureError" -> {
+ result.success(AikaAccessibilityService.lastCaptureError)
+ }
+
+ "getClickableElements" -> {
+ val list = svc.getClickableElements()
+ result.success(list)
+ }
+
+ "getFocusedElement" -> {
+ result.success(svc.getFocusedElement())
+ }
+
+ "clickElement" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.clickByText(text))
+ }
+
+ "clickElementExact" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.clickByExactText(text))
+ }
+
+ "clickByDescription" -> {
+ val desc = call.argument<String>("desc")?: ""
+ result.success(svc.clickByDescription(desc))
+ }
+
+ "typeInField" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.typeText(text))
+ }
+
+ "clearField" -> {
+ result.success(svc.clearText())
+ }
+
+ "pressEnter" -> {
+ result.success(svc.pressEnter())
+ }
+
+ "performBack" -> {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+ result.success(true)
+ }
+
+ "pressHome" -> {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
+ result.success(true)
+ }
+
+ "pressRecents" -> {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS)
+ result.success(true)
+ }
+
+ "openNotifications" -> {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+ result.success(true)
+ }
+
+ "openQuickSettings" -> {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
+ result.success(true)
+ }
+
+ "lockScreen" -> {
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+ result.success(true)
+ } else {
+ result.error("UNSUPPORTED", "lockScreen требует Android 9+", null)
+ }
+ }
+
+ "takeScreenshot" -> {
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+ svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+ result.success(true)
+ } else {
+ result.error("UNSUPPORTED", "Screenshot требует Android 9+", null)
+ }
+ }
+
+ "performGlobalAction" -> {
+ val actionId = call.argument<Int>("action")?: 0
+ svc.performGlobalAction(actionId)
+ result.success(true)
+ }
+
+ "scroll" -> {
+ val direction = call.argument<String>("direction")?: "down"
+ svc.scrollScreen(direction)
+ result.success(true)
+ }
+
+ "swipe" -> {
+ val x1 = (call.argument<Double>("x1")?: 540.0).toFloat()
+ val y1 = (call.argument<Double>("y1")?: 800.0).toFloat()
+ val x2 = (call.argument<Double>("x2")?: 540.0).toFloat()
+ val y2 = (call.argument<Double>("y2")?: 400.0).toFloat()
+ val dur = (call.argument<Int>("duration")?: 300).toLong()
+ svc.swipe(x1, y1, x2, y2, dur)
+ result.success(true)
+ }
+
+ "tapAt" -> {
+ val x = (call.argument<Double>("x")?: 540.0).toFloat()
+ val y = (call.argument<Double>("y")?: 1000.0).toFloat()
+ svc.tapAt(x, y)
+ result.success(true)
+ }
+
+ "getScreenSize" -> {
+ result.success(svc.getScreenSize())
+ }
+
+ "getScreenStructure" -> {
+ result.success(svc.getScreenStructure())
+ }
+
+ "getScreenHash" -> {
+ result.success(svc.screenHash())
+ }
+
+ "findPackageByName" -> {
+ val name = call.argument<String>("name")?: ""
+ result.success(svc.findPackageByName(name))
+ }
+
+
+ "clickByText" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.clickByText(text))
+ }
+
+ "clickByDescription" -> {
+ val desc = call.argument<String>("desc")?: ""
+ result.success(svc.clickByDescription(desc))
+ }
+
+ "swipeDir" -> {
+ val dir = call.argument<String>("direction")?: "down"
+ svc.swipeDir(dir); result.success(true)
+ }
+
+ "launchApp" -> {
+ val pkg = call.argument<String>("package")?: ""
+ result.success(svc.launchApp(pkg))
+ }
+
+ "clearField" -> {
+ result.success(svc.clearField())
+ }
+
+ "clickByExactText" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.clickByExactText(text))
+ }
+
+ "longClickByText" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.longClickByText(text))
+ }
+
+ "longTapAt" -> {
+ val x = (call.argument<Double>("x")?: 540.0).toFloat()
+ val y = (call.argument<Double>("y")?: 1000.0).toFloat()
+ svc.longTapAt(x, y)
+ result.success(true)
+ }
+
+ "doubleTapAt" -> {
+ val x = (call.argument<Double>("x")?: 540.0).toFloat()
+ val y = (call.argument<Double>("y")?: 1000.0).toFloat()
+ svc.doubleTapAt(x, y)
+ result.success(true)
+ }
+
+ "takeScreenshot" -> {
+ result.success(svc.takeScreenshot())
+ }
+
+ // ── Screen Pilot (игровой автопилот) ──────────────────────
+
+ "captureScreen" -> {
+ // Реальный захват пикселей — БЛОКИРУЮЩИЙ, уводим с main-потока.
+ if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+ result.error("UNSUPPORTED", "Захват экрана требует Android 11+", null)
+ return@setMethodCallHandler
+ }
+ val maxWidth = call.argument<Int>("maxWidth")?: 720
+ val quality = call.argument<Int>("quality")?: 55
+ Thread {
+ val b64 = try { svc.captureScreenJpeg(maxWidth, quality) } catch (e: Exception) { null }
+ mainHandler.post {
+ if (b64!= null) result.success(b64)
+ else result.error("CAPTURE_FAILED",
+ AikaAccessibilityService.lastCaptureError?: "Не удалось захватить экран", null)
+ }
+ }.start()
+ }
+
+ "getLogcat" -> {
+ val maxLines = call.argument<Int>("lines")?: 800
+ Thread {
+ val out = StringBuilder()
+ try {
+ val proc = ProcessBuilder("logcat", "-d", "-t", maxLines.toString(), "-v", "time")
+.redirectErrorStream(true)
+.start()
+ val reader = proc.inputStream.bufferedReader()
+ var line: String?
+ var count = 0
+ while (reader.readLine().also { line = it }!= null && count < maxLines) {
+ out.appendLine(line); count++
+ }
+ proc.waitFor()
+ } catch (e: Exception) {
+ out.append("logcat failed: ").append(e.message)
+ }
+ mainHandler.post { result.success(out.toString()) }
+ }.start()
+ }
+
+ "holdTouch" -> {
+ val x = (call.argument<Double>("x")?: 540.0).toFloat()
+ val y = (call.argument<Double>("y")?: 1000.0).toFloat()
+ val dur = (call.argument<Int>("duration")?: 1000).toLong()
+ result.success(svc.holdTouchAt(x, y, dur))
+ }
+
+ "joystickMove" -> {
+ val cx = (call.argument<Double>("cx")?: 150.0).toFloat()
+ val cy = (call.argument<Double>("cy")?: 1900.0).toFloat()
+ val angle = call.argument<Double>("angle")?: 0.0
+ val dur = (call.argument<Int>("duration")?: 1000).toLong()
+ val radius = (call.argument<Double>("radius")?: 130.0).toFloat()
+ result.success(svc.joystickMove(cx, cy, angle, dur, radius))
+ }
+
+ "powerDialog" -> {
+ result.success(svc.powerDialog())
+ }
+
+ "toggleSplitScreen" -> {
+ result.success(svc.toggleSplitScreen())
+ }
+
+ "copySelectedText" -> {
+ result.success(svc.copySelectedText())
+ }
+
+ "pasteText" -> {
+ result.success(svc.pasteText())
+ }
+
+ "appendText" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.appendText(text))
+ }
+
+ "clickByDescription" -> {
+ val desc = call.argument<String>("desc")?: ""
+ result.success(svc.clickByDescription(desc))
+ }
+
+ "findByClass" -> {
+ val cls = call.argument<String>("className")?: "EditText"
+ result.success(svc.findNodesByClass(cls))
+ }
+
+ "closeCurrentApp" -> {
+ svc.closeCurrentApp()
+ result.success(true)
+ }
+
+ "openAppSettings" -> {
+ val pkg = call.argument<String>("package")?: ""
+ result.success(svc.openAppSettings(pkg))
+ }
+
+ "uninstallApp" -> {
+ val pkg = call.argument<String>("package")?: ""
+ result.success(svc.uninstallApp(pkg))
+ }
+
+ "pressBack" -> {
+ svc.performBack()
+ result.success(true)
+ }
+
+ "captureScreenBase64" -> {
+ // ФИКС: было (а) всегда null — стаб-заглушка в сервисе,
+ // (б) вызов на main-потоке — latch.await(4с) вешал UI.
+ // Теперь реальный захват и только с фонового потока.
+ val quality = call.argument<Int>("quality")?: 60
+ if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+ AikaAccessibilityService.lastCaptureError = "нужен Android 11+"
+ result.success(null)
+ return@setMethodCallHandler
+ }
+ Thread {
+ val b64 = try { svc.captureScreenBase64(quality) } catch (e: Exception) { null }
+ mainHandler.post { result.success(b64) }
+ }.start()
+ }
+
+ "typeInSearch" -> {
+ val text = call.argument<String>("text")?: ""
+ // Ищем поле поиска и вводим текст
+ val root = svc.rootInActiveWindow
+ val searchNode = root?.findAccessibilityNodeInfosByViewId("search")?.firstOrNull()
+?: root?.findAccessibilityNodeInfosByText("Поиск")?.firstOrNull()
+?: root?.findAccessibilityNodeInfosByText("Search")?.firstOrNull()
+ if (searchNode!= null) {
+ searchNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+ android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+ svc.typeText(text)
+ }, 300)
+ result.success(true)
+ } else {
+ result.success(svc.typeText(text))
+ }
+ }
+ "clickByText" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.clickByText(text))
+ }
+ "typeText" -> {
+ val text = call.argument<String>("text")?: ""
+ result.success(svc.typeText(text))
+ }
+
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 3. Audio channel ──────────────────────────────────────────────────
+ // ── 6. Messenger channel — отправка сообщений через Accessibility ──────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MESSENGER_CHANNEL)
+.setMethodCallHandler { call, result ->
+ val svc = AikaAccessibilityService.instance
+ when (call.method) {
+ "sendMessage" -> {
+ val app = call.argument<String>("app")?: ""
+ val contact = call.argument<String>("contact")?: ""
+ val message = call.argument<String>("message")?: ""
+ if (svc == null) {
+ result.success("NO_ACCESSIBILITY: включи Accessibility в настройках")
+ return@setMethodCallHandler
+ }
+ if (app.isEmpty() || contact.isEmpty() || message.isEmpty()) {
+ result.success("ERROR: app/contact/message не указаны")
+ return@setMethodCallHandler
+ }
+ svc.startSendMessage(app, contact, message)
+ result.success("Отправляю сообщение для $contact...")
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 7. Media channel — управление музыкой ──────────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "playPause" -> {
+ sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+ result.success(true)
+ }
+ "next" -> {
+ sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+ result.success(true)
+ }
+ "prev" -> {
+ sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+ result.success(true)
+ }
+ "play" -> {
+ sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+ result.success(true)
+ }
+ "pause" -> {
+ sendMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)
+ result.success(true)
+ }
+ "launchSpotifyAndPlay" -> {
+ val query = call.argument<String>("query")?: ""
+ launchSpotifySearch(query)
+ result.success(true)
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "isMusicPlaying" -> {
+ val am = getSystemService(AUDIO_SERVICE) as AudioManager
+ result.success(am.isMusicActive)
+ }
+ 
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── Новые каналы: Calendar, Contacts, Sensors ────────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALENDAR_CHANNEL)
+.setMethodCallHandler(calendarHandler)
+
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CONTACTS_CHANNEL)
+.setMethodCallHandler(contactsHandler)
+
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SENSORS_CHANNEL)
+.setMethodCallHandler(sensorsHandler)
+
+ // ── 8. Alarm channel — планирование будильников ──────────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/alarm")
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "scheduleAlarm" -> {
+ try {
+ val id = call.argument<String>("id")?: ""
+ val triggerMillis = call.argument<Long>("triggerMillis")?: 0L
+ val label = call.argument<String>("label")?: ""
+ result.success(AikaAlarmReceiver.schedule(this, id, triggerMillis, label))
+ } catch (e: Exception) { result.success(false) }
+ }
+ "cancelAlarm" -> {
+ try {
+ val id = call.argument<String>("id")?: ""
+ AikaAlarmReceiver.cancel(this, id)
+ result.success(true)
+ } catch (e: Exception) { result.success(false) }
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 8b. System channel Wi-Fi, Bluetooth, яркость, громкость ──────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SYSTEM_CHANNEL)
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "hasWriteSettings" -> {
+ result.success(Settings.System.canWrite(this))
+ }
+ "requestWriteSettings" -> {
+ // Открывает системное окно «Разрешить изменение настроек»
+ try {
+ // Правильный интент: экран «Разрешить изменение системных настроек»
+ val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
+ Uri.parse("package:$packageName"))
+ startActivity(intent)
+ result.success(true)
+ } catch (_: Exception) { result.success(false) }
+ }
+ "setWifi" -> {
+ val enabled = call.argument<Boolean>("enabled")?: false
+ var done = false
+ try {
+ val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+ // Android 10+: прямой вызов запрещён системой пробуем,
+ // если вернёт false/упадёт, откроем системную панель.
+ done = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+ wifi.isWifiEnabled = enabled
+ } else {
+ @Suppress("DEPRECATION")
+ wifi.setWifiEnabled(enabled)
+ }
+ } catch (_: Exception) { done = false }
+ if (!done) {
+ try {
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+ startActivity(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+ } else {
+ startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)
+.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+ }
+ } catch (_: Exception) {}
+ }
+ result.success(done)
+ }
+ "setBluetooth" -> {
+ val enabled = call.argument<Boolean>("enabled")?: false
+ var done = false
+ try {
+ val bm = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+ val adapter = bm.adapter
+ if (adapter!= null) {
+ @Suppress("DEPRECATION")
+ done = if (enabled) adapter.enable() else adapter.disable()
+ }
+ } catch (_: SecurityException) { done = false }
+ catch (_: Exception) { done = false }
+ if (!done) {
+ try {
+ if (enabled) {
+ startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+ } else {
+ startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+ }
+ } catch (_: Exception) {}
+ }
+ result.success(done)
+ }
+ "setBrightness" -> {
+ // Нужен WRITE_SETTINGS: без него Android не даст менять яркость
+ if (!Settings.System.canWrite(this)) { result.success(false); return@setMethodCallHandler }
+ val percent = (call.argument<Int>("percent")?: 50).coerceIn(0, 100)
+ try {
+ Settings.System.putInt(contentResolver,
+ Settings.System.SCREEN_BRIGHTNESS_MODE,
+ Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+ val ok = Settings.System.putInt(contentResolver,
+ Settings.System.SCREEN_BRIGHTNESS, percent * 255 / 100)
+ result.success(ok)
+ } catch (_: Exception) { result.success(false) }
+ }
+ "getBrightness" -> {
+ try {
+ val mode = Settings.System.getInt(contentResolver,
+ Settings.System.SCREEN_BRIGHTNESS_MODE,
+ Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+ val v = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
+ result.success(mapOf("percent" to (v * 100 / 255), "auto" to
+ (mode == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC)))
+ } catch (_: Exception) { result.success(null) }
+ }
+ "setVolume" -> {
+ try {
+ val percent = (call.argument<Int>("percent")?: 50).coerceIn(0, 100)
+ val am = getSystemService(AUDIO_SERVICE) as AudioManager
+ val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+ am.setStreamVolume(AudioManager.STREAM_MUSIC, percent * max / 100, 0)
+ result.success(true)
+ } catch (_: Exception) { result.success(false) }
+ }
+ "getVolume" -> {
+ try {
+ val am = getSystemService(AUDIO_SERVICE) as AudioManager
+ val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+ val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+ result.success(if (max > 0) cur * 100 / max else 0)
+ } catch (_: Exception) { result.success(null) }
+ }
+ else -> result.notImplemented()
+ }
+ }
+
+ // ── 9. Security channel блокировка экрана и сирена ─────────────────
+ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.aika.assistant/security")
+.setMethodCallHandler { call, result ->
+ when (call.method) {
+ "lockScreen" -> {
+ try {
+ val dm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+ try { dm.lockNow(); result.success(true) }
+ catch (_: SecurityException) { result.success(false) }
+ } catch (e: Exception) { result.success(false) }
+ }
+ "lockScreenAccessibility" -> {
+ try {
+ val svc = AikaAccessibilityService.get()
+ if (svc!= null && svc.lockScreen()) { result.success(true) }
+ else { result.success(false) }
+ } catch (e: Exception) { result.success(false) }
+ }
+ "triggerAlarm" -> {
+ // Вибрация + звук как сирена
+ try {
+ val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+ val pattern = longArrayOf(0, 1000, 500, 1000)
+ vibrator.vibrate(pattern, -1)
+ result.success(true)
+ } catch (e: Exception) { result.success(false) }
+ }
+ else -> result.notImplemented()
+ }
+ }
+ }
+
+ private fun startOverlay(intent: Intent) {
+ // Если сервис уже запущен просто шлём ему интент (не создаём новый)
+ // Иначе каждый вызов создавал бы новый WebView поверх старого
+ if (AikaOverlayService.isRunning) {
+ startService(intent)
+ return
+ }
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+ startForegroundService(intent)
+ } else {
+ startService(intent)
+ }
+ }
+
+ // ── Phone State Listener ────────────────────────────────────────────
+ private fun setupPhoneStateListener() {
+ try {
+ telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+ telephonyManager?.listen(object: PhoneStateListener() {
+ override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+ when (state) {
+ TelephonyManager.CALL_STATE_IDLE -> {
+ Log.d("AikaPhone", "CALL_STATE_IDLE")
+ phoneStateSink?.success(mapOf("state" to "call_ended"))
+ }
+ TelephonyManager.CALL_STATE_RINGING -> {
+ Log.d("AikaPhone", "CALL_STATE_RINGING")
+ phoneStateSink?.success(mapOf("state" to "call_started"))
+ }
+ TelephonyManager.CALL_STATE_OFFHOOK -> {
+ Log.d("AikaPhone", "CALL_STATE_OFFHOOK")
+ phoneStateSink?.success(mapOf("state" to "call_started"))
+ }
+ }
+ }
+ }, PhoneStateListener.LISTEN_CALL_STATE)
+ } catch (e: Exception) {
+ Log.e("AikaPhone", "Failed to setup phone state listener: ${e.message}")
+ }
+ }
 
 }
 

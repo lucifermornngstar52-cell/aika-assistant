@@ -10,40 +10,40 @@ import android.util.Log
 /**
  * Автозапуск overlay после перезагрузки устройства.
  */
-class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        Log.d("Aika", "Boot completed — checking overlay permission")
-        // ФИКС: если пользователь выключил оверлей в настройках приложения —
-        // не воскрешаем его после перезагрузки.
-        try {
-            val flutterPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val overlayEnabled = flutterPrefs.getBoolean("flutter.overlay_enabled", true)
-            if (!overlayEnabled) {
-                Log.d("Aika", "Overlay disabled by user — skipping auto-start on boot")
-                return
-            }
-        } catch (_: Exception) {}
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(context)) {
-                Log.d("Aika", "No overlay permission — skipping auto-start on boot")
-                return
-            }
-        }
-        try {
-            val overlayIntent = Intent(context, AikaOverlayService::class.java).apply {
-                action = AikaOverlayService.ACTION_SHOW
-                putExtra(AikaOverlayService.EXTRA_STATE, "idle")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(overlayIntent)
-            } else {
-                context.startService(overlayIntent)
-            }
-            Log.d("Aika", "Overlay auto-started after boot")
-        } catch (e: Exception) {
-            Log.e("Aika", "Failed to start overlay after boot: ${e.message}")
-        }
-    }
+class BootReceiver: BroadcastReceiver() {
+ override fun onReceive(context: Context, intent: Intent) {
+ if (intent.action!= Intent.ACTION_BOOT_COMPLETED) return
+ Log.d("Aika", "Boot completed — checking overlay permission")
+ // ФИКС: если пользователь выключил оверлей в настройках приложения —
+ // не воскрешаем его после перезагрузки.
+ try {
+ val flutterPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+ val overlayEnabled = flutterPrefs.getBoolean("flutter.overlay_enabled", true)
+ if (!overlayEnabled) {
+ Log.d("Aika", "Overlay disabled by user — skipping auto-start on boot")
+ return
+ }
+ } catch (_: Exception) {}
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+ if (!Settings.canDrawOverlays(context)) {
+ Log.d("Aika", "No overlay permission — skipping auto-start on boot")
+ return
+ }
+ }
+ try {
+ val overlayIntent = Intent(context, AikaOverlayService::class.java).apply {
+ action = AikaOverlayService.ACTION_SHOW
+ putExtra(AikaOverlayService.EXTRA_STATE, "idle")
+ addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ }
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+ context.startForegroundService(overlayIntent)
+ } else {
+ context.startService(overlayIntent)
+ }
+ Log.d("Aika", "Overlay auto-started after boot")
+ } catch (e: Exception) {
+ Log.e("Aika", "Failed to start overlay after boot: ${e.message}")
+ }
+ }
 }

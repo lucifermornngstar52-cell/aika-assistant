@@ -8,518 +8,518 @@ import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:crypto/crypto.dart';
 
-/// Edge TTS — Microsoft Neural Voices (стриминг через WebSocket)
+/// Edge TTS Microsoft Neural Voices (стриминг через WebSocket)
 /// Исправлено: _edgeEnabled не сбрасывается, автоматический реконнект.
 class EdgeTtsService extends ChangeNotifier {
-  static EdgeTtsService? _instance;
-  factory EdgeTtsService() => _instance ??= EdgeTtsService._internal();
-  EdgeTtsService._internal();
+ static EdgeTtsService? _instance;
+ factory EdgeTtsService() => _instance??= EdgeTtsService._internal();
+ EdgeTtsService._internal();
 
-  static const _defaultVoice = 'ru-RU-DariyaNeural';
-  static const _trustedToken = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-  static const _wsUrl =
-      'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+ static const _defaultVoice = 'ru-RU-DariyaNeural';
+ static const _trustedToken = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+ static const _wsUrl =
+ 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
 
-  final FlutterTts _systemTts = FlutterTts();
-  final AudioPlayer _player = AudioPlayer();
+ final FlutterTts _systemTts = FlutterTts();
+ final AudioPlayer _player = AudioPlayer();
 
-  bool _isSpeaking = false;
-  // ФИКС: не отключаем EdgeTTS навсегда — при ошибке делаем реконнект и пробуем снова
-  bool _edgeFailed = false;
-  String _ttsEngine = 'system'; // EdgeTTS мёртв — только системный Google TTS
-  String get ttsEngine => _ttsEngine;
-  void setTtsEngine(String engine) { _ttsEngine = engine; notifyListeners(); }
-  String _voice = _defaultVoice;
-  double _rate = 0.0;
-  double _pitch = 0.0;
-  double _volume = 1.0;
+ bool _isSpeaking = false;
+ // ФИКС: не отключаем EdgeTTS навсегда — при ошибке делаем реконнект и пробуем снова
+ bool _edgeFailed = false;
+ String _ttsEngine = 'system'; // EdgeTTS мёртв — только системный Google TTS
+ String get ttsEngine => _ttsEngine;
+ void setTtsEngine(String engine) { _ttsEngine = engine; notifyListeners(); }
+ String _voice = _defaultVoice;
+ double _rate = 0.0;
+ double _pitch = 0.0;
+ double _volume = 1.0;
 
-  WebSocket? _ws;
-  bool _wsReady = false;
-  // ФИКС: активный стрим и файл — чтобы stop() мог их оборвать
-  StreamSubscription? _activeWsSub;
-  // ФИКС для перебивания (barge-in): stop() должен мгновенно завершать
-  // ожидающие await'ы внутри speak(), иначе реплика висит до 15-секундного
-  // таймаута, хотя звук уже остановлен.
-  Completer<void>? _activeDownloadDone;
-  Completer<void>? _activePlaybackDone;
-  IOSink? _activeSink;
-  Timer? _wsKeepalive;
-  int _failCount = 0; // счётчик ошибок подряд
-  static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
-  // Диагностика: каким движком реально озвучили последнюю реплику.
-  String _lastEngineUsed = 'edge';
-  String get lastEngineUsed => _lastEngineUsed;
-  String? _lastEdgeError;
-  String? get lastEdgeError => _lastEdgeError;
+ WebSocket? _ws;
+ bool _wsReady = false;
+ // ФИКС: активный стрим и файл — чтобы stop() мог их оборвать
+ StreamSubscription? _activeWsSub;
+ // ФИКС для перебивания (barge-in): stop() должен мгновенно завершать
+ // ожидающие await'ы внутри speak(), иначе реплика висит до 15-секундного
+ // таймаута, хотя звук уже остановлен.
+ Completer<void>? _activeDownloadDone;
+ Completer<void>? _activePlaybackDone;
+ IOSink? _activeSink;
+ Timer? _wsKeepalive;
+ int _failCount = 0; // счётчик ошибок подряд
+ static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
+ // Диагностика: каким движком реально озвучили последнюю реплику.
+ String _lastEngineUsed = 'edge';
+ String get lastEngineUsed => _lastEngineUsed;
+ String? _lastEdgeError;
+ String? get lastEdgeError => _lastEdgeError;
 
-  bool get isSpeaking => _isSpeaking;
-  String get voice => _voice;
+ bool get isSpeaking => _isSpeaking;
+ String get voice => _voice;
 
-  static const List<Map<String, String>> voices = [
-    {'id': 'ru-RU-DariyaNeural',   'label': '🌸 Дария', 'description': 'Женский, мягкий и тёплый'},
-    {'id': 'ru-RU-SvetlanaNeural', 'label': '💼 Светлана', 'description': 'Женский, спокойный и нейтральный'},
-    {'id': 'ru-RU-DmitryNeural',   'label': '👨 Дмитрий', 'description': 'Мужской, уверенный русский голос'},
-    {'id': 'ja-JP-NanamiNeural', 'label': '🌸 Nanami', 'description': 'Женский японский, мягкий'},
-    {'id': 'ja-JP-AoiNeural', 'label': '✨ Aoi', 'description': 'Женский японский, энергичный'},
-    {'id': 'zh-CN-XiaoxiaoNeural', 'label': '🐼 Xiaoxiao', 'description': 'Женский китайский, дружелюбный'},
-    {'id': 'en-US-JennyNeural', 'label': '🇺🇸 Jenny', 'description': 'Женский английский, нейтральный'},
-    {'id': 'ko-KR-SunHiNeural', 'label': '🇰🇷 SunHi', 'description': 'Женский корейский, мягкий'},
-    // ── Расширение (все бесплатные Edge-голоса) ──
-    {'id': 'uk-UA-PolinaNeural', 'label': '🇺🇦 Полина', 'description': 'Женский украинский'},
-    {'id': 'en-GB-SoniaNeural', 'label': '🇬🇧 Sonia', 'description': 'Женский британский'},
-    {'id': 'en-US-GuyNeural', 'label': '🇺🇸 Guy', 'description': 'Мужской английский, новостной'},
-    {'id': 'en-US-AriaNeural', 'label': '🇺🇸 Aria', 'description': 'Женский английский, выразительный'},
-    {'id': 'de-DE-KatjaNeural', 'label': '🇩🇪 Katja', 'description': 'Женский немецкий'},
-    {'id': 'de-DE-ConradNeural', 'label': '🇩🇪 Conrad', 'description': 'Мужской немецкий'},
-    {'id': 'fr-FR-DeniseNeural', 'label': '🇫🇷 Denise', 'description': 'Женский французский'},
-    {'id': 'es-ES-ElviraNeural', 'label': '🇪🇸 Elvira', 'description': 'Женский испанский'},
-    {'id': 'it-IT-ElsaNeural', 'label': '🇮🇹 Elsa', 'description': 'Женский итальянский'},
-    {'id': 'pt-BR-FranciscaNeural', 'label': '🇧🇷 Francisca', 'description': 'Женский португальский (БР)'},
-    {'id': 'pl-PL-ZofiaNeural', 'label': '🇵🇱 Zofia', 'description': 'Женский польский'},
-    {'id': 'tr-TR-EmelNeural', 'label': '🇹🇷 Emel', 'description': 'Женский турецкий'},
-  ];
+ static const List<Map<String, String>> voices = [
+ {'id': 'ru-RU-DariyaNeural', 'label': ' Дария', 'description': 'Женский, мягкий и тёплый'},
+ {'id': 'ru-RU-SvetlanaNeural', 'label': ' Светлана', 'description': 'Женский, спокойный и нейтральный'},
+ {'id': 'ru-RU-DmitryNeural', 'label': ' Дмитрий', 'description': 'Мужской, уверенный русский голос'},
+ {'id': 'ja-JP-NanamiNeural', 'label': ' Nanami', 'description': 'Женский японский, мягкий'},
+ {'id': 'ja-JP-AoiNeural', 'label': ' Aoi', 'description': 'Женский японский, энергичный'},
+ {'id': 'zh-CN-XiaoxiaoNeural', 'label': ' Xiaoxiao', 'description': 'Женский китайский, дружелюбный'},
+ {'id': 'en-US-JennyNeural', 'label': ' Jenny', 'description': 'Женский английский, нейтральный'},
+ {'id': 'ko-KR-SunHiNeural', 'label': ' SunHi', 'description': 'Женский корейский, мягкий'},
+ // ── Расширение (все бесплатные Edge-голоса) ──
+ {'id': 'uk-UA-PolinaNeural', 'label': ' Полина', 'description': 'Женский украинский'},
+ {'id': 'en-GB-SoniaNeural', 'label': ' Sonia', 'description': 'Женский британский'},
+ {'id': 'en-US-GuyNeural', 'label': ' Guy', 'description': 'Мужской английский, новостной'},
+ {'id': 'en-US-AriaNeural', 'label': ' Aria', 'description': 'Женский английский, выразительный'},
+ {'id': 'de-DE-KatjaNeural', 'label': ' Katja', 'description': 'Женский немецкий'},
+ {'id': 'de-DE-ConradNeural', 'label': ' Conrad', 'description': 'Мужской немецкий'},
+ {'id': 'fr-FR-DeniseNeural', 'label': ' Denise', 'description': 'Женский французский'},
+ {'id': 'es-ES-ElviraNeural', 'label': ' Elvira', 'description': 'Женский испанский'},
+ {'id': 'it-IT-ElsaNeural', 'label': ' Elsa', 'description': 'Женский итальянский'},
+ {'id': 'pt-BR-FranciscaNeural', 'label': ' Francisca', 'description': 'Женский португальский (БР)'},
+ {'id': 'pl-PL-ZofiaNeural', 'label': ' Zofia', 'description': 'Женский польский'},
+ {'id': 'tr-TR-EmelNeural', 'label': ' Emel', 'description': 'Женский турецкий'},
+ ];
 
-  /// Пол голоса по id — для подбора голоса под персонажа.
-  static String genderOf(String? voiceId) {
-    if (voiceId == null || voiceId.isEmpty) return 'unknown';
-    final v = voices.firstWhere(
-      (v) => v['id'] == voiceId,
-      orElse: () => const {},
-    );
-    final d = (v['description'] ?? '').toLowerCase();
-    if (d.contains('мужской') || d.contains('male')) return 'male';
-    if (d.contains('женский') || d.contains('female')) return 'female';
-    return 'unknown';
-  }
+ /// Пол голоса по id — для подбора голоса под персонажа.
+ static String genderOf(String? voiceId) {
+ if (voiceId == null || voiceId.isEmpty) return 'unknown';
+ final v = voices.firstWhere(
+ (v) => v['id'] == voiceId,
+ orElse: () => const {},
+);
+ final d = (v['description']?? '').toLowerCase();
+ if (d.contains('мужской') || d.contains('male')) return 'male';
+ if (d.contains('женский') || d.contains('female')) return 'female';
+ return 'unknown';
+ }
 
-  Future<void> initialize() async {
-    await _initSystemTts();
-    _player.onPlayerComplete.listen((_) { _isSpeaking = false; notifyListeners(); });
-    _warmupConnection();
-  }
+ Future<void> initialize() async {
+ await _initSystemTts();
+ _player.onPlayerComplete.listen((_) { _isSpeaking = false; notifyListeners(); });
+ _warmupConnection();
+ }
 
-  Future<void> _initSystemTts() async {
-    await _systemTts.setLanguage('ru-RU');
-    await _systemTts.setSpeechRate(0.85);
-    await _systemTts.setVolume(1.0);
-    await _systemTts.setPitch(1.15);
-    _systemTts.setCompletionHandler(() { _isSpeaking = false; notifyListeners(); });
-    _systemTts.setErrorHandler((_) { _isSpeaking = false; notifyListeners(); });
-  }
+ Future<void> _initSystemTts() async {
+ await _systemTts.setLanguage('ru-RU');
+ await _systemTts.setSpeechRate(0.85);
+ await _systemTts.setVolume(1.0);
+ await _systemTts.setPitch(1.15);
+ _systemTts.setCompletionHandler(() { _isSpeaking = false; notifyListeners(); });
+ _systemTts.setErrorHandler((_) { _isSpeaking = false; notifyListeners(); });
+ }
 
-  /// Локаль по имени системного голоса: en-gb-* → en-GB, en-au-* → en-AU,
-  /// остальные русские → ru-RU. Раньше хардкод ru-RU ломал Ella/Stella.
-  static String _localeOf(String voice) {
-    final v = voice.toLowerCase();
-    if (v.startsWith('en-gb')) return 'en-GB';
-    if (v.startsWith('en-au')) return 'en-AU';
-    if (v.startsWith('en-us')) return 'en-US';
-    if (v.startsWith('ja')) return 'ja-JP';
-    return 'ru-RU';
-  }
+ /// Локаль по имени системного голоса: en-gb-* → en-GB, en-au-* → en-AU,
+ /// остальные русские → ru-RU. Раньше хардкод ru-RU ломал Ella/Stella.
+ static String _localeOf(String voice) {
+ final v = voice.toLowerCase();
+ if (v.startsWith('en-gb')) return 'en-GB';
+ if (v.startsWith('en-au')) return 'en-AU';
+ if (v.startsWith('en-us')) return 'en-US';
+ if (v.startsWith('ja')) return 'ja-JP';
+ return 'ru-RU';
+ }
 
-  void setVoice(String voiceId) { _voice = voiceId; notifyListeners(); }
-  void setRate(double rate) => _rate = rate;
-  void setPitch(double pitch) => _pitch = pitch;
-  void setVolume(double volume) => _volume = volume.clamp(0.0, 1.0);
+ void setVoice(String voiceId) { _voice = voiceId; notifyListeners(); }
+ void setRate(double rate) => _rate = rate;
+ void setPitch(double pitch) => _pitch = pitch;
+ void setVolume(double volume) => _volume = volume.clamp(0.0, 1.0);
 
-  Future<void> _loadEdgeSettings() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _rate = prefs.getDouble('edge_tts_rate') ?? 0.0;
-      _pitch = prefs.getDouble('edge_tts_pitch') ?? 0.0;
-      _volume = prefs.getDouble('edge_tts_volume') ?? 1.0;
-      final voice = prefs.getString('edge_voice');
-      if (voice != null && voice.isNotEmpty) _voice = voice;
-      // EdgeTTS мёртв (Microsoft закрыл доступ) — движок всегда системный.
-      final savedEngine = prefs.getString('tts_engine') ?? 'system';
-      _ttsEngine = 'system';
-    } catch (_) {}
-  }
+ Future<void> _loadEdgeSettings() async {
+ try {
+ final prefs = await SharedPreferences.getInstance();
+ _rate = prefs.getDouble('edge_tts_rate')?? 0.0;
+ _pitch = prefs.getDouble('edge_tts_pitch')?? 0.0;
+ _volume = prefs.getDouble('edge_tts_volume')?? 1.0;
+ final voice = prefs.getString('edge_voice');
+ if (voice!= null && voice.isNotEmpty) _voice = voice;
+ // EdgeTTS мёртв (Microsoft закрыл доступ) — движок всегда системный.
+ final savedEngine = prefs.getString('tts_engine')?? 'system';
+ _ttsEngine = 'system';
+ } catch (_) {}
+ }
 
-  Future<void> _warmupConnection() async {
-    try {
-      await _connectWs();
-      debugPrint('[EdgeTTS] ✅ WS прогрет');
-    } catch (e) {
-      debugPrint('[EdgeTTS] прогрев не удался: $e');
-    }
-  }
+ Future<void> _warmupConnection() async {
+ try {
+ await _connectWs();
+ debugPrint('[EdgeTTS] WS прогрет');
+ } catch (e) {
+ debugPrint('[EdgeTTS] прогрев не удался: $e');
+ }
+ }
 
-  Future<void> _connectWs() async {
-    try { _ws?.close(); } catch (_) {}
-    _ws = null;
-    _wsReady = false;
-    _wsKeepalive?.cancel();
+ Future<void> _connectWs() async {
+ try { _ws?.close(); } catch (_) {}
+ _ws = null;
+ _wsReady = false;
+ _wsKeepalive?.cancel();
 
-    final connId = _genUuid();
-    // ФИКС: Microsoft закрыл анонимный доступ (403). Нужен анти-абьюз
-    // токен Sec-MS-GEC, версия Chromium 143 и cookie muid, как в edge-tts.
-    final gec = _secMsGec();
-    final uri = Uri.parse('$_wsUrl?TrustedClientToken=$_trustedToken&ConnectionId=$connId'
-        '&Sec-MS-GEC=$gec&Sec-MS-GEC-Version=1-143.0.3650.75');
+ final connId = _genUuid();
+ // ФИКС: Microsoft закрыл анонимный доступ (403). Нужен анти-абьюз
+ // токен Sec-MS-GEC, версия Chromium 143 и cookie muid, как в edge-tts.
+ final gec = _secMsGec();
+ final uri = Uri.parse('$_wsUrl?TrustedClientToken=$_trustedToken&ConnectionId=$connId'
+ '&Sec-MS-GEC=$gec&Sec-MS-GEC-Version=1-143.0.3650.75');
 
-    _ws = await WebSocket.connect(uri.toString(), headers: {
-      'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-          '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
-      'Cookie': 'muid=${_genUuid().toUpperCase()}',
-    }).timeout(const Duration(seconds: 8));
+ _ws = await WebSocket.connect(uri.toString(), headers: {
+ 'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+ 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+ '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
+ 'Cookie': 'muid=${_genUuid().toUpperCase()}',
+ }).timeout(const Duration(seconds: 8));
 
-    _wsReady = true;
+ _wsReady = true;
 
-    // Keepalive пинг каждые 20 сек
-    _wsKeepalive = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (_ws?.readyState == WebSocket.open) {
-        try { _ws?.add(''); } catch (_) { _wsReady = false; }
-      } else {
-        _wsReady = false;
-        _wsKeepalive?.cancel();
-      }
-    });
+ // Keepalive пинг каждые 20 сек
+ _wsKeepalive = Timer.periodic(const Duration(seconds: 20), (_) {
+ if (_ws?.readyState == WebSocket.open) {
+ try { _ws?.add(''); } catch (_) { _wsReady = false; }
+ } else {
+ _wsReady = false;
+ _wsKeepalive?.cancel();
+ }
+ });
 
-    _ws!.done.then((_) { _wsReady = false; });
-  }
+ _ws!.done.then((_) { _wsReady = false; });
+ }
 
-  Future<void> speak(String text) async {
-    await _loadEdgeSettings();
-    if (text.isEmpty) return;
-    await stop();
-    _isSpeaking = true;
-    notifyListeners();
+ Future<void> speak(String text) async {
+ await _loadEdgeSettings();
+ if (text.isEmpty) return;
+ await stop();
+ _isSpeaking = true;
+ notifyListeners();
 
-    // Только бесплатные движки.
-    // ФИКС: пробуем EdgeTTS если ошибок было меньше MAX
-    // Если выбран системный движок — Edge даже не пробуем (иначе каждая
-    // фраза сначала ждала отказ Edge, и голос «не менялся»).
-    final canUseEdge = _failCount < _maxFails && _ttsEngine != 'system';
+ // Только бесплатные движки.
+ // ФИКС: пробуем EdgeTTS если ошибок было меньше MAX
+ // Если выбран системный движок — Edge даже не пробуем (иначе каждая
+ // фраза сначала ждала отказ Edge, и голос «не менялся»).
+ final canUseEdge = _failCount < _maxFails && _ttsEngine!= 'system';
 
-    if (canUseEdge) {
-      try {
-        await _speakEdgeStreaming(text);
-        _failCount = 0; // успех — сбрасываем счётчик
-        _lastEngineUsed = 'edge';
-        _lastEdgeError = null;
-        return;
-      } catch (e) {
-        _failCount++;
-        _lastEngineUsed = 'system';
-        _lastEdgeError = e.toString();
-        debugPrint('[EdgeTTS] ошибка $_failCount/$_maxFails: $e');
-        if (_failCount >= _maxFails) {
-          debugPrint('[EdgeTTS] переключаемся на системный TTS на 30 сек');
-          // Через 30 сек автоматически пробуем снова
-          Timer(const Duration(seconds: 30), () {
-            _failCount = 0;
-            _wsReady = false;
-            _warmupConnection();
-          });
-        }
-        _isSpeaking = true; // восстанавливаем для системного TTS
-      }
-    } else {
-      debugPrint('[EdgeTTS] пауза — системный TTS');
-    }
+ if (canUseEdge) {
+ try {
+ await _speakEdgeStreaming(text);
+ _failCount = 0; // успех — сбрасываем счётчик
+ _lastEngineUsed = 'edge';
+ _lastEdgeError = null;
+ return;
+ } catch (e) {
+ _failCount++;
+ _lastEngineUsed = 'system';
+ _lastEdgeError = e.toString();
+ debugPrint('[EdgeTTS] ошибка $_failCount/$_maxFails: $e');
+ if (_failCount >= _maxFails) {
+ debugPrint('[EdgeTTS] переключаемся на системный TTS на 30 сек');
+ // Через 30 сек автоматически пробуем снова
+ Timer(const Duration(seconds: 30), () {
+ _failCount = 0;
+ _wsReady = false;
+ _warmupConnection();
+ });
+ }
+ _isSpeaking = true; // восстанавливаем для системного TTS
+ }
+ } else {
+ debugPrint('[EdgeTTS] пауза — системный TTS');
+ }
 
-    // Системный TTS fallback
-    _lastEngineUsed = 'system';
-    await _speakSystem(text);
-  }
+ // Системный TTS fallback
+ _lastEngineUsed = 'system';
+ await _speakSystem(text);
+ }
 
-  Future<void> _speakSystem(String text) async {
-    // ФИКС: применяем выбранный в настройках системный голос, скорость
-    // и высоту — раньше системный движок игнорировал выбор голоса
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final sysVoice = prefs.getString('tts_voice');
-      final sysRate = prefs.getDouble('tts_rate') ?? 0.5;
-      final sysPitch = prefs.getDouble('tts_pitch') ?? 1.0;
-      if (sysVoice != null && sysVoice.isNotEmpty) {
-        await _systemTts.setVoice({'name': sysVoice, 'locale': 'ru-RU'});
-      }
-      await _systemTts.setSpeechRate(sysRate);
-      await _systemTts.setPitch(sysPitch);
-    } catch (_) {}
-    try { await _systemTts.setVolume(_volume); } catch (_) {}
-    final done = Completer<void>();
-    _systemTts.setCompletionHandler(() {
-      _isSpeaking = false; notifyListeners();
-      if (!done.isCompleted) done.complete();
-    });
-    _systemTts.setErrorHandler((_) {
-      _isSpeaking = false; notifyListeners();
-      if (!done.isCompleted) done.complete();
-    });
-    try {
-      await _systemTts.speak(text);
-      await done.future.timeout(
-        Duration(seconds: (text.length / 8).ceil() + 5),
-        onTimeout: () { _isSpeaking = false; notifyListeners(); },
-      );
-    } catch (e) {
-      debugPrint('[SystemTTS] error: $e');
-      _isSpeaking = false;
-      notifyListeners();
-    }
-  }
+ Future<void> _speakSystem(String text) async {
+ // ФИКС: применяем выбранный в настройках системный голос, скорость
+ // и высоту — раньше системный движок игнорировал выбор голоса
+ try {
+ final prefs = await SharedPreferences.getInstance();
+ final sysVoice = prefs.getString('tts_voice');
+ final sysRate = prefs.getDouble('tts_rate')?? 0.5;
+ final sysPitch = prefs.getDouble('tts_pitch')?? 1.0;
+ if (sysVoice!= null && sysVoice.isNotEmpty) {
+ await _systemTts.setVoice({'name': sysVoice, 'locale': 'ru-RU'});
+ }
+ await _systemTts.setSpeechRate(sysRate);
+ await _systemTts.setPitch(sysPitch);
+ } catch (_) {}
+ try { await _systemTts.setVolume(_volume); } catch (_) {}
+ final done = Completer<void>();
+ _systemTts.setCompletionHandler(() {
+ _isSpeaking = false; notifyListeners();
+ if (!done.isCompleted) done.complete();
+ });
+ _systemTts.setErrorHandler((_) {
+ _isSpeaking = false; notifyListeners();
+ if (!done.isCompleted) done.complete();
+ });
+ try {
+ await _systemTts.speak(text);
+ await done.future.timeout(
+ Duration(seconds: (text.length / 8).ceil() + 5),
+ onTimeout: () { _isSpeaking = false; notifyListeners(); },
+);
+ } catch (e) {
+ debugPrint('[SystemTTS] error: $e');
+ _isSpeaking = false;
+ notifyListeners();
+ }
+ }
 
-  /// Мгновенное прослушивание с временными rate/pitch/volume/voice —
-  /// не трогает сохранённые настройки, используется кнопкой «Проверить голос».
-  Future<void> previewSpeak(String text, {double? rate, double? pitch, double? volume, String? voice}) async {
-    final oldRate = _rate, oldPitch = _pitch, oldVolume = _volume, oldVoice = _voice;
-    if (rate != null) _rate = rate;
-    if (pitch != null) _pitch = pitch;
-    if (volume != null) _volume = volume.clamp(0.0, 1.0);
-    if (voice != null && voice.isNotEmpty) _voice = voice;
-    try {
-      await stop();
-      _isSpeaking = true; notifyListeners();
-      if (_failCount < _maxFails) {
-        try {
-          await _speakEdgeStreaming(text);
-          _lastEngineUsed = 'edge';
-          _lastEdgeError = null;
-        } catch (e) {
-          debugPrint('[EdgeTTS] preview ошибка, fallback system: $e');
-          _lastEngineUsed = 'system';
-          _lastEdgeError = e.toString();
-          await _speakSystem(text);
-        }
-      } else {
-        _lastEngineUsed = 'system';
-        await _speakSystem(text);
-      }
-    } finally {
-      _rate = oldRate; _pitch = oldPitch; _volume = oldVolume; _voice = oldVoice;
-      _isSpeaking = false; notifyListeners();
-    }
-  }
+ /// Мгновенное прослушивание с временными rate/pitch/volume/voice —
+ /// не трогает сохранённые настройки, используется кнопкой «Проверить голос».
+ Future<void> previewSpeak(String text, {double? rate, double? pitch, double? volume, String? voice}) async {
+ final oldRate = _rate, oldPitch = _pitch, oldVolume = _volume, oldVoice = _voice;
+ if (rate!= null) _rate = rate;
+ if (pitch!= null) _pitch = pitch;
+ if (volume!= null) _volume = volume.clamp(0.0, 1.0);
+ if (voice!= null && voice.isNotEmpty) _voice = voice;
+ try {
+ await stop();
+ _isSpeaking = true; notifyListeners();
+ if (_failCount < _maxFails) {
+ try {
+ await _speakEdgeStreaming(text);
+ _lastEngineUsed = 'edge';
+ _lastEdgeError = null;
+ } catch (e) {
+ debugPrint('[EdgeTTS] preview ошибка, fallback system: $e');
+ _lastEngineUsed = 'system';
+ _lastEdgeError = e.toString();
+ await _speakSystem(text);
+ }
+ } else {
+ _lastEngineUsed = 'system';
+ await _speakSystem(text);
+ }
+ } finally {
+ _rate = oldRate; _pitch = oldPitch; _volume = oldVolume; _voice = oldVoice;
+ _isSpeaking = false; notifyListeners();
+ }
+ }
 
-  /// Живая диагностика EdgeTTS: соединяемся, шлём пробную фразу,
-  /// считаем аудио-байты. Возвращает человекочитаемый результат —
-  /// «почему голос не меняется» становится видно на экране.
-  Future<String> diagnose() async {
-    try {
-      if (!_wsReady || _ws == null || _ws!.readyState != WebSocket.open) {
-        await _connectWs();
-      }
-    } catch (e) {
-      _lastEdgeError = e.toString();
-      return '❌ Соединение не установлено: $e';
-    }
-    final reqId = _genUuid();
-    final ts = _timestamp();
-    const probe = 'Проверка связи.';
-    final ssml =
-        '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
-        '<voice name="$_voice"><prosody rate="+0%" pitch="+0Hz">${_escapeXml(probe)}</prosody>'
-        '</voice></speak>';
-    final bytes = <int>[];
-    String? failure;
-    try {
-      // WebSocket — single-subscription stream: освобождаем прошлый слушатель.
-      try { await _activeWsSub?.cancel(); } catch (_) {}
-      _activeWsSub = null;
-      _ws!.add(
-        'X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n'
-        '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false",'
-        '"wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}');
-      _ws!.add(
-        'X-RequestId:$reqId\r\nContent-Type:application/ssml+xml\r\n'
-        'X-Timestamp:$ts\r\nPath:ssml\r\n\r\n$ssml');
-      final done = Completer<void>();
-      _activeWsSub = _ws!.listen((data) {
-        if (data is List<int>) {
-          bytes.addAll(data);
-          if (bytes.length > 2048 && !done.isCompleted) done.complete();
-        } else if (data is String && data.contains('turn.end') &&
-            !done.isCompleted) {
-          done.complete();
-        }
-      }, onDone: () { if (!done.isCompleted) done.complete(); },
-         onError: (Object e) { failure = e.toString(); if (!done.isCompleted) done.complete(); });
-      await done.future.timeout(const Duration(seconds: 10));
-      try { await _activeWsSub?.cancel(); } catch (_) {}
-    } catch (e) {
-      failure = e.toString();
-    }
-    if (bytes.length > 2048) {
-      _lastEdgeError = null;
-      return '✅ EdgeTTS работает: получено ${bytes.length} байт аудио, голос $_voice';
-    }
-    _lastEdgeError = failure ?? 'аудио не пришло';
-    return '❌ Соединение есть, но аудио не пришло (${failure ?? 'пустой ответ'}). '
-        'Айка говорит системным голосом — поэтому и не меняется.';
-  }
+ /// Живая диагностика EdgeTTS: соединяемся, шлём пробную фразу,
+ /// считаем аудио-байты. Возвращает человекочитаемый результат —
+ /// «почему голос не меняется» становится видно на экране.
+ Future<String> diagnose() async {
+ try {
+ if (!_wsReady || _ws == null || _ws!.readyState!= WebSocket.open) {
+ await _connectWs();
+ }
+ } catch (e) {
+ _lastEdgeError = e.toString();
+ return ' Соединение не установлено: $e';
+ }
+ final reqId = _genUuid();
+ final ts = _timestamp();
+ const probe = 'Проверка связи.';
+ final ssml =
+ '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
+ '<voice name="$_voice"><prosody rate="+0%" pitch="+0Hz">${_escapeXml(probe)}</prosody>'
+ '</voice></speak>';
+ final bytes = <int>[];
+ String? failure;
+ try {
+ // WebSocket — single-subscription stream: освобождаем прошлый слушатель.
+ try { await _activeWsSub?.cancel(); } catch (_) {}
+ _activeWsSub = null;
+ _ws!.add(
+ 'X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n'
+ '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false",'
+ '"wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}');
+ _ws!.add(
+ 'X-RequestId:$reqId\r\nContent-Type:application/ssml+xml\r\n'
+ 'X-Timestamp:$ts\r\nPath:ssml\r\n\r\n$ssml');
+ final done = Completer<void>();
+ _activeWsSub = _ws!.listen((data) {
+ if (data is List<int>) {
+ bytes.addAll(data);
+ if (bytes.length > 2048 &&!done.isCompleted) done.complete();
+ } else if (data is String && data.contains('turn.end') &&
+!done.isCompleted) {
+ done.complete();
+ }
+ }, onDone: () { if (!done.isCompleted) done.complete(); },
+ onError: (Object e) { failure = e.toString(); if (!done.isCompleted) done.complete(); });
+ await done.future.timeout(const Duration(seconds: 10));
+ try { await _activeWsSub?.cancel(); } catch (_) {}
+ } catch (e) {
+ failure = e.toString();
+ }
+ if (bytes.length > 2048) {
+ _lastEdgeError = null;
+ return ' EdgeTTS работает: получено ${bytes.length} байт аудио, голос $_voice';
+ }
+ _lastEdgeError = failure?? 'аудио не пришло';
+ return ' Соединение есть, но аудио не пришло (${failure?? 'пустой ответ'}). '
+ 'Айка говорит системным голосом — поэтому и не меняется.';
+ }
 
-  Future<void> stop() async {
-    // ФИКС: раньше stop() не отменял WebSocket-стрим и не закрывал файл —
-    // байты продолжали писаться и перебивали новую речь
-    // ФИКС 2: не завершал ожидающие completer'ы — перебитая реплика
-    // висела в await до таймаута, ломая живой диалог (barge-in).
-    final dl = _activeDownloadDone;
-    if (dl != null && !dl.isCompleted) dl.complete();
-    final pb = _activePlaybackDone;
-    if (pb != null && !pb.isCompleted) pb.complete();
-    await _activeWsSub?.cancel();
-    _activeWsSub = null;
-    try { await _activeSink?.close(); } catch (_) {}
-    _activeSink = null;
-    try { await _player.stop(); } catch (_) {}
-    try { await _systemTts.stop(); } catch (_) {}
-    _isSpeaking = false;
-    notifyListeners();
-  }
+ Future<void> stop() async {
+ // ФИКС: раньше stop() не отменял WebSocket-стрим и не закрывал файл —
+ // байты продолжали писаться и перебивали новую речь
+ // ФИКС 2: не завершал ожидающие completer'ы — перебитая реплика
+ // висела в await до таймаута, ломая живой диалог (barge-in).
+ final dl = _activeDownloadDone;
+ if (dl!= null &&!dl.isCompleted) dl.complete();
+ final pb = _activePlaybackDone;
+ if (pb!= null &&!pb.isCompleted) pb.complete();
+ await _activeWsSub?.cancel();
+ _activeWsSub = null;
+ try { await _activeSink?.close(); } catch (_) {}
+ _activeSink = null;
+ try { await _player.stop(); } catch (_) {}
+ try { await _systemTts.stop(); } catch (_) {}
+ _isSpeaking = false;
+ notifyListeners();
+ }
 
-  Future<void> _speakEdgeStreaming(String text) async {
-    // Реконнект если WS не готов
-    if (!_wsReady || _ws == null || _ws!.readyState != WebSocket.open) {
-      await _connectWs();
-    }
+ Future<void> _speakEdgeStreaming(String text) async {
+ // Реконнект если WS не готов
+ if (!_wsReady || _ws == null || _ws!.readyState!= WebSocket.open) {
+ await _connectWs();
+ }
 
-    try { await _player.setVolume(_volume); } catch (_) {}
+ try { await _player.setVolume(_volume); } catch (_) {}
 
-    final reqId = _genUuid();
-    final ts = _timestamp();
-    final rateStr = _rate >= 0 ? '+${_rate.round()}%' : '${_rate.round()}%';
-    final pitchStr = _pitch >= 0 ? '+${_pitch.round()}Hz' : '${_pitch.round()}Hz';
+ final reqId = _genUuid();
+ final ts = _timestamp();
+ final rateStr = _rate >= 0? '+${_rate.round()}%': '${_rate.round()}%';
+ final pitchStr = _pitch >= 0? '+${_pitch.round()}Hz': '${_pitch.round()}Hz';
 
-    final ssml =
-        '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
-        '<voice name="$_voice">'
-        '<prosody rate="$rateStr" pitch="$pitchStr">${_escapeXml(text)}</prosody>'
-        '</voice></speak>';
+ final ssml =
+ '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
+ '<voice name="$_voice">'
+ '<prosody rate="$rateStr" pitch="$pitchStr">${_escapeXml(text)}</prosody>'
+ '</voice></speak>';
 
-    _ws!.add(
-      'X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n'
-      '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false",'
-      '"wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}'
-    );
-    _ws!.add(
-      'X-RequestId:$reqId\r\nContent-Type:application/ssml+xml\r\n'
-      'X-Timestamp:$ts\r\nPath:ssml\r\n\r\n$ssml'
-    );
+ _ws!.add(
+ 'X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n'
+ '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false",'
+ '"wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}'
+);
+ _ws!.add(
+ 'X-RequestId:$reqId\r\nContent-Type:application/ssml+xml\r\n'
+ 'X-Timestamp:$ts\r\nPath:ssml\r\n\r\n$ssml'
+);
 
-    final audioBytes = <int>[];
-    final done = Completer<void>();
-    _activeDownloadDone = done;
-    bool playbackStarted = false;
+ final audioBytes = <int>[];
+ final done = Completer<void>();
+ _activeDownloadDone = done;
+ bool playbackStarted = false;
 
-    final dir = await getTemporaryDirectory();
-    final filePath = '${dir.path}/aika_tts_${reqId.substring(0, 8)}.mp3';
-    final file = File(filePath);
-    final sink = file.openWrite();
-    _activeSink = sink;
+ final dir = await getTemporaryDirectory();
+ final filePath = '${dir.path}/aika_tts_${reqId.substring(0, 8)}.mp3';
+ final file = File(filePath);
+ final sink = file.openWrite();
+ _activeSink = sink;
 
-    StreamSubscription? sub;
-    sub = _ws!.listen(
-      (data) async {
-        if (data is List<int>) {
-          int start = 0;
-          for (int i = 0; i < data.length - 3; i++) {
-            if (data[i] == 0x0d && data[i+1] == 0x0a &&
-                data[i+2] == 0x0d && data[i+3] == 0x0a) {
-              start = i + 4; break;
-            }
-          }
-          if (start < data.length) {
-            final chunk = data.sublist(start);
-            audioBytes.addAll(chunk);
-            sink.add(chunk);
-            if (!playbackStarted && audioBytes.length > 8192) {
-              playbackStarted = true;
-              await sink.flush();
-              debugPrint('[EdgeTTS] ▶ стриминг (${audioBytes.length}b)');
-              await _player.play(DeviceFileSource(filePath));
-            }
-          }
-        } else if (data is String && data.contains('Path:turn.end')) {
-          await sink.flush();
-          await sink.close();
-          _activeDownloadDone = null;
-          if (!done.isCompleted) done.complete();
-          sub?.cancel();
-        }
-      },
-      onDone: () { if (!done.isCompleted) done.complete(); sub?.cancel(); },
-      onError: (e) { if (!done.isCompleted) done.completeError(e); sub?.cancel(); },
-      cancelOnError: true,
-    );
-    _activeWsSub = sub;
+ StreamSubscription? sub;
+ sub = _ws!.listen(
+ (data) async {
+ if (data is List<int>) {
+ int start = 0;
+ for (int i = 0; i < data.length - 3; i++) {
+ if (data[i] == 0x0d && data[i+1] == 0x0a &&
+ data[i+2] == 0x0d && data[i+3] == 0x0a) {
+ start = i + 4; break;
+ }
+ }
+ if (start < data.length) {
+ final chunk = data.sublist(start);
+ audioBytes.addAll(chunk);
+ sink.add(chunk);
+ if (!playbackStarted && audioBytes.length > 8192) {
+ playbackStarted = true;
+ await sink.flush();
+ debugPrint('[EdgeTTS] ▶ стриминг (${audioBytes.length}b)');
+ await _player.play(DeviceFileSource(filePath));
+ }
+ }
+ } else if (data is String && data.contains('Path:turn.end')) {
+ await sink.flush();
+ await sink.close();
+ _activeDownloadDone = null;
+ if (!done.isCompleted) done.complete();
+ sub?.cancel();
+ }
+ },
+ onDone: () { if (!done.isCompleted) done.complete(); sub?.cancel(); },
+ onError: (e) { if (!done.isCompleted) done.completeError(e); sub?.cancel(); },
+ cancelOnError: true,
+);
+ _activeWsSub = sub;
 
-    await done.future.timeout(const Duration(seconds: 15));
+ await done.future.timeout(const Duration(seconds: 15));
 
-    if (!playbackStarted && audioBytes.isNotEmpty) {
-      try { await sink.close(); } catch (_) {}
-      await _player.play(DeviceFileSource(filePath));
-      playbackStarted = true;
-    }
+ if (!playbackStarted && audioBytes.isNotEmpty) {
+ try { await sink.close(); } catch (_) {}
+ await _player.play(DeviceFileSource(filePath));
+ playbackStarted = true;
+ }
 
-    if (playbackStarted) {
-      final playDone = Completer<void>();
-      _activePlaybackDone = playDone;
-      late StreamSubscription playSub;
-      playSub = _player.onPlayerComplete.listen((_) {
-        if (!playDone.isCompleted) playDone.complete();
-        playSub.cancel();
-      });
-      final secs = (text.length / 8).ceil() + 5;
-      try {
-        await playDone.future.timeout(Duration(seconds: secs), onTimeout: () {});
-      } finally {
-        // ФИКС: при таймауте подписка оставалась висеть
-        unawaited(playSub.cancel());
-        _activePlaybackDone = null;
-      }
-    }
+ if (playbackStarted) {
+ final playDone = Completer<void>();
+ _activePlaybackDone = playDone;
+ late StreamSubscription playSub;
+ playSub = _player.onPlayerComplete.listen((_) {
+ if (!playDone.isCompleted) playDone.complete();
+ playSub.cancel();
+ });
+ final secs = (text.length / 8).ceil() + 5;
+ try {
+ await playDone.future.timeout(Duration(seconds: secs), onTimeout: () {});
+ } finally {
+ // ФИКС: при таймауте подписка оставалась висеть
+ unawaited(playSub.cancel());
+ _activePlaybackDone = null;
+ }
+ }
 
-    _isSpeaking = false;
-    notifyListeners();
+ _isSpeaking = false;
+ notifyListeners();
 
-    // Прогреваем следующее соединение
-    Future.delayed(const Duration(milliseconds: 500), _warmupConnection);
-  }
+ // Прогреваем следующее соединение
+ Future.delayed(const Duration(milliseconds: 500), _warmupConnection);
+ }
 
-  /// Токен анти-абьюза EdgeTTS: SHA256 от тиков Windows-эпохи,
-  /// округлённых вниз до 5 минут, + доверенный токен.
-  String _secMsGec() {
-    // Целочисленная арифметика: без потери точности double на больших тиках.
-    final seconds = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 + 11644473600;
-    final ticks = (seconds ~/ 300) * 300 * 10000000;
-    final str = '$ticks$_trustedToken';
-    return sha256.convert(str.codeUnits).toString().toUpperCase();
-  }
+ /// Токен анти-абьюза EdgeTTS: SHA256 от тиков Windows-эпохи,
+ /// округлённых вниз до 5 минут, + доверенный токен.
+ String _secMsGec() {
+ // Целочисленная арифметика: без потери точности double на больших тиках.
+ final seconds = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 + 11644473600;
+ final ticks = (seconds ~/ 300) * 300 * 10000000;
+ final str = '$ticks$_trustedToken';
+ return sha256.convert(str.codeUnits).toString().toUpperCase();
+ }
 
-  String _genUuid() {
-    final r = Random.secure();
-    final b = List<int>.generate(16, (_) => r.nextInt(256));
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
-    return b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
-  }
+ String _genUuid() {
+ final r = Random.secure();
+ final b = List<int>.generate(16, (_) => r.nextInt(256));
+ b[6] = (b[6] & 0x0f) | 0x40;
+ b[8] = (b[8] & 0x3f) | 0x80;
+ return b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+ }
 
-  String _timestamp() {
-    final d = DateTime.now().toUtc();
-    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${days[d.weekday-1]}, ${d.day.toString().padLeft(2,'0')} '
-        '${months[d.month-1]} ${d.year} '
-        '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}:${d.second.toString().padLeft(2,'0')} GMT';
-  }
+ String _timestamp() {
+ final d = DateTime.now().toUtc();
+ const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+ const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ return '${days[d.weekday-1]}, ${d.day.toString().padLeft(2,'0')} '
+ '${months[d.month-1]} ${d.year} '
+ '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}:${d.second.toString().padLeft(2,'0')} GMT';
+ }
 
-  String _escapeXml(String s) => s
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;');
+ String _escapeXml(String s) => s
+.replaceAll('&', '&amp;')
+.replaceAll('<', '&lt;')
+.replaceAll('>', '&gt;')
+.replaceAll('"', '&quot;');
 
-  @override
-  void dispose() {
-    _wsKeepalive?.cancel();
-    try { _ws?.close(); } catch (_) {}
-    _player.dispose();
-    _systemTts.stop();
-    super.dispose();
-  }
+ @override
+ void dispose() {
+ _wsKeepalive?.cancel();
+ try { _ws?.close(); } catch (_) {}
+ _player.dispose();
+ _systemTts.stop();
+ super.dispose();
+ }
 }
