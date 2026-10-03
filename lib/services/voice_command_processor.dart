@@ -411,6 +411,26 @@ class VoiceCommandProcessor {
  return VoiceCmdResult.ok('Открываю настройки яркости');
  }
 
+ // ── Wi-Fi: реальное переключение через SystemControlService ───────────────
+ Future<VoiceCmdResult?> _handleWifi(String t) async {
+ if (!_has(t, ['wifi', 'вай фай', 'вайфай', 'wi-fi', 'беспроводная', 'интернет настройки'])) return null;
+ final sys = await SystemControlService.tryHandleCommand(t);
+ if (sys!= null) return VoiceCmdResult.ok(sys);
+ await AndroidIntent(action: 'android.settings.WIFI_SETTINGS',
+ flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
+ return VoiceCmdResult.ok('Настройки Wi-Fi открыты');
+ }
+
+ // ── Bluetooth: реальное переключение через SystemControlService ────────────
+ Future<VoiceCmdResult?> _handleBluetooth(String t) async {
+ if (!_has(t, ['bluetooth', 'блютуз', 'блюзуб', 'беспроводная гарнитура', 'bt'])) return null;
+ final sys = await SystemControlService.tryHandleCommand(t);
+ if (sys!= null) return VoiceCmdResult.ok(sys);
+ await AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS',
+ flags: [Flag.FLAG_ACTIVITY_NEW_TASK]).launch();
+ return VoiceCmdResult.ok('Настройки Bluetooth открыты');
+ }
+
  // ── Системная навигация ───────────────────────────────────────────────────
  // Все команды идут через AikaAccessibilityService. Если сервис не запущен
  // (пользователь не включил Accessibility, либо Android его отключил 
