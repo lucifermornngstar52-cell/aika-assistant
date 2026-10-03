@@ -53,11 +53,11 @@ class SmartActionLoop {
  break;
  }
  if (action['action'] == 'done') {
- lastResult = action['message'] as String??? 'Готово!';
+ lastResult = action['message'] as String? ?? 'Готово!';
  break;
  }
  if (action['action'] == 'error') {
- lastResult = action['message'] as String??? 'Не удалось выполнить.';
+ lastResult = action['message'] as String? ?? 'Не удалось выполнить.';
  break;
  }
 
@@ -94,7 +94,7 @@ class SmartActionLoop {
  textLines.forEach(sb.writeln);
  }
 
- final buttons = struct['buttons'] as List??? [];
+ final buttons = struct['buttons'] as List? ?? [];
  if (buttons.isNotEmpty) {
  sb.writeln('=== ЭЛЕМЕНТЫ ===');
  for (final b in buttons.take(40)) {
@@ -190,12 +190,12 @@ $uiSnapshot
 
  // ─── Выполнение ──────────────────────────────────────────────────
  static Future<String> _executeAction(Map<String, dynamic> action) async {
- final type = action['action'] as String??? '';
+ final type = action['action'] as String? ?? '';
  try {
  switch (type) {
 
  case 'click_text':
- final text = action['text'] as String??? '';
+ final text = action['text'] as String? ?? '';
  // Пробуем точное совпадение, потом частичное
  final ok1 = await _a11y.invokeMethod<bool>('clickByExactText', {'text': text})?? false;
  if (ok1) return 'Нажала "$text"';
@@ -203,18 +203,18 @@ $uiSnapshot
  return ok2? 'Нажала "$text"': 'Не нашла "$text"';
 
  case 'click_id':
- final id = action['id'] as String??? '';
+ final id = action['id'] as String? ?? '';
  final ok = await _a11y.invokeMethod<bool>('clickById', {'id': id})?? false;
  return ok? 'Нажала id=$id': 'Не нашла id=$id';
 
  case 'click_desc':
- final desc = action['desc'] as String??? '';
+ final desc = action['desc'] as String? ?? '';
  final ok = await _a11y.invokeMethod<bool>('clickByDescription', {'desc': desc})?? false;
  return ok? 'Нажала "$desc"': 'Не нашла "$desc"';
 
  case 'type_text':
- final text = action['text'] as String??? '';
- final clear = action['clear'] as bool??? false;
+ final text = action['text'] as String? ?? '';
+ final clear = action['clear'] as bool? ?? false;
  if (clear) await _a11y.invokeMethod('clearField');
  final ok = await _a11y.invokeMethod<bool>('typeInField', {'hint': '', 'text': text})?? false;
  return ok? 'Ввела: "$text"': 'Не смогла ввести текст';
@@ -232,12 +232,12 @@ $uiSnapshot
  return 'Долгое нажатие ($x, $y)';
 
  case 'swipe':
- final dir = action['dir'] as String??? 'down';
+ final dir = action['dir'] as String? ?? 'down';
  await _a11y.invokeMethod('swipeDir', {'direction': dir});
  return 'Свайп $dir';
 
  case 'scroll':
- final dir = action['dir'] as String??? 'down';
+ final dir = action['dir'] as String? ?? 'down';
  await _a11y.invokeMethod('scroll', {'direction': dir});
  return 'Прокрутила $dir';
 
@@ -250,13 +250,13 @@ $uiSnapshot
  return 'Главный экран';
 
  case 'open_app':
- final pkg = action['package'] as String??? '';
+ final pkg = action['package'] as String? ?? '';
  final ok = await _a11y.invokeMethod<bool>('launchApp', {'package': pkg})?? false;
  return ok? 'Открываю $pkg': 'Не нашла приложение $pkg';
 
  // НОВОЕ: динамический поиск приложения по названию (из OpenClaw AppsListCapability)
  case 'find_app':
- final name = action['name'] as String??? '';
+ final name = action['name'] as String? ?? '';
  final pkg = await _a11y.invokeMethod<String>('findPackageByName', {'name': name});
  if (pkg!= null && pkg.isNotEmpty) {
  await _a11y.invokeMethod('launchApp', {'package': pkg});

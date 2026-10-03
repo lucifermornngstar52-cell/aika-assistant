@@ -131,7 +131,7 @@ class AlarmService {
  // Listen for alarm fires from native AlarmManager
  _channel.setMethodCallHandler((call) async {
  if (call.method == 'onAlarmFired') {
- final id = call.arguments['id'] as String??? '';
+ final id = call.arguments['id'] as String? ?? '';
  await _handleAlarmFired(id);
  }
  });

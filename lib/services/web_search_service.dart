@@ -42,11 +42,11 @@ class WebSearchService {
  final parts = <String>[];
 
  // Основной ответ
- final abstract_ = data['Abstract'] as String??? '';
+ final abstract_ = data['Abstract'] as String? ?? '';
  if (abstract_.isNotEmpty) parts.add(abstract_);
 
  // Связанные темы
- final related = data['RelatedTopics'] as List??? [];
+ final related = data['RelatedTopics'] as List? ?? [];
  for (final r in related.take(3)) {
  if (r is Map && r['Text']!= null) {
  final text = r['Text'] as String;
@@ -55,13 +55,13 @@ class WebSearchService {
  }
 
  // Определение
- final definition = data['Definition'] as String??? '';
+ final definition = data['Definition'] as String? ?? '';
  if (definition.isNotEmpty &&!parts.contains(definition)) {
  parts.add(definition);
  }
 
  // Ответ (например на вопрос "сколько...")
- final answer = data['Answer'] as String??? '';
+ final answer = data['Answer'] as String? ?? '';
  if (answer.isNotEmpty) parts.insert(0, answer);
 
  if (parts.isEmpty) return '';
@@ -82,13 +82,13 @@ class WebSearchService {
  if (response.statusCode!= 200) return '';
 
  final data = jsonDecode(utf8.decode(response.bodyBytes));
- final results = data['web']?['results'] as List??? [];
+ final results = data['web']?['results'] as List? ?? [];
  if (results.isEmpty) return '';
 
  final parts = <String>[];
  for (final r in results.take(3)) {
- final title = r['title'] as String??? '';
- final desc = r['description'] as String??? '';
+ final title = r['title'] as String? ?? '';
+ final desc = r['description'] as String? ?? '';
  if (desc.isNotEmpty) parts.add('• $title: $desc');
  }
 

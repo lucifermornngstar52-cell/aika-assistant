@@ -176,7 +176,7 @@ class GroqComputerUseService {
  return ScreenElement(
  x: (json['x'] as num?)?.toDouble()?? 500,
  y: (json['y'] as num?)?.toDouble()?? 1000,
- label: json['label'] as String??? description,
+ label: json['label'] as String? ?? description,
 );
  } catch (_) {
  return null;
@@ -258,12 +258,12 @@ class ComputerUseAction {
 
  factory ComputerUseAction.fromJson(Map<String, dynamic> json) {
  return ComputerUseAction(
- type: json['action'] as String??? 'none',
+ type: json['action'] as String? ?? 'none',
  x: (json['x'] as num?)?.toDouble()?? 500,
  y: (json['y'] as num?)?.toDouble()?? 1000,
- text: json['text'] as String??? '',
- direction: json['direction'] as String??? 'down',
- reason: json['reason'] as String??? '',
+ text: json['text'] as String? ?? '',
+ direction: json['direction'] as String? ?? 'down',
+ reason: json['reason'] as String? ?? '',
 );
  }
 }

@@ -130,7 +130,7 @@ class AikaLogService {
  try {
  const ch = MethodChannel('com.aika.assistant/screen_reader');
  final res = await ch.invokeMethod('getLogcat', {'lines': lines});
- return res as String??? '(пусто)';
+ return res as String? ?? '(пусто)';
  } catch (e) {
  return 'Не удалось прочитать logcat: $e';
  }

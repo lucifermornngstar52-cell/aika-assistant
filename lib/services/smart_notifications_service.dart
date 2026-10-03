@@ -78,8 +78,8 @@ class SmartNotificationsService {
  // Группируем по приложениям
  final Map<String, List<String>> byApp = {};
  for (final item in buffer) {
- final app = item['app'] as String??? 'Приложение';
- final text = item['text'] as String??? '';
+ final app = item['app'] as String? ?? 'Приложение';
+ final text = item['text'] as String? ?? '';
  byApp.putIfAbsent(app, () => []).add(text);
  }
 

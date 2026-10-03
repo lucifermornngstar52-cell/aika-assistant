@@ -33,15 +33,15 @@ class AssistantMoodService {
  if (raw!= null) {
  try {
  final data = jsonDecode(raw);
- final moodName = data['mood'] as String??? 'good';
+ final moodName = data['mood'] as String? ?? 'good';
  _mood = AssistantInternalMood.values.firstWhere(
  (m) => m.name == moodName, orElse: () => AssistantInternalMood.good);
- _energy = (data['energy'] as int??? 100).clamp(0, 100);
- _requestsToday = data['requests_today'] as int??? 0;
+ _energy = (data['energy'] as int? ?? 100).clamp(0, 100);
+ _requestsToday = data['requests_today'] as int? ?? 0;
  final lastShift = data['last_mood_shift'] as String?;
  if (lastShift!= null) _lastMoodShift = DateTime.tryParse(lastShift);
  // Сбрасываем запросы если новый день
- final lastDay = data['last_day'] as String??? '';
+ final lastDay = data['last_day'] as String? ?? '';
  final today = _todayStr();
  if (lastDay!= today) {
  _requestsToday = 0;

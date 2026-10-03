@@ -72,7 +72,7 @@ class WakeWordService {
  _phoneChannel.receiveBroadcastStream().listen(
  (event) {
  if (event is Map) {
- final state = event['state'] as String??? '';
+ final state = event['state'] as String? ?? '';
  debugPrint('[WakeWord] phone state: $state');
  }
  },

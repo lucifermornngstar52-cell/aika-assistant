@@ -30,7 +30,7 @@ class AikaSelfLearningService {
  final counts = <String, int>{};
  for (final e in entries) {
  final m = json.decode(e) as Map;
- final v = m['v'] as String??? '';
+ final v = m['v'] as String? ?? '';
  counts[v] = (counts[v]?? 0) + 1;
  }
  final sorted = counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
@@ -55,7 +55,7 @@ class AikaSelfLearningService {
  final recent = cmds.length > 5? cmds.sublist(cmds.length - 5): cmds;
  final cmdTexts = recent.map((e) {
  final m = json.decode(e) as Map;
- return m['v'] as String??? '';
+ return m['v'] as String? ?? '';
  }).where((s) => s.isNotEmpty).toList();
  if (cmdTexts.isNotEmpty) {
  sb.writeln("Последние команды: ${cmdTexts.join('; ')}.");

@@ -200,7 +200,7 @@ class MinecraftAutopilotService {
  // 3. Выполняем.
  // ФИКС: раньше одно исключение из жеста убивало весь запуск
  // без единого сообщения теперь логируем и продолжаем.
- final act = action['action'] as String??? 'none';
+ final act = action['action'] as String? ?? 'none';
  var done = false;
  try {
  done = await _execute(act, p, w, h);
@@ -345,7 +345,7 @@ class MinecraftAutopilotService {
  }
 
  final data = jsonDecode(utf8.decode(resp.bodyBytes));
- var text = data['choices']?[0]?['message']?['content'] as String??? '';
+ var text = data['choices']?[0]?['message']?['content'] as String? ?? '';
  text = text.trim();
  final start = text.indexOf('{');
  final end = text.lastIndexOf('}');

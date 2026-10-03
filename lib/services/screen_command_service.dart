@@ -193,15 +193,15 @@ class ScreenCommandService {
  }
 
  static Future<String> _executeAiAction(Map<String, dynamic> action) async {
- final type = action['action'] as String??? 'none';
+ final type = action['action'] as String? ?? 'none';
  switch (type) {
  case 'click':
- final target = action['target'] as String??? '';
+ final target = action['target'] as String? ?? '';
  final ok = await _reader.invokeMethod<bool>('clickElement', {'text': target})?? false;
  return ok? 'Нажала на "$target"': 'Не нашла "$target"';
 
  case 'click_desc':
- final desc = action['desc'] as String??? '';
+ final desc = action['desc'] as String? ?? '';
  await _reader.invokeMethod('clickByDescription', {'desc': desc});
  return 'Нажала на "$desc"';
 
@@ -224,7 +224,7 @@ class ScreenCommandService {
  return 'Двойной тап на ($x, $y)';
 
  case 'swipe':
- final dir = action['direction'] as String??? 'down';
+ final dir = action['direction'] as String? ?? 'down';
  final coords = _swipeCoords(dir);
  await _reader.invokeMethod('swipe', coords);
  return 'Свайп $dir';
@@ -235,12 +235,12 @@ class ScreenCommandService {
  'y1': (action['y1'] as num?)?.toDouble()?? 1000.0,
  'x2': (action['x2'] as num?)?.toDouble()?? 540.0,
  'y2': (action['y2'] as num?)?.toDouble()?? 500.0,
- 'duration': action['duration'] as int??? 300,
+ 'duration': action['duration'] as int? ?? 300,
  });
  return 'Свайп выполнен';
 
  case 'scroll':
- final dir = action['direction'] as String??? 'down';
+ final dir = action['direction'] as String? ?? 'down';
  await _reader.invokeMethod('scroll', {'direction': dir});
  return 'Прокрутила $dir';
 
@@ -266,12 +266,12 @@ class ScreenCommandService {
  await _reader.invokeMethod('openQuickSettings'); return 'Открыла быстрые настройки';
 
  case 'type':
- final text = action['text'] as String??? '';
+ final text = action['text'] as String? ?? '';
  await _reader.invokeMethod('typeInField', {'hint': '', 'text': text});
  return 'Ввела: "$text"';
 
  default:
- final reason = action['reason'] as String??? '';
+ final reason = action['reason'] as String? ?? '';
  return reason.isNotEmpty? reason: 'Не поняла команду';
  }
  }

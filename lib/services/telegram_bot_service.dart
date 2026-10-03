@@ -96,10 +96,10 @@ class TelegramBotService {
  final cbq = update['callback_query'];
  if (cbq!= null) {
  final cbId = cbq['id'] as String;
- final cbData = cbq['data'] as String??? '';
+ final cbData = cbq['data'] as String? ?? '';
  final cbMsg = cbq['message'];
  final cbChatId = cbMsg?['chat']?['id']?.toString()?? '';
- final cbMsgId = cbMsg?['message_id'] as int??? 0;
+ final cbMsgId = cbMsg?['message_id'] as int? ?? 0;
  final cbFrom = cbq['from'];
  final cbName = '${cbFrom?['first_name']?? ''} ${cbFrom?['last_name']?? ''}'.trim();
 

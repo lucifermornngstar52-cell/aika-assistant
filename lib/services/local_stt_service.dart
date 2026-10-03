@@ -66,8 +66,8 @@ class LocalSttService {
  _stateCtrl.add(null);
  _sub = _events.receiveBroadcastStream().listen((event) {
  if (event is! Map) return;
- final type = event['type'] as String??? '';
- final text = event['text'] as String??? '';
+ final type = event['type'] as String? ?? '';
+ final text = event['text'] as String? ?? '';
  if (type == 'partial') {
  _lastWords = text;
  onPartial?.call(text);
