@@ -1199,12 +1199,10 @@ override fun onResume() {
  val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
  // Android 10+: прямой вызов запрещён системой пробуем,
  // если вернёт false/упадёт, откроем системную панель.
- done = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
- wifi.isWifiEnabled = enabled
- } else {
  @Suppress("DEPRECATION")
+ done = try {
  wifi.setWifiEnabled(enabled)
- }
+ } catch (_: Exception) { false }
  } catch (_: Exception) { done = false }
  if (!done) {
  try {
