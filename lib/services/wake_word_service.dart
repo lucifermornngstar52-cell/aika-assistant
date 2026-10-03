@@ -237,8 +237,9 @@ class WakeWordService {
  _currentCompleter = completer;
  bool triggered = false;
 
- // Watchdog: если STT остановилось без finalResult или error — перезапускаем
- final watchdog = Timer(const Duration(seconds: 15), () {
+ // Watchdog: если STT остановилось без finalResult или error — перезапускаем.
+ // 6с вместо 15с: мёртвая сессия не висит по 13 секунд без микрофона.
+ final watchdog = Timer(const Duration(seconds: 6), () {
  if (!completer.isCompleted &&!_stt.isListening) {
  debugPrint('[WakeWord] watchdog: STT stopped without signal, restarting');
  completer.complete(false);
@@ -290,6 +291,15 @@ class WakeWordService {
  partialResults: true,
  onSoundLevelChange: null,
 );
+
+ // Liveness: если listen() тихо не поднялся (микрофон занят и т.п.),
+ // не ждём watchdog 6с — перезапускаем почти сразу.
+ Timer(const Duration(seconds: 2), () {
+ if (!completer.isCompleted &&!_stt.isListening) {
+ debugPrint('[WakeWord] STT не поднялся за 2с, retry');
+ if (!completer.isCompleted) completer.complete(false);
+ }
+ });
 
  try {
  return await completer.future

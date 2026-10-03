@@ -46,6 +46,8 @@ class EdgeTtsService extends ChangeNotifier {
  IOSink? _activeSink;
  Timer? _wsKeepalive;
  int _failCount = 0; // счётчик ошибок подряд
+ DateTime? _serverTime; // верное время с HTTP-сервера (часы телефона могут врать)
+ DateTime _serverTimeAt = DateTime.fromMillisecondsSinceEpoch(0);
  static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
  // Диагностика: каким движком реально озвучили последнюю реплику.
  String _lastEngineUsed = 'edge';
@@ -138,6 +140,39 @@ class EdgeTtsService extends ChangeNotifier {
  } catch (_) {}
  }
 
+ /// Верное время: берём Date-заголовок у Google/Microsoft.
+ /// Часы телефона могут спешить на часы — тогда Sec-MS-GEC
+ /// считается от «будущего» и Microsoft отдаёт 403.
+ Future<DateTime> _trueTime() async {
+ final now = DateTime.now();
+ final age = now.difference(_serverTimeAt);
+ if (_serverTime!= null && age.inSeconds < 90) {
+ return _serverTime!.add(age); // серверное время + прошедший интервал
+ }
+ final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+ try {
+ for (final host in const ['https://www.google.com', 'https://www.microsoft.com']) {
+ try {
+ final req = await client
+ .headUrl(Uri.parse(host))
+ .timeout(const Duration(seconds: 5));
+ final resp = await req.close().timeout(const Duration(seconds: 5));
+ final d = resp.headers.value(HttpHeaders.dateHeader);
+ if (d!= null && d.isNotEmpty) {
+ _serverTime = HttpDate.parse(d).toUtc();
+ _serverTimeAt = DateTime.now();
+ debugPrint('[EdgeTTS] серверное время получено, сдвиг часов: '
+ '${_serverTime!.difference(DateTime.now().toUtc()).inMinutes} мин');
+ return _serverTime!;
+ }
+ } catch (_) {}
+ }
+ } finally {
+ client.close();
+ }
+ return DateTime.now().toUtc(); // нет сети — хотя бы локальное
+ }
+
  Future<void> _warmupConnection() async {
  try {
  await _connectWs();
@@ -156,15 +191,18 @@ class EdgeTtsService extends ChangeNotifier {
  final connId = _genUuid();
  // ФИКС: Microsoft закрыл анонимный доступ (403). Нужен анти-абьюз
  // токен Sec-MS-GEC, версия Chromium 143 и cookie muid, как в edge-tts.
- final gec = _secMsGec();
+ final gec = await _secMsGec();
  final uri = Uri.parse('$_wsUrl?TrustedClientToken=$_trustedToken&ConnectionId=$connId'
  '&Sec-MS-GEC=$gec&Sec-MS-GEC-Version=1-143.0.3650.75');
 
+ // Заголовки ровно как в edge-tts: фейковый cookie muid убран —
+ // с ним анти-абьюз Microsoft резал handshake.
  _ws = await WebSocket.connect(uri.toString(), headers: {
  'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
  '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
- 'Cookie': 'muid=${_genUuid().toUpperCase()}',
+ 'Pragma': 'no-cache',
+ 'Cache-Control': 'no-cache',
  }).timeout(const Duration(seconds: 8));
 
  _wsReady = true;
@@ -483,9 +521,12 @@ class EdgeTtsService extends ChangeNotifier {
 
  /// Токен анти-абьюза EdgeTTS: SHA256 от тиков Windows-эпохи,
  /// округлённых вниз до 5 минут, + доверенный токен.
- String _secMsGec() {
+ Future<String> _secMsGec() async {
+ // Токен считаем от СЕРВЕРНОГО времени: если часы телефона спешат
+ // больше, чем на окно 300с, Microsoft отклоняет токен с 403.
+ final t = await _trueTime();
  // Целочисленная арифметика: без потери точности double на больших тиках.
- final seconds = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 + 11644473600;
+ final seconds = t.millisecondsSinceEpoch ~/ 1000 + 11644473600;
  final ticks = (seconds ~/ 300) * 300 * 10000000;
  final str = '$ticks$_trustedToken';
  return sha256.convert(str.codeUnits).toString().toUpperCase();
