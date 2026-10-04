@@ -7,7 +7,6 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'local_llm_service.dart';
 import 'local_model_manager.dart';
-import 'aika_log_service.dart';
 
 /// Детект настроения пользователя по фронтальной камере.
 ///

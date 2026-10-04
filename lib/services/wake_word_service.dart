@@ -19,7 +19,6 @@ class WakeWordService {
  factory WakeWordService() => _instance??= WakeWordService._();
  WakeWordService._();
 
- static const _phoneChannel = EventChannel('com.aika.assistant/phone_state');
 
  // СОБСТВЕННЫЙ STT — независимый от SpeechService
  final SpeechToText _stt = SpeechToText();
@@ -56,7 +55,6 @@ class WakeWordService {
  },
 );
  await updateTriggers();
- _listenPhoneState();
  debugPrint('[WakeWord] init, STT ready: $_sttReady, triggers: $_triggers');
  }
 
@@ -65,19 +63,6 @@ class WakeWordService {
  Future<void> initWithSharedStt(SpeechToText stt) async {
  debugPrint('[WakeWord] initWithSharedStt deprecated — using own STT');
  await initialize();
- }
-
- // ── Phone state — только лог, не глушим ──────────────────────────
- void _listenPhoneState() {
- _phoneChannel.receiveBroadcastStream().listen(
- (event) {
- if (event is Map) {
- final state = event['state'] as String? ?? '';
- debugPrint('[WakeWord] phone state: $state');
- }
- },
- onError: (e) => debugPrint('[WakeWord] phone state error: $e'),
-);
  }
 
  // ── Запуск / Остановка ────────────────────────────────────────────

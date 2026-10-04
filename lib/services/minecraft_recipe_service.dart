@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import 'overlay_service.dart';
-import 'aika_log_service.dart';
 
 /// Майнкрафт-рецепты: офлайн-база рецептов и советов по выживанию.
 ///
@@ -37,7 +36,7 @@ class MinecraftRecipeService {
  final wanted = _extractItem(text);
  if (wanted!= null) {
  final recipe = _findRecipe(wanted);
- AikaLogService.log('recipes', 'запрос «$wanted» → ${recipe?.title?? 'нет в базе'}');
+
  if (recipe!= null) {
  final answer = _formatRecipe(recipe);
  _maybeShowTip(recipe.title, answer, seconds: 45);

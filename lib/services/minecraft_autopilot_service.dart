@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'groq_model_catalog.dart';
 
 import 'overlay_service.dart';
-import 'aika_log_service.dart';
 
 /// ═════════════════════════════════════════════════════════════════════
 /// Minecraft Pilot игровой автопилот Айки.
@@ -80,7 +79,6 @@ class MinecraftAutopilotService {
  if (call.method!= 'command') return;
  final cmd = ((call.arguments as Map?)?['cmd'] as String?)?.trim();
  if (cmd == null || cmd.isEmpty) return;
- AikaLogService.log('intent', 'команда из окна-оверлея: $cmd');
 
  final supportErr = await checkSupport();
  if (supportErr!= null) {
@@ -93,14 +91,14 @@ class MinecraftAutopilotService {
  // Известный игровой скилл выполняем напрямую в игре.
  if (skill.name == 'stop' &&!isBusy) return;
  final res = await runSkill(skill);
- AikaLogService.log('autopilot', 'overlay-скилл готов: $res');
+
  await OverlayService().pilotStatus(res);
  return;
  }
  // Не скилл промпт уходит в чат-бот Айки: обработаются обычные
  // команды (напоминания, будильники, действия) и AI-ответ, который
  // озвучится TTS прямо поверх игры.
- AikaLogService.log('autopilot', 'overlay-промпт в чат-бот: $cmd');
+
  await OverlayService().pilotStatus('Спрашиваю...');
  final cb = onOverlayPrompt;
  if (cb!= null) {
@@ -189,7 +187,7 @@ class MinecraftAutopilotService {
  _iteration++;
  final pRaw = action['params'];
  final p = pRaw is Map<String, dynamic>? pRaw: <String, dynamic>{};
- AikaLogService.log('autopilot', 'шаг $_iteration: ${action['action']} $p');
+
  _addLog('── Шаг $_iteration/$maxIterations ──');
  _addLog(' ${action['thought']?? ''}');
  _addLog(' ${action['action']} $p');
@@ -354,7 +352,7 @@ class MinecraftAutopilotService {
  return json is Map<String, dynamic>? json: null;
  } catch (e) {
  _addLog(' Ошибка vision: $e');
- AikaLogService.error('autopilot', 'vision: $e');
+
  return null;
  }
  }
@@ -625,7 +623,7 @@ class MinecraftAutopilotService {
  final prefs = await SharedPreferences.getInstance();
  controlScheme =
  prefs.getString('mc_control_scheme')?? kSchemeClassic;
- AikaLogService.log('autopilot', 'схема управления: $controlScheme');
+
  } catch (_) {}
  }
 
@@ -635,23 +633,21 @@ class MinecraftAutopilotService {
  final prefs = await SharedPreferences.getInstance();
  await prefs.setString('mc_control_scheme', scheme);
  } catch (_) {}
- AikaLogService.log('autopilot', 'схема управления → $scheme');
+
  }
 
  /// Универсальный шаг вперёд: работает и с D-pad, и с джойстиком.
  /// [ms] — сколько идти. Возвращает true, если жест прошёл.
  static Future<void> _moveForward(int w, int h, int ms) async {
  if (controlScheme == kSchemeJoystick) {
- AikaLogService.debug('autopilot',
- 'жест: джойстик вперёд ${ms}мс');
+
  await _ch.invokeMethod('joystickMove', {
  'cx': w * 0.11, 'cy': h * 0.82,
  'angle': 0.0, 'duration': ms,
  });
  } else {
  // Классика: держим стрелку «вверх» D-pad
- AikaLogService.debug('autopilot',
- 'жест: D-pad вверх (${(w * 0.105).toInt()},${(h * 0.76).toInt()}) ${ms}мс');
+
  await _ch.invokeMethod('holdTouch', {
  'x': (w * 0.105).toDouble(), 'y': (h * 0.76).toDouble(),
  'duration': ms,
@@ -678,7 +674,7 @@ class MinecraftAutopilotService {
  final w = size['width'] as int;
  final h = size['height'] as int;
  _running = true;
- AikaLogService.log('autopilot', 'скилл chop: $cycles циклов, экран ${w}x$h');
+
  _addLog(' Рублю дерево ($cycles циклов)');
  await _status(' Айка рубит дерево', 'Держу палец на стволе, не трогай экран');
 
@@ -688,8 +684,7 @@ class MinecraftAutopilotService {
  // Ломаем по очереди низ ствола, середину и верх (лезем пальцем вверх).
  for (final fy in [0.56, 0.47, 0.38]) {
  if (!_running) break;
- AikaLogService.debug('autopilot',
- 'жест: ломаю блок (${(w * 0.5).toInt()},${(h * fy).toInt()}) 3400мс');
+
  await _ch.invokeMethod('holdTouch', {
  'x': (w * 0.5).toDouble(), 'y': (h * fy).toDouble(),
  'duration': 3400,
@@ -722,7 +717,7 @@ class MinecraftAutopilotService {
  final w = size['width'] as int;
  final h = size['height'] as int;
  _running = true;
- AikaLogService.log('autopilot', 'скилл dig: $blocks блока вниз');
+
  _addLog(' Копаю вниз ($blocks блока)');
  await _status(' Айка копает вниз', 'Осторожно, я не вижу пещеры снизу!');
 
@@ -756,7 +751,7 @@ class MinecraftAutopilotService {
  final w = size['width'] as int;
  final h = size['height'] as int;
  _running = true;
- AikaLogService.log('autopilot', 'скилл walk: вперёд $seconds сек ($controlScheme)');
+
  _addLog(' Бегу прямо $seconds сек');
  await _status(' Айка бежит прямо', 'Держу направление, не трогай экран');
 
@@ -783,7 +778,7 @@ class MinecraftAutopilotService {
  final w = size['width'] as int;
  final h = size['height'] as int;
  _running = true;
- AikaLogService.log('autopilot', 'скилл wander: $seconds сек');
+
  _addLog(' Гуляю $seconds сек');
  await _status(' Айка бродит по миру', 'Иду куда глаза глядят');
 

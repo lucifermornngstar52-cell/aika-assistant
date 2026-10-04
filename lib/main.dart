@@ -12,37 +12,17 @@ import 'services/wardrobe_service.dart';
 import 'services/theme_switcher_service.dart';
 import 'services/ai_service.dart';
 import 'services/local_llm_service.dart';
-import 'services/aika_log_service.dart';
 import 'services/web_search_service.dart';
 import 'main_overlay.dart' show overlayMain;
 
 export 'main_overlay.dart' show overlayMain;
 
-/// Оригинальный вывод в консоль (только в debug-сборке).
-void kDebugModeOnlyPrint(String? message) {
- if (kDebugMode) {
- // ignore: avoid_print
- print(message);
- }
-}
-
 void main() async {
  WidgetsFlutterBinding.ensureInitialized();
 
- // ПЕРЕХВАТ: все debugPrint по всему приложению пишутся в лог-просмотрщик.
- debugPrint = (String? message, {int? wrapWidth}) {
- final m = message?? '';
- // ФИКС: раньше тут было m.contains('') — пустая строка матчится всегда,
- // и ВЕСЬ лог красный. Ошибкой считаем только реальные маркеры ошибок.
- final isErr = m.contains('Exception') || m.contains('Error') ||
- m.contains('Ошибка') || m.contains('ошибка') ||
- m.contains('не удался') || m.contains('не удалось') ||
- m.contains('FAIL') || m.contains('403') ||
- m.contains('watchdog') || m.contains('не поднялся');
- AikaLogService.log('flutter', m,
- level: isErr? LogLevel.error: LogLevel.debug);
- kDebugModeOnlyPrint(message);
- };
+ // RELEASE-ТИШИНА: все debugPrint по всему приложению — полный no-op.
+// Ни консоли, ни памяти, ни файла: логи вырезаны под релиз.
+ debugPrint = (String? message, {int? wrapWidth}) {};
 
  await SystemChrome.setPreferredOrientations([
  DeviceOrientation.portraitUp,
