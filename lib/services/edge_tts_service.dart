@@ -48,6 +48,7 @@ class EdgeTtsService extends ChangeNotifier {
  int _failCount = 0; // счётчик ошибок подряд
  DateTime? _serverTime; // верное время с HTTP-сервера (часы телефона могут врать)
  DateTime _serverTimeAt = DateTime.fromMillisecondsSinceEpoch(0);
+ DateTime _warmupLastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
  static const _maxFails = 3; // после 3 ошибок — fallback на 30 сек
  // Диагностика: каким движком реально озвучили последнюю реплику.
  String _lastEngineUsed = 'edge';
@@ -134,9 +135,9 @@ class EdgeTtsService extends ChangeNotifier {
  _volume = prefs.getDouble('edge_tts_volume')?? 1.0;
  final voice = prefs.getString('edge_voice');
  if (voice!= null && voice.isNotEmpty) _voice = voice;
- // EdgeTTS мёртв (Microsoft закрыл доступ) — движок всегда системный.
- final savedEngine = prefs.getString('tts_engine')?? 'system';
- _ttsEngine = 'system';
+ // Движок из настроек. EdgeTTS блокируется Microsoft по региону сети
+ // (проверено: тот же токен с другого IP проходит) — 403 не глобальная.
+ _ttsEngine = prefs.getString('tts_engine')?? 'system';
  } catch (_) {}
  }
 
@@ -174,11 +175,25 @@ class EdgeTtsService extends ChangeNotifier {
  }
 
  Future<void> _warmupConnection() async {
+ // Движок системный — EdgeTTS вообще не трогаем, никакого 403-шума.
+ if (_ttsEngine == 'system') return;
+ // Не чаще раза в 10 минут: 403 от Microsoft не лечится ретраем.
+ if (DateTime.now().difference(_warmupLastAttempt) < const Duration(minutes: 10)) {
+ return;
+ }
+ _warmupLastAttempt = DateTime.now();
  try {
  await _connectWs();
  debugPrint('[EdgeTTS] WS прогрет');
  } catch (e) {
+ final msg = e.toString();
+ if (msg.contains('403')) {
+ debugPrint('[EdgeTTS] Microsoft блокирует эту сеть (403), '
+ 'говорю системным голосом. Через VPN голос Edge доступен');
+ _ttsEngine = 'system'; // до перезапуска: не спамим handshake
+ } else {
  debugPrint('[EdgeTTS] прогрев не удался: $e');
+ }
  }
  }
 

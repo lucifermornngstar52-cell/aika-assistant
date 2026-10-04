@@ -32,9 +32,15 @@ void main() async {
  // ПЕРЕХВАТ: все debugPrint по всему приложению пишутся в лог-просмотрщик.
  debugPrint = (String? message, {int? wrapWidth}) {
  final m = message?? '';
+ // ФИКС: раньше тут было m.contains('') — пустая строка матчится всегда,
+ // и ВЕСЬ лог красный. Ошибкой считаем только реальные маркеры ошибок.
+ final isErr = m.contains('Exception') || m.contains('Error') ||
+ m.contains('Ошибка') || m.contains('ошибка') ||
+ m.contains('не удался') || m.contains('не удалось') ||
+ m.contains('FAIL') || m.contains('403') ||
+ m.contains('watchdog') || m.contains('не поднялся');
  AikaLogService.log('flutter', m,
- level: m.contains('Exception') || m.contains('Ошибка') || m.contains('')
-? LogLevel.error: LogLevel.debug);
+ level: isErr? LogLevel.error: LogLevel.debug);
  kDebugModeOnlyPrint(message);
  };
 
