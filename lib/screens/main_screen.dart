@@ -23,6 +23,7 @@ import '../services/aika_browser_service.dart';
 import '../services/aika_game_helper_service.dart';
 import '../services/aika_self_learning_service.dart';
 import '../services/alarm_service.dart';
+import '../services/app_alias_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/assistant_mood_service.dart';
 import '../services/briefing_service.dart';
@@ -2031,6 +2032,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
  timestamp: DateTime.now(),
 ));
  await _speak(reply);
+ return;
+ }
+
+ // ── Кастомные команды приложений (алиасы) в чате: «музон», «вруби музон» ──
+ final aliasResult = await AppAliasService.tryLaunch(text);
+ if (aliasResult!= null) {
+ _addMessage(ChatMessage(
+ id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+ role: MessageRole.aika,
+ content: aliasResult,
+ timestamp: DateTime.now(),
+));
+ await _speak(aliasResult);
+ _moodService.onUserSpoke();
  return;
  }
 

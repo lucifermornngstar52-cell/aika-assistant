@@ -77,23 +77,57 @@ class AppAliasService {
  return null;
  }
 
+ /// Точное совпадение фразы с командой алиаса (без триггерных слов).
+ /// «музон» == алиас «музон» → да; «музон это круто» → нет.
+ static Future<AppAlias?> resolveExact(String phrase) async {
+ final t = phrase.trim().toLowerCase();
+ if (t.isEmpty) return null;
+ // отрезаем мягкие хвостовые слова: «музон пожалуйста», «музон давай»
+ for (final tail in const ['пожалуйста', 'давай', 'скорее', 'быстро']) {
+ if (t.endsWith(' $tail')) {
+ return resolveExact(t.substring(0, t.length - tail.length - 1));
+ }
+ }
+ for (final a in await getAll()) {
+ if (a.cmd.isNotEmpty && t == a.cmd) return a;
+ }
+ return null;
+ }
+
  /// Точка входа для голосовых/текстовых команд: «вруби музон».
  /// Возвращает строку-ответ, если алиас сработал, иначе null.
  static Future<String?> tryLaunch(String phrase) async {
- // Отрезаем триггерные слова в начале
+ // Отрезаем триггерные слова в начале (может быть два подряд:
+ // «эй, вруби музон» → «музон»)
  var t = phrase.trim().toLowerCase();
  const prefixes = [
- 'врубай', 'вруби', 'включи', 'включить', 'открой', 'открыть',
- 'запусти', 'запустить', 'покажи', 'показать', 'зайди в', 'перейди в',
- 'заведи', 'turn on', 'open', 'launch', 'start',
+ 'эй,', 'эй', 'ну', 'давай', 'мне', 'пожалуйста',
+ 'врубай', 'вруби', 'включи мне', 'включи', 'включить',
+ 'открой мне', 'открой-ка', 'открой', 'открыть мне', 'открыть',
+ 'запусти', 'запустить', 'покажи мне', 'покажи', 'показать',
+ 'зайди в', 'зайди', 'перейди в', 'перейди',
+ 'заведи', 'turn on', 'open', 'launch', 'start', 'go',
  ];
+ // До двух префиксов подряд: «эй давай вруби музон»
+ var strippedAny = false;
+ for (var i = 0; i < 2; i++) {
+ var stripped = false;
  for (final p in prefixes) {
- if (t.startsWith(p)) {
- t = t.substring(p.length).trim();
+ if (t.startsWith('$p ')) {
+ t = t.substring(p.length + 1).trim();
+ stripped = true;
+ strippedAny = true;
  break;
  }
  }
- final alias = await resolve(t);
+ if (!stripped) break;
+ }
+ // Голая фраза без триггера («музон») — только ТОЧНОЕ совпадение:
+ // обычная фраза с этим словом внутри приложения не запускает.
+ // С триггером («вруби музон») — мягкий contains.
+ final alias = strippedAny
+ ? await resolve(t)
+ : await resolveExact(t);
  if (alias == null) return null;
  // «выключи музон» не открываем
  if (phrase.trim().toLowerCase().startsWith('выключи') ||

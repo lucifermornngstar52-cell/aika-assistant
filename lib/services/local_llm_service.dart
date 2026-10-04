@@ -110,6 +110,8 @@ class LocalLlmService extends ChangeNotifier {
  /// Фильтр размышлений Qwen3: наружу идёт только чистый ответ.
  static String _stripThink(String text) {
  var s = text;
+ // если шаблон не съел мягкий переключатель — убираем хвост
+ s = s.replaceAll('/no_think', '').trim();
  final open = s.indexOf(_thinkOpen);
  if (open >= 0) {
  final close = s.indexOf(_thinkClose, open);

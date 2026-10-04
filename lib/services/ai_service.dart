@@ -80,7 +80,7 @@ class AiService {
  '${userName.isEmpty? 'пользователя': 'по имени $userName'}. '
  '$personaPart Отвечай по-русски, тепло, живо и по делу. '
  'Не генерируй ACTION-теги. Не инициируй действия на устройстве.'
- '${mood.isEmpty? '': ' $mood'}';
+ '${mood.isEmpty? '': ' $mood'} /no_think';
  }
 
  static String _clean(String text) => text
@@ -370,8 +370,11 @@ class AiService {
  imageBytes = base64Decode(imageBase64);
  if (imageBytes.length > 6 * 1024 * 1024) imageBytes = null;
  }
- final historyList = recentHistory(history, message)
-.map((m) => {
+ final recent = recentHistory(history, message);
+ // Локалка: длинный префилл истории — половина задержки. Только 10 последних.
+ final historyList = _recent
+ .skip(recent.length > 10? recent.length - 10: 0)
+ .map((m) => {
  'role': (m['role'] as String?)?? 'user',
  'content': (m['content'] as String?)?? '',
  })

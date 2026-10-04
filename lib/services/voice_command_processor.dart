@@ -64,11 +64,22 @@ class VoiceCommandProcessor {
  // Пользовательские пары «команда → приложение» из настроек проверяем
  // первыми: они точнее и важнее системных обработчиков.
  if (t.contains('вруби') || t.contains('врубай') || t.contains('включи') ||
- t.contains('открой') || t.contains('запусти') || t.contains('покажи') ||
+ t.contains('вкл') || t.contains('открой') || t.contains('открой-ка') ||
+ t.contains('запусти') || t.contains('покажи') ||
  t.contains('включить') || t.contains('открыть') || t.contains('запустить') ||
- t.contains('заведи') || t.contains('зайди') || t.contains('перейди')) {
+ t.contains('заведи') || t.contains('зайди') || t.contains('перейди') ||
+ t.contains('go ') || t.contains('давай')) {
  final aliasResult = await AppAliasService.tryLaunch(t);
  if (aliasResult!= null) return VoiceCmdResult.ok(aliasResult);
+ }
+
+ // ── 0а-2. БОСЫЙ алиас: пользователь ввёл саму команду («музон»)
+ // без «вруби/открой». Требуем ТОЧНОЕ совпадение (не contains),
+ // чтобы обычная болтовня не запускала приложения.
+ final bareAlias = await AppAliasService.resolveExact(t);
+ if (bareAlias!= null) {
+ final ok = await AppLauncherService.launchPackage(bareAlias.package);
+ return VoiceCmdResult.ok(ok? 'Открываю ${bareAlias.label}': '${bareAlias.label} не установлено');
  }
 
  // ── 0. Приложения ПРОВЕРЯЕМ ПЕРВЫМИ! ──────────────────────────────────
