@@ -32,12 +32,24 @@ class WakeWordService {
  List<String> _triggers = ['айка', 'aika'];
  Function()? _onWakeWord;
  Completer<bool>? _currentCompleter; // для onError из initialize()
+ // PERF: сначала пробуем on-device STT (без стриминга в Google) —
+ // вечное радио-стриминг и был главный источник «троит весь телефон».
+ bool _tryOnDevice = true;
 
  // ── Инициализация ─────────────────────────────────────────────────
  Future<void> initialize() async {
  _sttReady = await _stt.initialize(
  onError: (e) {
  debugPrint('[WakeWord] STT error: $e');
+ // on-device распознавание недоступно (нет модели ru-RU и т.п.) —
+ // уходим на сетевой режим, чтобы не циклиться в ошибках.
+ final msg = '${e.errorMsg} ${e.permanent == true ? 'permanent' : ''}';
+ if (_tryOnDevice && (msg.contains('error_no_match') ||
+ msg.contains('error_speech_timeout') ||
+ msg.contains('language') || msg.contains('network'))) {
+ _tryOnDevice = false;
+ debugPrint('[WakeWord] onDevice не подошёл, сетевой режим');
+ }
  // Завершаем текущущий completer чтобы цикл перезапустился
  if (_currentCompleter!= null &&!_currentCompleter!.isCompleted) {
  _currentCompleter!.complete(false);
@@ -186,7 +198,9 @@ class WakeWordService {
  }
 
  if (_stt.isListening) {
- await Future.delayed(const Duration(milliseconds: 30));
+ // PERF: было 30 мс = 33 пробуждения изолят-таймера в секунду.
+ // Для проверки статуса хватает 150 мс.
+ await Future.delayed(const Duration(milliseconds: 150));
  continue;
  }
 
@@ -269,12 +283,18 @@ class WakeWordService {
  completer.complete(false);
  }
  },
+ // PERF: onDevice — распознавание локально, без постоянного стриминга
+// аудио в Google (радио жрало батарею и вешало систему).
+// partialResults: false — только финальные фразы, в разы меньше колбеков.
  listenFor: const Duration(seconds: 300),
  pauseFor: const Duration(seconds: 300),
  localeId: 'ru_RU',
- cancelOnError: false,
- partialResults: true,
  onSoundLevelChange: null,
+ listenOptions: SpeechListenOptions(
+ partialResults: false,
+ cancelOnError: false,
+ onDevice: _tryOnDevice,
+),
 );
 
  // Liveness: если listen() тихо не поднялся (микрофон занят и т.п.),
