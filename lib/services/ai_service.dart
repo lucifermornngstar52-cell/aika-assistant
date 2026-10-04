@@ -372,7 +372,7 @@ class AiService {
  }
  final recent = recentHistory(history, message);
  // Локалка: длинный префилл истории — половина задержки. Только 10 последних.
- final historyList = _recent
+ final historyList = recent
  .skip(recent.length > 10? recent.length - 10: 0)
  .map((m) => {
  'role': (m['role'] as String?)?? 'user',
