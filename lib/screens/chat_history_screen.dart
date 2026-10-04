@@ -65,7 +65,8 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
  return false;
  },
  child: Scaffold(
- backgroundColor: const Color(0xFF0F0F0F),
+ // Прозрачный фон: сквозь него виден переливающийся дым SmokeBackground
+ backgroundColor: Colors.transparent,
  appBar: AppBar(
  backgroundColor: Colors.transparent,
  elevation: 0,

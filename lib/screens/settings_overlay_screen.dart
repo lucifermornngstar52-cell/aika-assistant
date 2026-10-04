@@ -91,7 +91,8 @@ class _SettingsOverlayScreenState extends State<SettingsOverlayScreen> {
  @override
  Widget build(BuildContext context) {
  return Scaffold(
- backgroundColor: _bg,
+ // Прозрачный фон: сквозь него виден переливающийся дым SmokeBackground
+ backgroundColor: Colors.transparent,
  appBar: AppBar(
  backgroundColor: Colors.transparent,
  elevation: 0,

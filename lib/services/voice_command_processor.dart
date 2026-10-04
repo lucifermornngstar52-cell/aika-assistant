@@ -72,13 +72,21 @@ class VoiceCommandProcessor {
  }
 
  // ── 0. Приложения ПРОВЕРЯЕМ ПЕРВЫМИ! ──────────────────────────────────
- // Если есть явный триггер открытия пробуем запустить приложение.
- // Если не нашли продолжаем к другим обработчикам.
- if (t.contains('открой') || t.contains('запусти') || t.contains('покажи') ||
+ // ФИКС: системные команды («включи блютуз», «убавь яркость») НЕ должны
+ // улетать сюда и матчиться на приложения сначала системные обработчики.
+ final sysKeys = const [
+ 'wifi', 'вайфай', 'вай фай', 'wi-fi', 'блютуз', 'bluetooth', 'блюзуб',
+ 'яркост', 'brightness', 'громкост', 'громче', 'потише', 'авиарежим',
+ 'режим полёта', 'режим полета', 'горячая точка', 'точка доступа',
+ 'хотспот', 'hotspot', 'фонарик',
+ ];
+ final isSystemCmd = sysKeys.any((k) => t.contains(k));
+ if (!isSystemCmd &&
+ (t.contains('открой') || t.contains('запусти') || t.contains('покажи') ||
  t.contains('зайди') || t.contains('перейди') || t.contains('включи') ||
  t.contains('открыть') || t.contains('запустить') || t.contains('включить') ||
  t.contains('показать') || t.contains('open') || t.contains('launch') ||
- t.contains('start') || t.contains('go to')) {
+ t.contains('start') || t.contains('go to'))) {
  final appResult = await _handleOpenApp(t, text);
  if (appResult!= null) return appResult;
  }
@@ -357,6 +365,9 @@ class VoiceCommandProcessor {
 
  // ── Громкость ─────────────────────────────────────────────────────────────
  Future<VoiceCmdResult?> _handleVolume(String t) async {
+ // ФИКС: «убавь яркость» содержит 'убавь' — это команда яркости,
+ // не выкручиваем звук. Пропускаем, если есть яркостный интент.
+ if (_has(t, ['яркост', 'brightness', 'экран темнее', 'экран ярче'])) return null;
  // Процентная установка: "громкость 70%", "поставь громкость на 50"
  if (_has(t, ['громкость', 'volume'])) {
  final pct = _extractPercent(t)?? _extractNumber(t);
@@ -385,11 +396,11 @@ class VoiceCommandProcessor {
  VolumeController().setVolume(_vol = 1.0);
  return VoiceCmdResult.ok(' Громкость на максимум!');
  }
- if (_has(t, ['громче', 'увеличь громкость', 'volume up', 'прибавь', 'добавь громкости'])) {
+ if (_has(t, ['громче', 'увеличь громкость', 'volume up', 'прибавь', 'добавь громкости', 'поддай', 'сделай громче'])) {
  VolumeController().setVolume((_vol + 0.15).clamp(0.0, 1.0));
  return VoiceCmdResult.ok(' Громкость увеличена');
  }
- if (_has(t, ['тише', 'уменьши громкость', 'volume down', 'убавь', 'убавь громкость'])) {
+ if (_has(t, ['тише', 'потише', 'уменьши громкость', 'volume down', 'убавь', 'убавь громкость', 'сбавь', 'меньше громкость', 'громкость меньше'])) {
  VolumeController().setVolume((_vol - 0.15).clamp(0.0, 1.0));
  return VoiceCmdResult.ok(' Громкость уменьшена');
  }

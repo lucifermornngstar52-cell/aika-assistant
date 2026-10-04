@@ -144,7 +144,8 @@ class _SettingsVoiceScreenState extends State<SettingsVoiceScreen> {
  @override
  Widget build(BuildContext context) {
  return Scaffold(
- backgroundColor: const Color(0xFF0F0F0F),
+ // Прозрачный фон: сквозь него виден переливающийся дым SmokeBackground
+ backgroundColor: Colors.transparent,
  appBar: AppBar(
  backgroundColor: Colors.transparent,
  elevation: 0,

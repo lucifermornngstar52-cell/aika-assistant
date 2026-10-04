@@ -1220,6 +1220,14 @@ override fun onResume() {
  "setBluetooth" -> {
  val enabled = call.argument<Boolean>("enabled")?: false
  var done = false
+ // Android 12+: для enable/disable нужен runtime BLUETOOTH_CONNECT.
+ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+ checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=
+ PackageManager.PERMISSION_GRANTED) {
+ requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 4021)
+ result.success(false) // выдай разрешение и повтори команду
+ return@setMethodCallHandler
+ }
  try {
  val bm = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
  val adapter = bm.adapter

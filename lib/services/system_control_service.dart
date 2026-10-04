@@ -148,15 +148,16 @@ class SystemControlService {
  final cur = await getBrightness();
  var target = cur?['percent']?? 50;
 
- if (_hasAny(t, ['ярче', 'посветлее', 'увеличь'])) {
+ if (_hasAny(t, ['ярче', 'посветлее', 'увеличь', 'светлее'])) {
  target = ((cur?['percent']?? 50) as int) + (percent?? 20);
- } else if (_hasAny(t, ['темнее', 'потемнее', 'уменьши'])) {
+ } else if (_hasAny(t, ['темнее', 'потемнее', 'уменьши', 'меньше', 'сбавь', 'ниже'])) {
+ // «сделай яркость меньше» без числа: -20%, а не «мин» = 5%
  target = ((cur?['percent']?? 50) as int) - (percent?? 20);
  } else if (percent!= null) {
  target = percent;
  } else if (t.contains('макси')) {
  target = 100;
- } else if (t.contains('мин')) {
+ } else if (_hasAny(t, ['миним', 'на минимум', 'совсем темн'])) {
  target = 5;
  }
  target = target.clamp(5, 100);
@@ -175,15 +176,15 @@ class SystemControlService {
  final cur = await getVolume();
  var target = cur;
 
- if (_hasAny(t, ['громче', 'увеличь'])) {
+ if (_hasAny(t, ['громче', 'увеличь', 'поддай'])) {
  target = cur + (percent?? 20);
- } else if (_hasAny(t, ['тише', 'потише', 'уменьши'])) {
+ } else if (_hasAny(t, ['тише', 'потише', 'уменьши', 'меньше', 'сбавь'])) {
  target = cur - (percent?? 20);
  } else if (percent!= null) {
  target = percent;
  } else if (t.contains('макси')) {
  target = 100;
- } else if (t.contains('миним')) {
+ } else if (_hasAny(t, ['миним', 'на минимум', 'беззвуч'])) {
  target = 5;
  }
  target = target.clamp(0, 100);

@@ -172,7 +172,9 @@ class _AppAliasesScreenState extends State<AppAliasesScreen> {
  Widget build(BuildContext context) {
  return Scaffold(
  appBar: AppBar(
- backgroundColor: AikaTheme.surface,
+ // Прозрачный: сквозь него виден переливающийся дым SmokeBackground
+ backgroundColor: Colors.transparent,
+ elevation: 0,
  title: Text('КОМАНДЫ ПРИЛОЖЕНИЙ',
  style: TextStyle(color: AikaTheme.accent, fontWeight: FontWeight.bold, letterSpacing: 2)),
 ),
