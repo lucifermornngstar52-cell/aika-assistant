@@ -63,8 +63,11 @@ android {
             } else {
                 signingConfig signingConfigs.debug
             }
-            minifyEnabled false
-            shrinkResources false
+            // RELEASE-ОПТИМИЗАЦИЯ: R8 вырезает неиспользуемый Java/Kotlin-код
+            // (каналы и сервисы из манифеста R8 сохраняет сам).
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
         }
     }
 }
