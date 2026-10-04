@@ -278,10 +278,13 @@ function initLive2D() {
         backgroundAlpha: 0,
         transparent: true,
         resizeTo: window,
-        antialias: true,
-        resolution: window.devicePixelRatio || 1,
+        // PERF: оверлей рендерился 60 fps на полном DPR с antialias —
+        // GPU молотил вечно даже поверх других приложений.
+        antialias: false,
+        resolution: Math.min(2, window.devicePixelRatio || 1),
       });
       try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch(e) {}
+      try { app.ticker.maxFPS = 24; } catch(e) {}
       // Загружаем дефолтную модель — Flutter потом переключит через switchBuiltinModel
       return loadModelFromPath(BASE + 'models/Natori/Natori.model3.json');
     })
