@@ -156,6 +156,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
  bool _isDancing = false;
  bool _isStretching = false;
  Timer? _musicTimer;
+ Timer? _moodTimer; // Эмоции с камеры — редкая проверка, не в момент отправки
 
  // ── Флаги показа диалогов разрешений (показываем ОДИН раз за сессию) ─────
  bool _overlayDialogShown = false;
@@ -991,6 +992,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
  }
 
  void _startMusicPolling() {
+ // ── Эмоции с фронталки: РЕДКИЙ фоновый цикл.
+ // Раньше проверка висела в пути отправки сообщения — камера + инференс
+ // зрениевого LLM роняли FPS прямо во время набора ответа.
+ unawaited(Future.delayed(const Duration(seconds: 90), () {
+ if (mounted) {
+ unawaited(AikaMoodService.instance.refreshIfStale());
+ }
+ }));
+ _moodTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+ if (mounted) unawaited(AikaMoodService.instance.refreshIfStale());
+ });
  _musicTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
  if (_isListening || _isThinking) return;
  final playing = await MusicDetectorService.isMusicPlaying();
@@ -1279,8 +1291,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
  if (text.trim().isEmpty) return;
  final turnId = ++_aiTurn;
- // Настроение по фронталке — в фоне, не блокирует отправку.
- unawaited(AikaMoodService.instance.refreshIfStale());
+
  _textController.clear();
  _resetIdleTimer();
  // Показываем сообщение пользователя немедленно
@@ -2305,6 +2316,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
  _textController.dispose();
  _tts.stop();
  _musicTimer?.cancel();
+ _moodTimer?.cancel();
  _idleTimer?.cancel();
  _deviceService.dispose();
  _wakeWordService.stop();

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -49,15 +51,15 @@ class LocalLlmService extends ChangeNotifier {
  _engine = await LlamaEngine.spawn(
  modelParams: ModelParams(path: modelPath, gpuLayers: 0),
  contextParams: isVision
-? const ContextParams(
- nCtx: 4096,
- nThreads: 0,
+? ContextParams(
+ nCtx: 2048,
+ nThreads: math.min(4, math.max(2, Platform.numberOfProcessors - 2)),
  nBatch: 1024,
  nUbatch: 256,
  typeK: KvCacheType.q8_0,
  typeV: KvCacheType.q8_0,
 )
-: const ContextParams(nCtx: 4096, nThreads: 0),
+: ContextParams(nCtx: 2048, nThreads: math.min(4, math.max(2, Platform.numberOfProcessors - 2))),
  multimodalParams: mmprojPath == null
 ? null
 : MultimodalParams(

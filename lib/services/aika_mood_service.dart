@@ -24,7 +24,7 @@ class AikaMoodService {
  AikaMoodService._();
  static final AikaMoodService instance = AikaMoodService._();
 
- static const ttl = Duration(minutes: 3);
+ static const ttl = Duration(minutes: 15);
 
  /// Текущее настроение: '' — неизвестно, иначе слово-эмоция.
  final ValueNotifier<String> mood = ValueNotifier<String>('');
