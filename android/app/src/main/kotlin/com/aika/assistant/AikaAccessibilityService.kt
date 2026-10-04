@@ -38,6 +38,33 @@ import java.security.MessageDigest
 class AikaAccessibilityService: AccessibilityService() {
 
  companion object {
+ // PERF: кэш пакетов с иконкой запуска (см. onAccessibilityEvent).
+ @Volatile private var _launcherPackages: HashSet<String>? = null
+ @Volatile private var _launcherPackagesAt: Long = 0L
+ private val launcherLock = Any()
+ private const val LAUNCHER_CACHE_TTL_MS = 30L * 60L * 1000L
+ fun launcherPackages(ctx: Context): HashSet<String> {
+  synchronized(launcherLock) {
+   val fresh = _launcherPackages!= null &&
+     System.currentTimeMillis() - _launcherPackagesAt < LAUNCHER_CACHE_TTL_MS
+   if (fresh) return _launcherPackages!!
+   val set = HashSet<String>()
+   try {
+    val pm = ctx.packageManager
+    val main = pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+    for (ai in main) {
+     if (pm.getLaunchIntentForPackage(ai.packageName)!= null) set.add(ai.packageName)
+    }
+   } catch (_: Exception) {}
+   _launcherPackages = set
+   _launcherPackagesAt = System.currentTimeMillis()
+   return set
+  }
+ }
+ fun invalidateLauncherCache() {
+  synchronized(launcherLock) { _launcherPackages = null }
+ }
+
  @Volatile var instance: AikaAccessibilityService? = null
  fun isRunning() = instance!= null
  fun get() = instance
@@ -75,9 +102,11 @@ class AikaAccessibilityService: AccessibilityService() {
  if (pkg == "com.aika.assistant" || pkg == "com.android.systemui") return
  // Пропускаем всё, у чего нет иконки запуска: клавиатуры, IME-панели,
  // оверлеи — иначе трекер спамил бы «сменой приложения» на каждый ввод.
- try {
- if (packageManager.getLaunchIntentForPackage(pkg) == null) return
- } catch (_: Exception) { return }
+ // PERF: был getLaunchIntentForPackage(pkg) на КАЖДОЕ событие — это IPC
+ // в PackageManager с главного потока; события смены окон летят отовсюду
+ // (диалоги, меню, IME в любых приложениях) → постоянные микро-фризы.
+ // Кэш запускаемых пакетов строится одним запросом (см. companion).
+ if (!launcherPackages(this).contains(pkg)) return
  if (pkg == _lastSentPkg) return
  _lastSentPkg = pkg
  val label = try {

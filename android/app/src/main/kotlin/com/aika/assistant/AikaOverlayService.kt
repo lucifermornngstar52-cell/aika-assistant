@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -126,6 +128,10 @@ class AikaOverlayService: Service() {
 
  override fun onBind(intent: Intent?): IBinder? = null
 
+ // PERF: WebView оверлея рендерил анимацию даже при ВЫКЛЮЧЕННОМ экране —
+ // GPU/батарея молотили в пустоту. Гасим рендер на ACTION_SCREEN_OFF.
+ private var screenReceiver: BroadcastReceiver? = null
+
  override fun onCreate() {
  super.onCreate()
  isRunning = true
@@ -153,10 +159,29 @@ class AikaOverlayService: Service() {
  } else {
  Log.d(TAG, "onCreate: skipping setupWindow — isHiddenByUser=true")
  }
+ // Пауза рендера при гашении экрана, возобновление при разблокировке.
+ screenReceiver = object: BroadcastReceiver() {
+ override fun onReceive(ctx: Context?, intent: Intent?) {
+ val wv = webView?: return
+ try {
+ when (intent?.action) {
+ Intent.ACTION_SCREEN_OFF -> wv.onPause()
+ Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON -> wv.onResume()
+ }
+ } catch (_: Exception) {}
+ }
+ }
+ registerReceiver(screenReceiver, IntentFilter().apply {
+ addAction(Intent.ACTION_SCREEN_OFF)
+ addAction(Intent.ACTION_SCREEN_ON)
+ addAction(Intent.ACTION_USER_PRESENT)
+ })
  }
 
  override fun onDestroy() {
  isRunning = false
+ try { screenReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+ screenReceiver = null
  handler.post {
  try { webView?.let { wm?.removeView(it) } } catch (_: Exception) {}
  webView?.destroy()
