@@ -10,6 +10,8 @@ import 'local_models_screen.dart';
 import 'chat_history_screen.dart';
 import 'settings_overlay_screen.dart';
 import 'about_project_screen.dart';
+import 'license_gate_screen.dart';
+import '../services/license_service.dart';
 import 'app_aliases_screen.dart';
 import 'ai_settings_screen.dart';
 
@@ -41,6 +43,37 @@ class SettingsScreen extends StatelessWidget {
  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
  children: [
  const SizedBox(height: 8),
+
+ // ── Статус лицензии ────────────────────────────────────────
+ FutureBuilder<List>(
+ future: Future.wait(
+ [LicenseService.isLicensed(), LicenseService.daysLeft()]),
+ builder: (context, snap) {
+ if (!snap.hasData) return const SizedBox.shrink();
+ final licensed = snap.data![0] as bool;
+ final daysLeft = snap.data![1] as int;
+ if (licensed) {
+ return _SettingsCard(
+ title: 'Полная версия активна',
+ subtitle: 'Спасибо за поддержку! Доступны все функции навсегда.',
+ icon: Icons.verified,
+ accent: const Color(0xFF7CFFB2),
+ onTap: null,
+ );
+ }
+ return _SettingsCard(
+ title: daysLeft > 0
+ ? 'Пробный период: осталось $daysLeft ${daysLeft == 1 ? 'день' : (daysLeft < 5 ? 'дня' : 'дней')}'
+ : 'Пробный период закончился',
+ subtitle: daysLeft > 0
+ ? 'Полная версия — 1 000 ₸, навсегда. Нажми, чтобы купить.'
+ : 'Нажми, чтобы купить полную версию за 1 000 ₸.',
+ icon: Icons.timelapse,
+ accent: const Color(0xFFB388FF),
+ onTap: () => Navigator.push(context,
+ MaterialPageRoute(builder: (_) => const LicenseGateScreen())),
+ );
+ }),
 
  // ── AI ─────────────────────────────────────────────────────
  _SettingsCard(
@@ -160,13 +193,13 @@ class _SettingsCard extends StatelessWidget {
  final String subtitle;
  final IconData icon;
  final Color? accent;
- final VoidCallback onTap;
+ final VoidCallback? onTap;
 
  const _SettingsCard({
  required this.title,
  required this.subtitle,
  required this.icon,
- required this.onTap,
+ this.onTap,
  this.accent,
  });
 

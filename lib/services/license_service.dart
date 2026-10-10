@@ -12,6 +12,8 @@ class LicenseService {
  static const _channel = MethodChannel('com.aika.assistant/license');
  static const _secret = '185f4581ecc7a95d842b149299b26cb00f145cdeb74fa652';
  static const _prefKey = 'aika_licensed';
+ static const _firstRunKey = 'aika_first_run_epoch';
+ static const _trialDays = 4;
 
  /// Нативный ANDROID_ID устройства.
  static Future<String> _getAndroidId() async {
@@ -37,9 +39,31 @@ class LicenseService {
  return 'AK-${digest.toString().substring(0, 6).toUpperCase()}';
  }
 
- static Future<bool> isActivated() async {
+ /// Куплена ли полная версия (код введён).
+ static Future<bool> isLicensed() async {
  final prefs = await SharedPreferences.getInstance();
  return prefs.getBool(_prefKey)?? false;
+ }
+
+ /// Осталось дней триала (0 — триал кончился).
+ /// Дата первого запуска фиксируется при первом обращении.
+ static Future<int> daysLeft() async {
+ final prefs = await SharedPreferences.getInstance();
+ final now = DateTime.now().millisecondsSinceEpoch;
+ var first = prefs.getInt(_firstRunKey);
+ if (first == null) {
+ await prefs.setInt(_firstRunKey, now);
+ first = now;
+ }
+ final left = _trialDays - (now - first) / 86400000;
+ if (left <= 0) return 0;
+ return left.ceil();
+ }
+
+ /// Действует ли доступ: либо куплено, либо триал ещё идёт.
+ static Future<bool> isActivated() async {
+ if (await isLicensed()) return true;
+ return await daysLeft() > 0;
  }
 
  /// Проверяет введённый код. При успехе запоминает активацию.

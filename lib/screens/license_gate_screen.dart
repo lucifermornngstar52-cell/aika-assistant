@@ -17,6 +17,15 @@ class LicenseGateScreen extends StatefulWidget {
 }
 
 class _LicenseGateScreenState extends State<LicenseGateScreen> {
+ void _copy(String text) {
+ Clipboard.setData(ClipboardData(text: text));
+ ScaffoldMessenger.of(context).showSnackBar(
+ SnackBar(
+ content: Text('Скопировано: $text'),
+ duration: const Duration(milliseconds: 900)),
+ );
+ }
+
  final _controller = TextEditingController();
 
  // ФИКС: контроллер не освобождался
@@ -64,7 +73,7 @@ class _LicenseGateScreenState extends State<LicenseGateScreen> {
  } else {
  setState(() {
  _checking = false;
- _error = 'Неверный код. Проверь написание или обратись к разработчику.';
+ _error = 'Неверный код. Проверь написание или напиши в Telegram @Unqry.';
  });
  }
  }
@@ -103,20 +112,37 @@ class _LicenseGateScreenState extends State<LicenseGateScreen> {
  child: Column(
  children: [
  const Text(
- 'Приложение не активировано.',
+ 'Пробные дни закончились',
  textAlign: TextAlign.center,
  style: TextStyle(
- fontSize: 15,
- fontWeight: FontWeight.w600,
+ fontSize: 16,
+ fontWeight: FontWeight.w700,
  color: AikaTheme.textPrimary),
 ),
  const SizedBox(height: 8),
  const Text(
- 'Отправь этот ID устройства вместе со скриншотом оплаты разработчику в Telegram @Unqry и получи код активации:',
+ 'Полная версия — 1 000 ₸, навсегда. Переведи на карту и отправь скриншот оплаты вместе с этим ID в Telegram @Unqry:',
  textAlign: TextAlign.center,
  style: TextStyle(
  fontSize: 13, color: AikaTheme.textSecondary),
 ),
+ const SizedBox(height: 14),
+ Row(
+ children: [
+ _PaymentCard(
+ label: 'Kaspi Gold',
+ number: '4400 4300 6272 0914',
+ onCopy: () => _copy('4400430062720914'),
+ ),
+ const SizedBox(width: 10),
+ _PaymentCard(
+ label: 'Freedom Bank',
+ number: '4002 8900 5058 4816',
+ onCopy: () => _copy('4002890050584816'),
+ ),
+ ],
+ ),
+ const SizedBox(height: 14),
  const SizedBox(height: 14),
  InkWell(
  onTap: () {
@@ -206,5 +232,44 @@ class _LicenseGateScreenState extends State<LicenseGateScreen> {
 ),
 ),
 );
+ }
+}
+
+class _PaymentCard extends StatelessWidget {
+ final String label;
+ final String number;
+ final VoidCallback onCopy;
+
+ const _PaymentCard({required this.label, required this.number, required this.onCopy});
+
+ @override
+ Widget build(BuildContext context) {
+ return Expanded(
+ child: InkWell(
+ onTap: onCopy,
+ borderRadius: BorderRadius.circular(12),
+ child: Container(
+ padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+ decoration: BoxDecoration(
+ color: AikaTheme.surface,
+ borderRadius: BorderRadius.circular(12),
+ border: Border.all(color: AikaTheme.glassWhite),
+ ),
+ child: Column(
+ children: [
+ Text(label,
+ textAlign: TextAlign.center,
+ style: const TextStyle(
+ fontSize: 12, fontWeight: FontWeight.w700, color: AikaTheme.textPrimary)),
+ const SizedBox(height: 4),
+ Text(number,
+ textAlign: TextAlign.center,
+ style: const TextStyle(
+ fontSize: 11.5, letterSpacing: 0.4, color: AikaTheme.textSecondary)),
+ ],
+ ),
+ ),
+ ),
+ );
  }
 }
