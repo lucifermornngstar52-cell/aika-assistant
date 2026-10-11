@@ -42,6 +42,7 @@ jobs:
       - name: Собрать RELEASE APK
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=FLUTTER_WEB_AUTO_DETECT=false \
             --dart-define=GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
         continue-on-error: true

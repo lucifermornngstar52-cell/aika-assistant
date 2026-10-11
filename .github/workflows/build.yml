@@ -61,6 +61,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
             --dart-define=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
             --dart-define=ELEVENLABS_API_KEY="${{ secrets.ELEVENLABS_API_KEY }}"
